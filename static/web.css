@@ -1,0 +1,19 @@
+/* Web-only additions. Original APK styles are retained in styles.css. */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.web-text-import { margin: 18px 0 24px; border: 1px solid var(--line); background: var(--panel); }
+.web-text-import summary { padding: 16px 20px; cursor: pointer; color: var(--moss); font-weight: 600; }
+.web-text-import form { display: grid; gap: 16px; padding: 0 20px 20px; }
+.web-text-import label { display: grid; gap: 8px; font-size: 14px; color: var(--muted); }
+.web-text-import textarea { width: 100%; min-height: 180px; padding: 12px; resize: vertical; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; line-height: 1.8; }
+.web-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.web-runtime-note { margin: 0 0 20px; color: var(--muted); font-size: 13px; line-height: 1.8; }
+.web-import-error { color: #a33528; margin: 0; }
+.web-reader-note { padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+@media (max-width: 900px) {
+  .web-text-import summary { padding: 16px; }
+  .web-text-import form { padding: 0 16px 16px; }
+  input, textarea, select { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
+}

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>書架レイアウト案</title>
+  <link rel="stylesheet" href="styles.css?v=20260809-1">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <header class="brand">
+        <p class="eyebrow">PRIVATE NEWS LIBRARY</p>
+        <h1>富士見<br>新聞文庫</h1>
+        <p>ニュースを、深く読む。</p>
+      </header>
+      <nav aria-label="Main navigation">
+        <button class="nav-button" type="button"><span>01</span>本日のニュース</button>
+        <button class="nav-button" type="button"><span>02</span>閲読室</button>
+        <button class="nav-button" type="button"><span>03</span>收藏</button>
+        <button class="nav-button active" type="button"><span>04</span>書架</button>
+        <button class="nav-button" type="button"><span>05</span>辞書</button>
+        <button class="nav-button" type="button"><span>06</span>設置</button>
+      </nav>
+    </aside>
+
+    <main class="content-shell">
+      <section class="view">
+        <div class="section-head library-head">
+          <div><p class="section-kicker">LIGHT NOVEL LIBRARY</p><h2>書架</h2><p>物語の続きを、いつでもここから。</p></div>
+          <div class="library-head-actions"><span class="status-badge">12 冊</span><button type="button">EPUBを追加</button></div>
+        </div>
+
+        <div class="library-toolbar">
+          <label class="library-search"><span>書架を検索</span><input type="search" placeholder="書名・作者・シリーズ・本文"></label>
+          <label>並び順<select><option>最近読んだ順</option></select></label>
+        </div>
+        <div class="book-dropzone"><strong>EPUBをここにドロップ</strong><span>またはクリックして複数のファイルを選択</span></div>
+
+        <section class="library-current-reading" aria-label="読書中">
+          <article class="current-reading-card">
+            <div class="current-reading-cover book-cover preview-cover cover-ink"><span>夜の<br>ピクニック</span></div>
+            <div class="current-reading-copy">
+              <p class="current-reading-label">READING NOW</p>
+              <h3>夜のピクニック</h3>
+              <p>恩田 陸</p>
+              <div class="current-reading-progress"><div><span>第6章　歩く夜</span><strong>42%</strong></div><i><b style="width:42%"></b></i></div>
+            </div>
+            <button class="book-continue" type="button">続きを読む</button>
+          </article>
+        </section>
+
+        <div class="library-series">
+          <section class="book-series-group">
+            <div class="book-series-heading"><h3>古典部</h3><span>3 冊</span></div>
+            <div class="book-grid">
+              <article class="book-card" tabindex="0"><button class="book-card-edit icon-tool" type="button" aria-label="書籍情報を編集">•••</button><div class="book-cover preview-cover cover-red"><span>氷菓</span></div><div class="book-card-copy"><span class="book-series-label">古典部 · 第 1 巻</span><h3>氷菓</h3><p>米澤 穂信</p><div class="book-card-status"><span>100% 読了</span></div></div></article>
+              <article class="book-card" tabindex="0"><button class="book-card-edit icon-tool" type="button" aria-label="書籍情報を編集">•••</button><div class="book-cover preview-cover cover-blue"><span>愚者の<br>エンドロール</span></div><div class="book-card-copy"><span class="book-series-label">古典部 · 第 2 巻</span><h3>愚者のエンドロール</h3><p>米澤 穂信</p><div class="book-card-status"><span>63% 読了</span></div></div></article>
+              <article class="book-card" tabindex="0"><button class="book-card-edit icon-tool" type="button" aria-label="書籍情報を編集">•••</button><div class="book-cover preview-cover cover-sage"><span>クドリャフカの<br>順番</span></div><div class="book-card-copy"><span class="book-series-label">古典部 · 第 3 巻</span><h3>クドリャフカの順番</h3><p>米澤 穂信</p><div class="book-card-status"><span>6 章</span></div></div></article>
+            </div>
+          </section>
+
+          <section class="book-series-group">
+            <div class="book-series-heading"><h3>単行本</h3><span>4 冊</span></div>
+            <div class="book-grid">
+              <article class="book-card" tabindex="0"><button class="book-card-edit icon-tool" type="button" aria-label="書籍情報を編集">•••</button><div class="book-cover preview-cover cover-sun"><span>蜜蜂と<br>遠雷</span></div><div class="book-card-copy"><span class="book-series-label">単行本</span><h3>蜜蜂と遠雷</h3><p>恩田 陸</p><div class="book-card-status"><span>12 章</span></div></div></article>
+              <article class="book-card" tabindex="0"><button class="book-card-edit icon-tool" type="button" aria-label="書籍情報を編集">•••</button><div class="book-cover preview-cover cover-plum"><span>君の膵臓を<br>たべたい</span></div><div class="book-card-copy"><span class="book-series-label">単行本</span><h3>君の膵臓をたべたい</h3><p>住野 よる</p><div class="book-card-status"><span>100% 読了</span></div></div></article>
+              <article class="book-card" tabindex="0"><button class="book-card-edit icon-tool" type="button" aria-label="書籍情報を編集">•••</button><div class="book-cover preview-cover cover-stone"><span>博士の<br>愛した数式</span></div><div class="book-card-copy"><span class="book-series-label">単行本</span><h3>博士の愛した数式</h3><p>小川 洋子</p><div class="book-card-status"><span>8 章</span></div></div></article>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

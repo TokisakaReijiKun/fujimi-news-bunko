@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>富士見新聞文庫 V4</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#f7f7f2;color:#183b31;margin:0;padding:32px;line-height:1.6}main{max-width:520px;margin:auto}h1{font-size:28px}label{display:block;font-weight:600;margin-top:24px}input,button{box-sizing:border-box;width:100%;min-height:48px;margin-top:8px;padding:12px;border:1px solid #b9c8c0;border-radius:8px;font-size:16px}button{background:#2f6655;color:#fff;border:0;font-weight:700}button:disabled{opacity:.55}.error{color:#b84032;min-height:48px}
+</style>
+<main>
+  <h1>富士見新聞文庫</h1>
+  <p>Android 版可独立使用。仅在需要双向同步或 Irodori 时填写可选的 Windows 私网地址。</p>
+  <label for="url">服务器地址</label>
+  <input id="url" type="url" placeholder="http://192.168.1.20:8427" autocomplete="url">
+  <button id="connect" type="button">连接</button>
+  <p id="error" class="error" role="alert"></p>
+</main>
+<script>
+const input=document.querySelector('#url'); const error=document.querySelector('#error'); const button=document.querySelector('#connect');
+let callbackSequence=0; let connectionTimer=null;
+window.__fujimiSetupResolve=(callbackId,success,message)=>{
+  if(callbackId!==button.dataset.callback)return;
+  clearTimeout(connectionTimer); button.disabled=false; button.textContent='连接';
+  if(!success){error.textContent=message||'连接失败，请检查地址后重试。';return;}
+  location.replace('https://appassets.androidplatform.net/static/index.html#daily');
+};
+button.onclick=()=>{
+  const value=input.value.trim().replace(/\/$/,'');
+  if(!/^https?:\/\/[^/:]+:\d+$/.test(value)){error.textContent='请输入包含端口的 http(s) 地址';return;}
+  if(!window.FujimiMobile?.connectServer){error.textContent='Android 连接组件不可用，请重新安装应用。';return;}
+  error.textContent=''; button.disabled=true; button.textContent='正在连接…';
+  const callbackId=`setup-${++callbackSequence}`; button.dataset.callback=callbackId;
+  connectionTimer=setTimeout(()=>window.__fujimiSetupResolve(callbackId,false,'连接超时，请确认 Windows 服务正在私有网络运行。'),15000);
+  try{window.FujimiMobile.connectServer(value,callbackId);}catch(_error){window.__fujimiSetupResolve(callbackId,false,'连接组件发生错误，请重新打开应用后重试。');}
+};
+window.addEventListener('error',()=>{if(button.disabled)window.__fujimiSetupResolve(button.dataset.callback,false,'页面发生错误，请重试。');});
+</script>

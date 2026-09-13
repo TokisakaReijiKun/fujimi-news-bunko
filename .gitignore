@@ -1,0 +1,44 @@
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# User-generated application data and runtime logs
+data/
+logs/
+
+# Python bytecode and caches
+__pycache__/
+*.py[codz]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage*
+htmlcov/
+
+# Local virtual environments and build artefacts
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+
+# OS/editor metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Irodori-TTS local model/runtime data (source code remains tracked)
+Irodori-TTS/.venv/
+Irodori-TTS/model/
+Irodori-TTS/outputs/
+Irodori-TTS/gradio_outputs/
+Irodori-TTS/gradio_outputs_voicedesign/
+Irodori-TTS/*.wav
+Irodori-TTS/*.mp3
+
+# Large extracted APK dictionary; provide this local asset separately when needed
+apk-original/dictionary/dictionary.sqlite3

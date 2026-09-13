@@ -1,0 +1,51 @@
+[
+  {
+    "name": "NHKニュース",
+    "homepage": "https://news.web.nhk/newsweb/",
+    "count": 36,
+    "sample": [
+      "https://news.web.nhk/newsweb/na/nd-20260907de48714",
+      "https://news.web.nhk/newsweb/na/nd-20260907de48631"
+    ]
+  },
+  {
+    "name": "朝日新聞",
+    "homepage": "https://www.asahi.com/",
+    "count": 93,
+    "sample": [
+      "https://www.asahi.com/articles/ASV9731JTV97ULFA015M.html",
+      "https://www.asahi.com/articles/ASV973SHZV97UTIL025M.html"
+    ]
+  },
+  {
+    "name": "読売新聞",
+    "homepage": "https://www.yomiuri.co.jp/",
+    "count": 163,
+    "sample": [
+      "https://www.yomiuri.co.jp/national/20260907-GYT1T00281/",
+      "https://www.yomiuri.co.jp/economy/20260907-GYT1T00275/"
+    ]
+  },
+  {
+    "name": "日本経済新聞",
+    "homepage": "https://www.nikkei.com/",
+    "count": 70,
+    "sample": [
+      "https://www.nikkei.com/article/DGXZQOUB078230X00C26A9000000/",
+      "https://www.nikkei.com/article/DGXZQOUB035IX0T00C26A9000000/"
+    ]
+  },
+  {
+    "name": "産経新聞",
+    "error": "新闻导入仅支持公开网站。"
+  },
+  {
+    "name": "Yahoo!ニュース",
+    "homepage": "https://news.yahoo.co.jp/",
+    "count": 23,
+    "sample": [
+      "https://news.yahoo.co.jp/pickup/6594575",
+      "https://news.yahoo.co.jp/pickup/6594570"
+    ]
+  }
+]

@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>富士見新聞文庫</title>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const isMobileApp = typeof window.FujimiMobile !== "undefined" || window.matchMedia('(max-width: 900px)').matches;
+      root.dataset.mobileApp = String(isMobileApp);
+      root.dataset.mobileNavOpen = "false";
+      if (isMobileApp) root.classList.add("mobile-app-booting");
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260818-48">
+  <link rel="stylesheet" href="/static/web.css?v=1">
+  <link rel="stylesheet" href="/static/book-reader.css?v=3">
+</head>
+<body>
+  <header class="mobile-app-bar" aria-label="应用导航">
+    <button id="mobile-nav-toggle" class="mobile-app-bar-button" type="button" aria-label="打开导航" aria-controls="primary-sidebar" aria-expanded="false" title="打开导航">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <div class="mobile-app-bar-title">
+      <span id="mobile-current-kicker">DAILY EDITION</span>
+      <strong id="mobile-current-view">本日ノニュース</strong>
+      <small id="mobile-current-description">いま起きていることを、ひとつずつ。</small>
+    </div>
+  </header>
+  <button id="mobile-nav-scrim" class="mobile-nav-scrim" type="button" aria-label="关闭导航" hidden></button>
+  <div class="app-shell">
+    <aside id="primary-sidebar" class="sidebar" aria-label="应用导航">
+      <button id="mobile-nav-close" class="mobile-nav-close" type="button" aria-label="关闭导航" title="关闭导航">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <header class="brand">
+        <p class="eyebrow">PRIVATE NEWS LIBRARY</p>
+        <h1>富士見<br>新聞文庫</h1>
+        <p>ニュースを、深く読む。</p>
+      </header>
+      <nav aria-label="Main navigation">
+        <button data-view="daily" class="nav-button active"><span>01</span>本日ノニュース</button>
+        <button data-view="reader" class="nav-button"><span>02</span>閲読室</button>
+        <button data-view="bookmarks" class="nav-button"><span>03</span>收藏</button>
+        <button data-view="library" class="nav-button"><span>04</span>書架</button>
+        <button data-view="dictionary" class="nav-button"><span>05</span>辞書</button>
+        <button data-view="settings" class="nav-button"><span>06</span>設置</button>
+      </nav>
+      <p class="sidebar-foot" id="schedule-sidebar-summary">日刊：读取设置中<br>完成した記事から順次公開</p>
+    </aside>
+
+    <main class="content-shell">
+      <div id="notice" role="status"></div>
+      <section id="daily-view" class="view">
+        <div class="section-head"><div><p class="section-kicker">DAILY EDITION</p><h2>本日ノニュース</h2><p id="snapshot-meta">いま起きていることを、ひとつずつ。</p></div><label>历史日期<select id="history-select"></select></label></div>
+        <div id="daily-list" class="card-grid"></div>
+      </section>
+
+      <section id="reader-view" class="view" hidden>
+        <div class="section-head"><div><p class="section-kicker">READING ROOM</p><h2>閲読室</h2><p>ひとつの記事を、ことばから深く読む。</p></div></div>
+        <div id="reader-import-workspace" class="reader-import-workspace">
+          <form id="import-form" class="url-form"><input id="article-url" type="url" placeholder="https://news.web.nhk/newsweb/..." required><button type="submit">导入并处理</button></form>
+          <div id="reader-import-notice" class="reader-import-notice" role="status" aria-live="polite" hidden>
+            <div class="reader-import-status-line"><span class="reader-import-message"></span><span class="reader-import-count"></span></div>
+            <progress class="reader-import-progress" max="1" value="0"></progress>
+          </div>
+        </div>
+        <div id="reader-result"></div>
+      </section>
+
+      <section id="bookmarks-view" class="view" hidden>
+        <div class="section-head"><div><p class="section-kicker">ARCHIVE</p><h2>收藏</h2><p>心に留めた記事を、いつでもここに。</p></div></div>
+        <div id="bookmarks-list" class="card-grid"></div>
+      </section>
+
+      <section id="library-view" class="view" hidden>
+        <div id="library-home">
+          <div class="section-head library-head">
+            <div><p class="section-kicker">LIGHT NOVEL LIBRARY</p><h2>書架</h2><p>物語の続きを、いつでもここから。</p></div>
+            <div class="library-head-actions"><span id="library-count" class="status-badge">0 冊</span><button id="add-books" class="icon-tool" type="button" aria-label="EPUBを追加" title="EPUBを追加"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path><path d="M4 4h10l6 6v10H4z"></path></svg></button></div>
+          </div>
+          <input id="book-files" type="file" accept=".epub,application/epub+zip" multiple hidden>
+          <div id="book-import-tasks" class="book-import-tasks" aria-live="polite"></div>
+          <div id="library-series" class="library-series"></div>
+        </div>
+        <section id="library-series-detail" class="library-series-detail" hidden aria-label="シリーズの書籍">
+          <header class="library-series-detail-head">
+            <button id="back-to-library" class="icon-tool" type="button" aria-label="書架に戻る" title="書架に戻る"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></button>
+            <div><p class="section-kicker">SERIES</p><h2 id="library-series-title"></h2><p id="library-series-count" class="muted"></p></div>
+          </header>
+          <div id="library-series-books" class="book-grid"></div>
+        </section>
+        <div id="book-reader" class="book-reader" hidden></div>
+      </section>
+
+      <section id="dictionary-view" class="view" hidden>
+        <div class="section-head dictionary-head">
+          <div><p class="section-kicker">LOCAL DICTIONARY</p><h2>辞書</h2><p>ひとつの言葉から、世界をひらく。</p></div>
+          <span id="dictionary-stats" class="dictionary-stats">本地词库</span>
+        </div>
+        <form id="dictionary-search-form" class="dictionary-search-form" role="search">
+          <label for="dictionary-query">ことばを調べる</label>
+          <div class="dictionary-search-row">
+            <div class="dictionary-query-shell">
+              <input id="dictionary-query" name="q" type="search" autocomplete="off" placeholder="日本語・かな・ローマ字・中文释义" aria-controls="dictionary-history-panel" aria-expanded="false">
+              <div id="dictionary-history-panel" class="dictionary-history-panel" hidden>
+                <div class="dictionary-history-heading">検索履歴</div>
+                <div id="dictionary-history" class="dictionary-history-list"></div>
+                <p id="dictionary-history-empty" class="dictionary-history-empty">検索履歴はまだありません。</p>
+              </div>
+            </div>
+          </div>
+        </form>
+        <div id="dictionary-result-heading" class="dictionary-result-heading" hidden><span id="dictionary-result-library" class="dictionary-result-library">本地词库</span><span id="dictionary-result-count"></span></div>
+        <div class="dictionary-workspace">
+          <aside id="dictionary-results" class="dictionary-results" aria-label="辞書の検索結果"></aside>
+          <article id="dictionary-detail" class="dictionary-detail" aria-live="polite">
+            <div class="dictionary-empty"><span>語</span><p>調べたい言葉との出会いを、ここから。</p></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="settings-view" class="view" hidden>
+        <div class="section-head"><div><p class="section-kicker">PREFERENCES</p><h2>設置</h2><p>読む時間を、自分らしく整える。</p></div></div>
+        <div class="settings-stack">
+          <section class="settings-panel voice-panel">
+            <div class="panel-heading">
+              <div><h3>声の形</h3><p>管理首次朗读与読み返し使用的参考声线。</p></div>
+              <div class="panel-actions"><span id="active-voice-badge" class="status-badge">未选择声线</span><button id="add-voice" type="button">添加声线</button></div>
+            </div>
+            <p id="voice-error" class="panel-notice error" role="alert" hidden></p>
+            <div class="voice-overview"><span id="voice-count">0 个声线</span></div>
+            <div id="voice-list" class="voice-list"></div>
+          </section>
+
+          <section class="settings-panel daily-settings-panel schedule-panel">
+            <div class="panel-heading">
+              <div><h3>日刊設定</h3><p>统一管理新闻来源、每日构成与 CST 更新方式。</p></div>
+              <span id="schedule-state" class="status-badge">读取中</span>
+            </div>
+            <p id="source-error" class="panel-notice error" role="alert" hidden></p>
+            <div class="daily-content-settings">
+              <label>每日新闻目标数<input id="daily-target-count" type="number" min="1" max="500" value="10"></label>
+              <p id="daily-content-summary" class="muted">正在读取日刊构成…</p>
+            </div>
+            <div class="settings-subheading">
+              <div><h4>ニュースソース</h4><p>每个来源可以分别设置每日最低收录数。</p></div>
+              <div class="panel-actions"><span id="source-count" class="status-badge">读取中</span><button id="add-source" type="button">添加来源</button></div>
+            </div>
+            <div id="source-list" class="source-list"></div>
+            <div class="schedule-section">
+              <div class="settings-subheading"><div><h4>生成方式</h4><p>选择手动生成，或按 CST 指定时间自动更新。</p></div></div>
+              <p id="schedule-error" class="panel-notice error" role="alert" hidden></p>
+              <div class="schedule-workspace">
+                <div class="schedule-controls">
+                  <div id="daily-mode" class="segmented" aria-label="日刊更新模式">
+                    <button type="button" data-mode="automatic" class="active">自動更新</button>
+                    <button type="button" data-mode="manual">手動生成</button>
+                  </div>
+                  <label id="daily-time-row" class="time-setting">更新时刻（CST）<input id="daily-update-time" type="time" value="00:00"></label>
+                </div>
+                <div class="manual-generate">
+                  <p id="schedule-summary">正在读取日刊设置…</p>
+                  <div class="manual-generate-action">
+                    <div class="daily-generate-buttons">
+                      <button id="generate-daily" class="quiet">今すぐ生成</button>
+                      <button id="cancel-daily" class="danger-outline" type="button" hidden>生成を中止</button>
+                    </div>
+                    <div id="task-status" class="task-status is-idle" role="status" aria-live="polite">
+                      <div class="task-status-line"><span id="task-stage">当前没有任务</span><span id="task-count"></span></div>
+                      <progress id="task-progress" max="100" value="0"></progress>
+                      <small id="task-detail"></small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="settings-panel library-settings-panel">
+            <div class="panel-heading"><div><h3>書架表示</h3><p>書架首页的书籍排列方式。</p></div></div>
+            <p id="library-settings-error" class="panel-notice error" role="alert" hidden></p>
+            <label class="library-sort-setting">並び順<select id="library-sort-setting"><option value="recent">最近読んだ順</option><option value="series">シリーズ・巻順</option><option value="imported">最近追加した順</option></select></label>
+          </section>
+
+          <section id="desktop-settings-panel" class="settings-panel desktop-settings-panel" hidden>
+            <div class="panel-heading">
+              <div><h3>桌面应用</h3><p>管理 Windows 启动方式与本地运行目录。</p></div>
+              <span class="status-badge">DESKTOP 2.0</span>
+            </div>
+            <p id="desktop-settings-error" class="panel-notice error" role="alert" hidden></p>
+            <div class="desktop-settings-grid">
+              <label class="desktop-startup-toggle">
+                <span><strong>开机启动</strong><small>登录 Windows 后静默启动到系统托盘。</small></span>
+                <input id="desktop-startup-enabled" type="checkbox" role="switch">
+              </label>
+              <dl class="desktop-paths">
+                <div><dt>项目目录</dt><dd id="desktop-project-root"></dd></div>
+                <div><dt>Python 环境</dt><dd id="desktop-python-path"></dd></div>
+              </dl>
+              <div class="desktop-folder-actions">
+                <button id="open-desktop-data" class="quiet" type="button">打开数据文件夹</button>
+                <button id="open-desktop-logs" class="quiet" type="button">打开日志文件夹</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="mobile-settings-panel" class="settings-panel mobile-settings-panel" hidden>
+            <div class="panel-heading"><div><h3>Android 本地节点</h3><p id="mobile-runtime-summary">本地数据就绪</p></div><span id="mobile-service-status" class="status-badge">读取中</span></div>
+            <div id="android-local-settings" class="android-local-settings" hidden>
+              <section class="mobile-node-group" aria-labelledby="mobile-deepseek-title">
+                <div class="mobile-node-group-heading">
+                  <div><h4 id="mobile-deepseek-title">DeepSeek</h4><p>用于翻译与假名增强</p></div>
+                  <span id="mobile-deepseek-status" class="mobile-node-state">未配置</span>
+                </div>
+                <label class="mobile-compact-field" for="mobile-deepseek-key">API 密钥</label>
+                <div class="mobile-control-row">
+                  <input id="mobile-deepseek-key" type="password" autocomplete="off" placeholder="输入新密钥">
+                  <button id="mobile-save-deepseek" type="button">保存</button>
+                </div>
+                <p class="mobile-field-help">密钥仅加密保存在此手机，不参与同步。</p>
+              </section>
+              <section class="mobile-node-group" aria-labelledby="mobile-windows-title">
+                <div class="mobile-node-group-heading">
+                  <div><h4 id="mobile-windows-title">Windows 同步</h4><p>可选节点</p></div>
+                  <span id="mobile-windows-state" class="mobile-node-state">未配置</span>
+                </div>
+                <p class="mobile-node-purpose">填写后可与电脑双向同步，并请求 Irodori 最终音频；新闻、书架、辞书和系统朗读不需要电脑。</p>
+                <label class="mobile-compact-field" for="mobile-windows-address">私有局域网或 VPN 地址</label>
+                <div class="mobile-control-row mobile-address-row">
+                  <input id="mobile-windows-address" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.20:8427">
+                  <button id="mobile-save-windows" class="quiet" type="button">检测</button>
+                </div>
+                <div class="mobile-address-feedback">
+                  <p id="mobile-windows-result" role="status">尚未填写地址</p>
+                  <button id="mobile-clear-windows" class="mobile-text-action" type="button">清除</button>
+                </div>
+                <p class="mobile-network-warning">仅限私有网络，不得暴露到公网。</p>
+              </section>
+            </div>
+            <p class="panel-notice mobile-host-only">同步端口仅限私有网络，不得暴露到公网。</p>
+            <div id="mobile-service-urls" class="desktop-paths mobile-host-only"></div>
+            <figure id="mobile-service-qr" class="mobile-service-qr mobile-host-only" hidden>
+              <img alt="Android 服务器地址二维码">
+              <figcaption>在手机端扫描或手动输入上方地址。</figcaption>
+            </figure>
+            <div id="android-sync-settings" class="android-sync-settings" hidden>
+              <section class="mobile-node-group mobile-sync-group" aria-labelledby="mobile-sync-title">
+                <div class="mobile-node-group-heading mobile-sync-heading">
+                  <div><h4 id="mobile-sync-title">同步</h4><p id="mobile-sync-stage">等待配置</p></div>
+                  <span id="mobile-sync-percent" class="mobile-sync-percent">0%</span>
+                </div>
+                <div id="mobile-sync-progress" class="mobile-sync-progress" role="progressbar" aria-label="同步进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                  <span></span>
+                </div>
+                <p id="mobile-sync-detail" class="mobile-sync-detail" role="status" aria-live="polite">填写并检测 Windows 地址后即可同步。</p>
+                <dl class="mobile-sync-stats">
+                  <div><dt>上次同步</dt><dd id="mobile-sync-last">尚未完成</dd></div>
+                  <div><dt>待提交</dt><dd id="mobile-sync-pending">0</dd></div>
+                  <div><dt>本地缓存</dt><dd id="mobile-sync-cache">0 B</dd></div>
+                </dl>
+                <button id="mobile-sync-now" type="button" disabled>立即同步</button>
+                <details class="mobile-sync-options">
+                  <summary>后台同步设置</summary>
+                  <label class="mobile-setting-row">
+                    <span><strong>允许蜂窝网络</strong><small>关闭时仅使用 Wi-Fi、VPN 或有线网络</small></span>
+                    <input id="mobile-allow-cellular" type="checkbox" role="switch">
+                  </label>
+                  <div class="mobile-setting-row">
+                    <span><strong>日刊闹钟</strong><small id="mobile-alarm-status">读取中</small></span>
+                    <button id="mobile-exact-alarm" class="quiet" type="button">精确定时</button>
+                  </div>
+                </details>
+              </section>
+            </div>
+          </section>
+          <section class="settings-panel refresh-panel">
+            <div class="panel-heading"><div><h3>文庫刷新</h3><p>以本地文章与收藏文件夹为准，重新整理 SQLite 索引。</p></div><span class="status-badge">FILES → SQLITE</span></div>
+            <p id="refresh-error" class="panel-notice error" role="alert" hidden></p>
+            <div class="refresh-workspace">
+              <button id="refresh-storage" type="button">存储を反映</button>
+              <p id="refresh-result" class="refresh-result">尚未刷新</p>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <aside id="selection-lookup" class="selection-lookup" role="dialog" aria-label="划词查询" hidden>
+    <header class="selection-lookup-head">
+      <div><p>QUICK LOOKUP</p><strong id="selection-lookup-query"></strong></div>
+      <button id="selection-lookup-close" type="button" class="icon-button" aria-label="关闭查询">×</button>
+    </header>
+    <div id="selection-lookup-results" class="selection-lookup-results" role="status"></div>
+    <button id="selection-lookup-more" type="button" class="selection-lookup-more quiet">辞書で詳しく見る</button>
+  </aside>
+
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <dialog id="voice-dialog" class="voice-dialog">
+    <form id="voice-editor-form">
+      <header class="dialog-heading">
+        <div><p class="section-kicker">VOICE PROFILE</p><h3 id="voice-dialog-title">添加声线</h3></div>
+        <button id="close-voice-dialog" type="button" class="icon-button" aria-label="关闭">×</button>
+      </header>
+      <label id="voice-editor-name-row">声线名称<input id="voice-editor-name" required placeholder="例如：落ち着いた声"></label>
+      <label id="browser-voice-row" hidden>浏览器声线<select id="browser-voice-select"></select></label>
+      <div id="voice-source-mode" class="segmented" aria-label="音频来源">
+        <button type="button" data-source-mode="file" class="active">本地文件</button>
+        <button type="button" data-source-mode="url">音频网址</button>
+      </div>
+      <label id="voice-editor-file-row" class="voice-source-row">音频文件<input id="voice-editor-file" type="file" accept="audio/wav,audio/mpeg,audio/mp4,audio/flac,audio/ogg,.wav,.mp3,.m4a,.flac,.ogg"></label>
+      <label id="voice-editor-url-row" class="voice-source-row" hidden>音频网址<input id="voice-editor-url" type="url" placeholder="https://example.com/voice.wav"></label>
+      <p id="voice-editor-hint" class="muted">请选择用于参考的音频文件。</p>
+      <p id="voice-editor-notice" class="panel-notice" role="status"></p>
+      <footer class="dialog-actions"><button id="cancel-voice-dialog" type="button" class="quiet">取消</button><button id="submit-voice" type="submit">添加</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="source-dialog" class="voice-dialog source-dialog">
+    <form id="source-editor-form">
+      <header class="dialog-heading">
+        <div><p class="section-kicker">NEWS SOURCE</p><h3 id="source-dialog-title">添加新闻来源</h3></div>
+        <button id="close-source-dialog" type="button" class="icon-button" aria-label="关闭">×</button>
+      </header>
+      <label>来源名称<input id="source-editor-name" required placeholder="例如：共同通信"></label>
+      <label>来源网址<input id="source-editor-homepage" type="url" required placeholder="https://www.example.jp/"></label>
+      <label>每日最少收录数<input id="source-editor-minimum" type="number" min="0" max="100" value="1" required></label>
+      <label>专用声线<select id="source-editor-voice"></select></label>
+      <p class="muted">系统会从这个网站首页发现公开新闻页面。</p>
+      <p id="source-editor-notice" class="panel-notice" role="status"></p>
+      <footer class="dialog-actions"><button id="cancel-source-dialog" type="button" class="quiet">取消</button><button id="submit-source" type="submit">添加</button></footer>
+    </form>
+  </dialog>
+
+  <dialog id="book-editor-dialog" class="voice-dialog book-editor-dialog">
+    <form id="book-editor-form" method="dialog">
+      <header class="dialog-heading">
+        <div><p class="section-kicker">BOOK PROFILE</p><h3>書籍情報を編集</h3></div>
+        <button id="close-book-editor" type="button" class="icon-button" aria-label="閉じる">×</button>
+      </header>
+      <input id="book-editor-id" type="hidden">
+      <label>書名<input id="book-editor-title" maxlength="200" required></label>
+      <label>作者<input id="book-editor-author" maxlength="200"></label>
+      <div class="book-editor-grid"><label>シリーズ<input id="book-editor-series" maxlength="200" placeholder="未設定"></label><label>巻数<input id="book-editor-volume" maxlength="40" placeholder="例：1"></label></div>
+      <label>表紙画像<input id="book-editor-cover" type="file" accept="image/jpeg,image/png,image/gif,image/webp,image/avif"></label>
+      <p id="book-editor-path" class="muted"></p>
+      <p id="book-editor-notice" class="panel-notice" role="status"></p>
+      <footer class="dialog-actions book-dialog-actions"><button id="delete-book" type="button" class="danger-outline">書籍を削除</button><span></span><button id="cancel-book-editor" type="button" class="quiet">取消</button><button type="submit">保存</button></footer>
+    </form>
+  </dialog>
+
+  <template id="article-template">
+    <article class="article-detail">
+      <div class="article-top"><span class="source"></span><div class="article-tools"><div class="translation-switch"><button data-mode="parallel" class="translation-menu-toggle icon-tool" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="译文显示设置" title="译文显示设置"><span aria-hidden="true">訳</span></button><div class="translation-menu" role="menu" hidden><button type="button" data-mode="parallel" role="menuitemradio">逐段对照</button><button type="button" data-mode="full" role="menuitemradio">全文译文</button><hr><button type="button" data-translation-visibility="show" role="menuitemradio">显示译文</button><button type="button" data-translation-visibility="hide" role="menuitemradio">隐藏译文</button><button class="retranslate quiet" type="button" hidden>再翻訳</button><span class="translation-task-status" role="status"></span></div></div><button class="bookmark icon-tool" type="button" aria-label="收藏" aria-pressed="false" title="收藏"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg></button><button class="copy-original icon-tool" type="button" aria-label="复制原文" title="复制原文"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button><button class="exit-reader icon-tool" type="button" aria-label="退出阅读" title="退出阅读"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 7-5 5"></path><path d="m9.5 7 5 5"></path><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19v15H6.5a2.5 2.5 0 0 0 0 5H19"></path></svg></button></div></div>
+      <h2 class="title"></h2><div class="article-meta"><p class="published"></p><a class="origin" target="_blank" rel="noreferrer">原站打开 ↗</a><div class="reread-popover-wrap"><button class="reread-link" type="button" aria-haspopup="dialog" aria-expanded="false">読み返し</button><section class="reread-panel" role="dialog" aria-label="読み返し" hidden><h3>読み返し</h3><p>声線を選び、段落ごとに音声を生成し直します。</p><div class="reread-controls"><select class="reread-voice" aria-label="読み返しに使う声線"></select><div class="reread-actions"><button class="reread">再生成</button><button class="cancel-reread danger-outline" type="button" hidden>中止</button></div></div></section></div></div>
+      <audio class="audio" preload="metadata"></audio>
+      <div class="reread-task" role="status" hidden><div><strong class="reread-task-label"></strong><button class="reread-task-cancel" type="button" aria-label="音声生成を中止" title="音声生成を中止">×</button></div><progress max="1" value="0"></progress></div>
+      <div class="media"></div>
+      <div class="translation-maintenance" hidden><p class="failure"></p></div>
+      <div class="parallel"></div><div class="full-translation" hidden></div>
+      <div class="article-audio-player" role="group" aria-label="文章朗读播放器" hidden>
+        <div class="audio-player-timeline">
+          <div class="audio-player-seek">
+            <span class="audio-player-progress-fill"></span>
+            <input class="audio-player-progress" type="range" min="0" max="1" value="0" step="0.1" aria-label="朗读进度">
+          </div>
+          <time class="audio-player-current">0:00</time>
+          <time class="audio-player-duration">0:00</time>
+        </div>
+        <button class="audio-player-toggle audio-icon-button" type="button" aria-label="播放朗读" title="播放或暂停"><img class="audio-player-toggle-icon" src="/static/player_assets/ic_player_stop.png" alt=""></button>
+        <div class="audio-rate-control">
+          <button class="audio-rate-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="播放速度" title="播放速度"><img src="/static/player_assets/ic_player_set.png" alt=""><span class="audio-rate-value" aria-hidden="true">1.0x</span></button>
+          <div class="audio-rate-menu" role="menu" hidden>
+            <button type="button" role="menuitemradio" data-rate="0.5">0.5×</button>
+            <button type="button" role="menuitemradio" data-rate="0.75">0.75×</button>
+            <button type="button" role="menuitemradio" data-rate="1">1×</button>
+            <button type="button" role="menuitemradio" data-rate="1.25">1.25×</button>
+            <button type="button" role="menuitemradio" data-rate="1.5">1.5×</button>
+            <button type="button" role="menuitemradio" data-rate="2">2×</button>
+          </div>
+        </div>
+      </div>
+    </article>
+  </template>
+  <script src="/static/book-reader.js?v=3"></script>
+    <script src="/static/app.js?v=20260910-pipeline8"></script>
+  <script src="/static/web.js?v=1"></script>
+</body>
+</html>

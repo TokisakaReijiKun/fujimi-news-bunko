@@ -1,0 +1,38 @@
+/* Scoped reading refinements. Preserve application brand and native EPUB text. */
+#book-reader[data-parser-version="2"] .book-block-ja { font-size:var(--book-font-size,19px);line-height:var(--book-line-height,1.9);overflow-wrap:anywhere; }
+#book-reader[data-parser-version="2"] .book-block { cursor:default; }
+#book-reader[data-parser-version="2"] .book-block-spacer { min-height:1em;margin-bottom:.7em; }
+#book-reader[data-parser-version="2"] .book-block-image { padding:0; }
+#book-reader[data-parser-version="2"] .book-block-image .book-block-ja { text-indent:0; }
+#book-reader[data-parser-version="2"] .book-block-image img { display:block;max-width:100%;max-height:80vh;width:auto;height:auto;object-fit:contain;margin:16px auto; }
+#book-reader[data-parser-version="2"] .book-block-ja ruby { display:ruby;ruby-align:center;ruby-position:over;vertical-align:baseline;line-height:inherit;max-width:none; }
+#book-reader[data-parser-version="2"] .book-block-ja ruby > rb { display:ruby-base;line-height:inherit; }
+#book-reader[data-parser-version="2"] .book-block-ja ruby > rt { display:ruby-text;font-size:.55em;line-height:1;white-space:normal; }
+#book-reader[data-parser-version="2"] .book-block-ja [data-book-href] { cursor:pointer;text-decoration:underline; }
+.book-source-anchor { display:inline;scroll-margin-top:150px; }
+#book-reader .book-toc { max-height:min(75vh,760px);overflow:auto; }
+#book-reader .book-toc > [data-chapter-id] { padding-left:calc(12px + var(--toc-depth,0)*18px);min-height:44px;line-height:1.6;white-space:normal;text-align:left; }
+#book-reader .book-toc > [data-chapter-id][hidden] { display:none; }
+#book-reader.is-vertical .book-chapter-body { height:min(68vh,760px);overscroll-behavior-x:contain;scrollbar-width:thin; }
+#book-reader.is-vertical .book-block-image img { max-height:60vh;max-width:85vw;height:auto;width:auto; }
+.book-storage-note { font-size:13px;line-height:1.7;color:var(--muted); }
+/* Existing bilingual display follows the EPUB: translation, then original. */
+#book-reader[data-language-mode="parallel"] .book-source-pair { display:block; }
+#book-reader[data-language-mode="parallel"] .book-source-pair > .book-block-zh {
+  margin:0 0 .8em;padding:0;border:0;border-radius:0;background:none;box-shadow:none;
+  color:var(--ink);font-size:19px;line-height:1.9;
+}
+#book-reader[data-language-mode="parallel"] .book-source-pair > .book-block-ja { opacity:.4; }
+#book-reader.is-frontmatter:not(.is-vertical) .book-block { padding:0;margin-bottom:1.2em;border:0; }
+#book-reader.is-frontmatter:not(.is-vertical) .book-block-ja,
+#book-reader.is-frontmatter:not(.is-vertical) .book-block-zh { text-indent:0; }
+#book-reader.is-frontmatter:not(.is-vertical) .book-block-ja [style*="text-align"] { text-align:start !important; }
+#book-reader.is-frontmatter:not(.is-vertical) .book-block-image { margin:0; }
+#book-reader.is-frontmatter:not(.is-vertical) .book-block-image img { margin:0 auto;width:100%;height:auto;max-height:none; }
+#book-reader[data-language-mode="zh"] .book-block-image > .book-block-ja { display:block; }
+@media(max-width:900px){
+  #book-reader .book-toc { position:fixed;inset:110px 12px 90px;max-height:none;z-index:90;background:var(--panel);box-shadow:0 12px 38px #0003; }
+  #book-reader[data-parser-version="2"] .book-block { padding-right:30px;margin-bottom:22px; }
+  #book-reader[data-parser-version="2"] .book-block-image { padding-right:0; }
+  #book-reader[data-parser-version="2"] .book-chapter-body { width:100%; }
+}

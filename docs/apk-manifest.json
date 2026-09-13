@@ -1,0 +1,61 @@
+{
+  "apk": "富士見新聞文庫.apk.1",
+  "apk_sha256": "e46b29c0e315e049d65f3daf8164d2810ac600384545776572bb24209d1f3dc8",
+  "assets": [
+    {
+      "apk_path": "assets/dictionary/dictionary.sqlite3",
+      "bytes": 319164416,
+      "sha256": "751943f8f969f4ff8997ebbfd24a5b0d20b7b99557602e0702c61da4d33eafdd"
+    },
+    {
+      "apk_path": "assets/static/app.js",
+      "bytes": 224648,
+      "sha256": "30fa6c877729ad342207447103289e3888e011d4fce7e7237685942337b6dd49"
+    },
+    {
+      "apk_path": "assets/static/index.html",
+      "bytes": 29487,
+      "sha256": "b599a68a7b478ffe1c9a31a82cd51c41b5f5028a1b396485139c77625d850d47"
+    },
+    {
+      "apk_path": "assets/static/library-layout-preview.html",
+      "bytes": 5937,
+      "sha256": "5bd739cfd4b2abfcfc5f50e28d0283ccf1be35bd7187ad675dc7bc8d04d93514"
+    },
+    {
+      "apk_path": "assets/static/player_assets/ic_common_listen_read.png",
+      "bytes": 1493,
+      "sha256": "8977c3ce3d4f66b96e542405cdfd9b17f09eb78c3acbb6ddca41483d39fa93e6"
+    },
+    {
+      "apk_path": "assets/static/player_assets/ic_player_next.png",
+      "bytes": 663,
+      "sha256": "96923a350b09414e31740306776a475ec10ab169af8eb164e7bdfdced45fcd84"
+    },
+    {
+      "apk_path": "assets/static/player_assets/ic_player_play.png",
+      "bytes": 275,
+      "sha256": "7b830d65382be5f66a5dd3c3e053e6db8112907e1f629d86b89485156d864e5b"
+    },
+    {
+      "apk_path": "assets/static/player_assets/ic_player_prev.png",
+      "bytes": 656,
+      "sha256": "b8338b1c1851abaef59c3a4f17c73f14bb1416e2d3095ac12fc891f59a6e462b"
+    },
+    {
+      "apk_path": "assets/static/player_assets/ic_player_set.png",
+      "bytes": 2140,
+      "sha256": "11348924e614755dc1200a6ef7b9dfab9279ae1fae27afa77a84ed10dc8fa058"
+    },
+    {
+      "apk_path": "assets/static/player_assets/ic_player_stop.png",
+      "bytes": 674,
+      "sha256": "3fd2d11a25477a1f4dd70723ecb33b519ceab543ab6b84503ea439319d605428"
+    },
+    {
+      "apk_path": "assets/static/styles.css",
+      "bytes": 195310,
+      "sha256": "335410e802a683eadce0e14bde57d8999fc31177e5c992eaac453d6355331d78"
+    }
+  ]
+}
