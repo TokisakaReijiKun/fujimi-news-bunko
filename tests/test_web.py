@@ -47,7 +47,7 @@ class WebTests(unittest.TestCase):
         self.fail('Task timeout')
 
     def test_boot_endpoints_and_original_assets(self):
-        for url in ('/', '/static/app.js', '/static/styles.css', '/static/web.js', '/api/health',
+        for url in ('/', '/static/main.js', '/static/static.css', '/static/book-reader.js', '/static/book-reader.css', '/api/health',
                     '/api/days', '/api/daily', '/api/bookmarks', '/api/books', '/api/books/tasks',
                     '/api/settings/voices', '/api/settings/voice-mode', '/api/settings/news-sources',
                     '/api/settings/daily-schedule', '/api/settings/daily-content', '/api/settings/library'):

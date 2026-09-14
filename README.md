@@ -73,10 +73,10 @@ article_extraction.py        解析兼容入口，转交来源模块
 news_providers/              六家独立采集、解析、后处理与重新翻译
 article_media.py             经过格式校验的图片与直接视频本地缓存
 scripts/repair_articles.py   指定文章的备份、重新提取和付费记录隔离
-static/index.html            APK 页面，加入 Web 适配资源
-static/app.js                APK 交互，修复 Web 兼容与进度恢复
-static/styles.css            APK 样式，原样保留
-static/web.js / web.css      Web 专用适配、粘贴导入与可访问性
+static/index.html            桌面 Web 页面入口
+static/main.js               主交互、浏览器适配、播客播放器与进度恢复
+static/static.css            主样式、布局与浏览器适配
+static/book-reader.js / book-reader.css  EPUB 阅读器适配
 static/player_assets/        APK 播放器图标
 apk-original/               未修改的提取资源、Android 设置页（词典文件需另行放置）
 data/fujimi.sqlite3          新闻、书架索引与设置（运行时创建）
@@ -98,10 +98,12 @@ start.ps1                   Tokyo 启动脚本
 
 ## 验证
 
+服务在 Windows 使用独占端口绑定，避免两个服务同时监听 8427 而让旧采集逻辑继续响应。只有绑定成功后才写入 `logs/server.pid` 并启动日刊定时器；重复启动会退出，已有服务不受影响。
+
 ```powershell
 conda run -n Tokyo python -X utf8 -m unittest discover -s tests -v
-node --check static/app.js
-node --check static/web.js
+node --check static/main.js
+node --check static/book-reader.js
 ```
 
 测试使用临时数据库和自行创建的 EPUB/新闻样本，不访问个人文章或真实网络；覆盖词典、罗马字、持久化、收藏、EPUB 顺序、危险 HTML 清理、章节进度、假名处理、RSS 导入、输入校验及缺少外部服务时的错误说明。浏览器另行检查桌面与 390px 手机布局。

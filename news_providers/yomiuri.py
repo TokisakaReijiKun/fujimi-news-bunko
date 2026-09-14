@@ -27,10 +27,13 @@ def extract_page(blob, url):
     heading=p.title(soup,records)
     scope=p.require_scope(soup,'article.article-content .p-main-contents',NAME)
     p.clean_scope(scope)
-    nodes=scope.select('p[itemprop="articleBody"]') or scope.select('p[class^="par"]')
+    paragraph_selector='p[itemprop="articleBody"]' if scope.select_one('p[itemprop="articleBody"]') else 'p[class^="par"]'
+    nodes=scope.select(paragraph_selector+', h2, h3')
     text,origins=p.paragraphs(nodes,scope,exclude=('記事をシェアする','完了しました'))
     pictures=p.images(scope.select('figure img'),scope,origins,url) or p.preview_image(soup,url)
-    return p.article_result(KEY,heading,records,text,pictures,p.direct_videos(scope,url))
+    result=p.article_result(KEY,heading,records,text,pictures,p.direct_videos(scope,url))
+    result['paragraph_kinds']=['heading-'+node.name[1] if node.name in ('h2','h3') else 'paragraph' for node in origins]
+    return result
 
 
 def fetch_article(url, fetch):

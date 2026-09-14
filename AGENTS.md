@@ -45,9 +45,8 @@ conda run -n Tokyo python -m pip install -r requirements.txt
 | `epub_parser.py` | EPUB spine、nav/NCX、双语段落、锚点和安全 HTML 解析 |
 | `storage_migration.py` | 新闻旧存储迁移、数据库路径迁移和回滚 |
 | `scripts/` | 存储迁移、书籍迁移和文章修复命令 |
-| `static/app.js` | APK 原交互及必要兼容修复 |
-| `static/styles.css` | APK 样式基线 |
-| `static/web.*` | Web 环境适配 |
+| `static/main.js` | 主交互、浏览器适配与播客播放器 |
+| `static/static.css` | 主样式、布局与浏览器适配 |
 | `static/book-reader.*` | EPUB 阅读器的局部修复 |
 | `apk-original/` | 未修改的 APK 提取资源和原始词典 |
 | `data/` | 用户文章、书籍、索引、媒体、备份及诊断数据 |
@@ -151,7 +150,7 @@ data/books/书名/
 ## 前端约定
 
 - 六个主视图为 `daily`、`reader`、`bookmarks`、`library`、`dictionary`、`settings`，使用 hash 路由。
-- 优先在 `static/web.*` 或 `static/book-reader.*` 中写环境／阅读器适配；只有共享逻辑确需修改时才改 `app.js`。不要修改 `apk-original/`。
+- 主交互、浏览器适配和播客播放器统一维护在 `static/main.js`，主样式统一维护在 `static/static.css`；EPUB 阅读器局部适配保留在 `static/book-reader.*`。不要修改 `apk-original/`。
 - 保持 API 字段和值类型兼容。任务状态变更时同步检查轮询、取消、按钮状态和页面刷新。
 - 桌面侧栏和手机抽屉都要可用；`data-mobile-app` 也承担移动布局标记，不代表 Android 原生接口存在。
 - 用户内容使用 `textContent` 或经过清洗的 HTML。不要使用不可信文本拼接 `innerHTML`。
@@ -185,8 +184,7 @@ data/books/书名/
 
 ```powershell
 conda run -n Tokyo python -X utf8 -m unittest discover -s tests -v
-node --check static/app.js
-node --check static/web.js
+node --check static/main.js
 node --check static/book-reader.js
 ```
 

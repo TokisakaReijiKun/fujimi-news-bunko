@@ -89,7 +89,9 @@ class DailyCollectionTests(unittest.TestCase):
         self.assertEqual(sum(task['source_counts'].values()), 3)
         self.assertGreaterEqual(task['source_counts']['Alpha'], 1)
         self.assertGreaterEqual(task['source_counts']['Beta'], 1)
-        self.assertEqual(task['source_counts']['Gamma'], 0)
+        # The remaining slot is randomized across all valid candidates;
+        # a source with minimum_count=0 may still legitimately be selected.
+        self.assertIn(task['source_counts']['Gamma'], (0, 1))
         self.assertNotIn('member_excluded', task['candidate_stats']['Alpha'])
         self.assertEqual(task['errors'], [])
         candidates = [i for i, event in enumerate(events) if event[0] == 'candidate']
@@ -97,7 +99,7 @@ class DailyCollectionTests(unittest.TestCase):
         self.assertGreater(min(posts), max(candidates))
         self.assertNotIn(('candidate', 'alpha', 'member'), events)
         self.assertNotIn(('postprocess', 'alpha', 'member'), events)
-        self.assertNotIn(('postprocess', 'gamma', 'c1'), events)
+        self.assertEqual(('postprocess', 'gamma', 'c1') in events, bool(task['source_counts']['Gamma']))
         saved = self.client.get('/api/daily').json['articles']
         self.assertGreaterEqual([a['source_name'] for a in saved].count('Alpha'), 1)
         self.assertGreaterEqual([a['source_name'] for a in saved].count('Beta'), 1)

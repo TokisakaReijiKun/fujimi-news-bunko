@@ -127,7 +127,7 @@ def remote_public_addresses(host, time_bucket):
     return tuple(addresses)
 
 
-def download(url, max_bytes=8 * 1024 * 1024, headers=None):
+def download(url, max_bytes=8 * 1024 * 1024, headers=None, session=None):
     for _ in range(6):
         check_work()
         public_url(url)
@@ -140,7 +140,7 @@ def download(url, max_bytes=8 * 1024 * 1024, headers=None):
                     request_headers.update({key: value for key, value in headers.items()
                                             if key.lower() not in ('host', 'content-length', 'connection')})
                 remaining = max(.1, getattr(WORK_CONTEXT, 'deadline', None) - time.monotonic()) if getattr(WORK_CONTEXT, 'deadline', None) else 21
-                response = requests.get(url, timeout=(min(6, remaining), min(15, remaining)), stream=True, allow_redirects=False,
+                response = (session.get if session is not None else requests.get)(url, timeout=(min(6, remaining), min(15, remaining)), stream=True, allow_redirects=False,
                                         headers=request_headers)
                 if response.status_code in (403, 429, 502, 503, 504) and attempt < 2:
                     response.close()
@@ -956,6 +956,21 @@ def create_app(data_dir=None):
     return app
 
 
+def make_local_server(app, host, port):
+    from werkzeug.serving import ThreadedWSGIServer
+
+    class ExclusiveServer(ThreadedWSGIServer):
+        # Windows SO_REUSEADDR can let two processes bind the same port.
+        allow_reuse_address = False
+
+        def server_bind(self):
+            if os.name == 'nt':
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            super().server_bind()
+
+    return ExclusiveServer(host, port, app)
+
+
 if __name__ == '__main__':
     load_local_config(ROOT)
     parser = argparse.ArgumentParser(description='富士見新聞文庫 Web')
@@ -963,5 +978,15 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8427)
     args = parser.parse_args()
     app = create_app()
+    http_server = make_local_server(app, args.host, args.port)
+    pid_file = ROOT / 'logs' / 'server.pid'
+    pid_file.parent.mkdir(exist_ok=True)
+    pid_file.write_text(str(os.getpid()), encoding='utf-8')
+    # Do not start a second scheduler or replace the PID if binding failed.
     threading.Thread(target=app.fujimi_scheduler, daemon=True).start()
-    app.run(host=args.host, port=args.port, debug=False, threaded=True, use_reloader=False)
+    try:
+        http_server.serve_forever()
+    finally:
+        http_server.server_close()
+        if pid_file.exists() and pid_file.read_text(encoding='utf-8').strip() == str(os.getpid()):
+            pid_file.unlink()

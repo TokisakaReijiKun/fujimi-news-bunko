@@ -55,11 +55,12 @@ def extract_page(blob, url):
     paragraph_nodes = []
     for node in scope.select('p.yjSlinkDirectlink, h2, h3, h4'):
         # Yahoo marks cross-story/photo recommendations on the anchor itself.
-        # Drop that paragraph by the structural marker, regardless of title.
-        related = node.select_one('a[data-cl-params*="_cl_vmodule:related"], '
+        # A recommendation can share a <p> with the opening paragraph.
+        # Remove only marked links, preserving the surrounding report text.
+        related = node.select('a[data-cl-params*="_cl_vmodule:related"], '
                                   'a[data-cl-params*="_cl_link:photo"]')
-        if related:
-            continue
+        for link in related:
+            link.decompose()
         paragraph_nodes.append(node)
     text,origins=p.paragraphs(paragraph_nodes,scope,split_blank_lines=True)
     photo_nodes=[img for img in scope.select('img') if any(token in img.get('src','')+img.get('data-src','') for token in ('newsatcl','amd-img'))]
@@ -67,6 +68,7 @@ def extract_page(blob, url):
     videos=p.direct_videos(scope,url)
     warnings=['原站视频需动态播放器，当前仅保存可获取的预览图；视频请在原站观看。'] if not videos and b'yvpub/player' in blob else []
     result=p.article_result(KEY,heading,records,text,pictures,videos,warnings=warnings)
+    result['paragraph_kinds']=['heading-'+node.name[1] if node.name in ('h2','h3','h4') else 'paragraph' for node in origins]
     raw_page=parse_qs(urlparse(url).query).get('page',['1'])[0]
     if not raw_page.isdigit(): raise p.ArticleExtractionError('Yahoo 分页页码无效。')
     for anchor in soup.select('a[href]'):
@@ -99,6 +101,7 @@ def fetch_article(url, fetch):
             raise p.ArticleExtractionError('Yahoo 分页返回了错误页码，未保存不完整文章。')
         page=extract_page(blob,page_url)
         offset=len(result['paragraphs']);result['paragraphs'].extend(page['paragraphs'])
+        result.setdefault('paragraph_kinds',[]).extend(page.get('paragraph_kinds', ['paragraph']*len(page['paragraphs'])))
         for image in page['images']:
             if image['url'] not in {i['url'] for i in result['images']}:
                 image['position']=offset+max(0,image['position']);result['images'].append(image)

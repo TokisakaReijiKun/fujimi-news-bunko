@@ -1,3 +1,120 @@
+/* Desktop news library: podcast player, application logic, browser initialization. */
+/* Cover player for local, audio-only Nikkei media. Native video is the fallback. */
+window.decorateNikkeiPodcast = (video, article, descriptor) => {
+  if (article.source_key !== 'nikkei' || !descriptor.isLocal || !descriptor.poster) return;
+  const upgrade = () => {
+    if (!video.isConnected || video.videoWidth || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    const player = document.createElement('div');
+    player.className = 'web-podcast';
+    player.setAttribute('role', 'group');
+    player.setAttribute('aria-label', `${article.title} ポッドキャスト`);
+    const cover = document.createElement('img');
+    cover.className = 'web-podcast-cover';
+    cover.src = descriptor.poster;
+    cover.alt = '';
+    const title = document.createElement('div');
+    title.className = 'web-podcast-title';
+    title.textContent = article.media_title || article.title;
+    const controls = document.createElement('div');
+    controls.className = 'web-podcast-controls';
+    const icons = {
+      play: '<path d="M8 5v14l11-7z"/>',
+      pause: '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>',
+      volume: '<path d="M3 9v6h4l5 4V5L7 9zm12-2v10c3-2 3-8 0-10zm3-3v3c4 3 4 7 0 10v3c8-4 8-12 0-16z"/>',
+      muted: '<path d="M3 9v6h4l5 4V5L7 9zm12-1 2-2 3 4 3-4 2 2-3 4 3 4-2 2-3-4-3 4-2-2 3-4z"/>',
+      fullscreen: '<path d="M3 3h7v3H6v4H3zm11 0h7v7h-3V6h-4zM3 14h3v4h4v3H3zm15 0h3v7h-7v-3h4z"/>',
+    };
+    const icon = (button, name, label) => {
+      button.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[name]}</svg>`;
+      button.setAttribute('aria-label', label);
+      button.title = label;
+    };
+    const button = (name, label) => {
+      const element = document.createElement('button');
+      element.type = 'button';
+      icon(element, name, label);
+      return element;
+    };
+    const play = button('play', 'ポッドキャストを再生');
+    const mute = button('volume', 'ミュート');
+    const volume = document.createElement('input');
+    volume.type = 'range'; volume.min = '0'; volume.max = '1'; volume.step = '.05';
+    volume.value = String(video.volume); volume.className = 'web-podcast-volume';
+    volume.setAttribute('aria-label', 'ポッドキャストの音量');
+    const seek = document.createElement('input');
+    seek.type = 'range'; seek.min = '0'; seek.max = String(video.duration); seek.step = '.1';
+    seek.className = 'web-podcast-seek';
+    seek.setAttribute('aria-label', 'ポッドキャストの再生位置');
+    const time = document.createElement('span');
+    time.className = 'web-podcast-time';
+    const speed = document.createElement('select');
+    speed.className = 'web-podcast-speed';
+    speed.setAttribute('aria-label', 'ポッドキャストの再生速度');
+    [0.75, 1, 1.25, 1.5, 2].forEach(rate => speed.add(new Option(`${rate}x`, String(rate))));
+    speed.value = String(video.playbackRate);
+    const fullscreen = button('fullscreen', '全画面表示');
+    fullscreen.hidden = !document.fullscreenEnabled;
+    const status = document.createElement('span');
+    status.className = 'web-podcast-status'; status.setAttribute('role', 'status'); status.hidden = true;
+    const clock = value => {
+      const seconds = Math.max(0, Math.floor(value || 0));
+      return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+    };
+    const update = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      seek.max = String(duration); seek.value = String(video.currentTime);
+      seek.disabled = duration <= 0;
+      seek.style.setProperty('--podcast-progress', `${duration ? video.currentTime / duration * 100 : 0}%`);
+      seek.setAttribute('aria-valuetext', `${clock(video.currentTime)} / ${clock(duration)}`);
+      time.textContent = `${clock(video.currentTime)}　/　${clock(duration)}`;
+      icon(play, video.paused ? 'play' : 'pause', video.paused ? 'ポッドキャストを再生' : 'ポッドキャストを一時停止');
+      icon(mute, video.muted || !video.volume ? 'muted' : 'volume', video.muted ? 'ミュート解除' : 'ミュート');
+      mute.setAttribute('aria-pressed', String(video.muted));
+      volume.value = String(video.muted ? 0 : video.volume);
+      speed.value = String(video.playbackRate);
+    };
+    const showError = message => { status.textContent = message; status.hidden = false; };
+    play.onclick = async () => {
+      if (!video.paused) { video.pause(); return; }
+      try { await video.play(); status.hidden = true; }
+      catch (_) { showError('音声を再生できません。もう一度お試しください。'); }
+    };
+    mute.onclick = () => { video.muted = !video.muted; };
+    volume.oninput = () => { video.muted = false; video.volume = Number(volume.value); };
+    seek.oninput = () => { video.currentTime = Number(seek.value); update(); };
+    speed.onchange = () => { video.playbackRate = Number(speed.value); };
+    fullscreen.onclick = async () => {
+      try {
+        if (document.fullscreenElement === player) await document.exitFullscreen();
+        else await player.requestFullscreen();
+      } catch (_) { showError('全画面表示を開始できませんでした。'); }
+    };
+    const onFullscreen = () => {
+      fullscreen.setAttribute('aria-label', document.fullscreenElement === player ? '全画面表示を終了' : '全画面表示');
+    };
+    ['timeupdate', 'durationchange', 'play', 'pause', 'ended', 'volumechange', 'ratechange'].forEach(event => video.addEventListener(event, update));
+    video.addEventListener('error', () => showError('音声ファイルを読み込めませんでした。'));
+    document.addEventListener('fullscreenchange', onFullscreen);
+    controls.append(seek, play, mute, volume, time, speed, fullscreen);
+    player.append(cover, title, status, controls);
+    video.replaceWith(player);
+    video.controls = false; video.hidden = true;
+    player.append(video);
+    update();
+    // Stop detached playback and release the document listener when leaving the article.
+    const cleanup = new MutationObserver(() => {
+      if (player.isConnected) return;
+      video.pause();
+      document.removeEventListener('fullscreenchange', onFullscreen);
+      cleanup.disconnect();
+    });
+    cleanup.observe(document.body, {childList: true, subtree: true});
+  };
+  if (video.readyState >= 1) upgrade();
+  else video.addEventListener('loadedmetadata', upgrade, {once: true});
+};
+
+;
 const $ = (selector, root = document) => root.querySelector(selector);
 const state = { article: null, currentView: "daily", voiceMode: "model", browserVoiceName: "", browserVoiceLabel: "ブラウザー", dailyMode: "automatic", editingVoiceId: null, editingBrowserVoice: false, editingSourceId: null, voiceSourceMode: "file", voices: [], newsSources: [], dailyContentTimer: null, dailyTaskTimer: null, dailyRereadTimer: null, rereadTracker: null, importTracker: null, dailyTaskRunning: false, articleAudio: null, browserSpeech: null, hlsPlayers: [], dictionaryReady: false, dictionaryActiveId: "", dictionarySearchTimer: null, dictionaryHistoryTimer: null, dictionarySearchController: null, dictionaryDetailController: null, dictionarySearchSequence: 0, dictionarySpeech: null, dictionarySpeechToken: 0, selectionLookupController: null, selectionLookupToken: 0, selectionLookupQuery: "", selectionLookupRect: null, selectionLookupRange: null, selectionLookupResults: [], selectionLookupActiveId: "", libraryBooks: [], libraryBook: null, libraryChapter: null, librarySort: "recent", libraryLookupChineseTranslations: true, libraryTaskId: null, libraryTaskTimer: null, libraryProgressTimer: null, libraryScrollHandler: null, librarySettingsKeydown: null, libraryTocOutsideClick: null, editingBookId: null };
 const BOOK_X_ICON = '<svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 7-5 5"></path><path d="m9.5 7 5 5"></path><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19v15H6.5a2.5 2.5 0 0 0 0 5H19"></path></svg>';
@@ -1740,6 +1857,7 @@ function articleDetail(article) {
   if (!isVisible(article)) return processingArticle(article);
   const fragment = $("#article-template").content.cloneNode(true);
   const root = $(".article-detail", fragment);
+  root.dataset.sourceKey = article.source_key || "";
   $(".source", root).textContent = article.source_name;
   $(".title", root).textContent = article.title;
   $(".published", root).textContent = formatPublishedAt(article.published_at);
@@ -1794,7 +1912,7 @@ function articleDetail(article) {
   };
   let topImageIndexes = imagePaths.map((_path, index) => index)
     .filter(index => !hasImagePositions || Number(imagePositions[index]) < 0);
-  if (article.source_key === "nhk" && videoDescriptors.some(item => item.poster) && topImageIndexes.length === 1) {
+  if (["nhk", "nikkei"].includes(article.source_key) && videoDescriptors.some(item => item.isLocal || item.poster) && topImageIndexes.length === 1) {
     const posterPath = imagePaths[topImageIndexes[0]];
     videoDescriptors.forEach(item => { item.poster = posterPath.startsWith("/api/articles/") ? posterPath : `/api/media/${posterPath}`; });
     topImageIndexes = [];
@@ -1845,6 +1963,7 @@ function articleDetail(article) {
     }, { once: true });
     attachVideoSource(video, descriptor);
     media.append(video);
+    window.decorateNikkeiPodcast?.(video, article, descriptor);
   });
   media.hidden = topImageIndexes.length === 0 && videoUrls.length === 0;
 
@@ -1871,6 +1990,7 @@ function articleDetail(article) {
     section.className = "paragraph";
     section.dataset.audioIndex = String(index);
     const paragraphKind = (article.paragraph_kinds || [])[index] || "paragraph";
+    if (paragraphKind === "box" || paragraphKind === "box-plain") section.classList.add("paragraph-box");
     if (paragraphKind.startsWith("heading")) {
       section.classList.add("paragraph-heading");
       if (paragraphKind === "heading-2" || paragraphKind === "heading-3") {
@@ -2329,6 +2449,7 @@ function bindParagraphSeeking(root, seek) {
   root.querySelectorAll(".paragraph[data-audio-index]").forEach(section => {
     const seekTarget = section.querySelector(".japanese") || section;
     const jump = event => {
+      if (event.target.closest('a[href]')) return;
       if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
       if (event.type === "click" && !window.getSelection()?.isCollapsed) return;
       event.preventDefault();
@@ -4731,3 +4852,80 @@ loadDailySettings();
 loadLibrarySettings();
 initializeBrowserVoice();
 showView(initialView, { historyMode: "replace", resetReader: false });
+
+;
+/* Browser initialization and accessible navigation. */
+(() => {
+  const media = window.matchMedia('(max-width: 900px)');
+  media.addEventListener('change', () => {
+    document.documentElement.dataset.mobileApp = String(media.matches);
+    syncMobileNavigationLayout();
+    finishMobileAppBoot();
+    if (state.currentView === 'settings') { loadVoices(); loadNewsSources(); }
+  });
+  document.documentElement.classList.remove('mobile-app-booting');
+  document.querySelector('#article-url').setAttribute('aria-label', '新闻文章网址');
+  const workspace = document.querySelector('#reader-import-workspace');
+  const panel = document.createElement('details');
+  panel.className = 'web-text-import';
+  panel.innerHTML = `<summary>本文を貼り付ける · 粘贴正文</summary>
+    <form id="web-text-form">
+      <label>标题<input name="title" required maxlength="500" autocomplete="off"></label>
+      <label>日文正文<textarea name="text" required placeholder="ここに読みたい文章を貼り付けてください。"></textarea></label>
+      <p class="web-runtime-note">自动添加假名并保存到本地。可选中正文中的词语查词，也可使用浏览器朗读。</p>
+      <p class="web-import-error" role="alert" hidden></p>
+      <div class="web-form-actions"><button type="submit">保存并阅读</button><button type="button" class="quiet web-example">填入示例</button></div>
+    </form>`;
+  workspace.append(panel);
+  panel.querySelector('.web-example').onclick = () => {
+    panel.querySelector('[name="title"]').value = '読書の時間（操作示例）';
+    panel.querySelector('[name="text"]').value = '朝の静かな時間に、本を開きました。窓の外では、小さな鳥が歌っています。\n\n知らない言葉に出会ったら、辞書で調べてみましょう。一つの言葉から、新しい世界が広がります。\n\nこれは閲読室の使い方を確認するための例文です。実際のニュースではありません。';
+  };
+  panel.querySelector('form').onsubmit = async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('[type="submit"]');
+    const error = form.querySelector('[role="alert"]');
+    button.disabled = true;
+    button.textContent = '正在保存…';
+    error.hidden = true;
+    try {
+      const values = new FormData(form);
+      const article = await api('/api/articles/text', {method: 'POST', body: JSON.stringify({title: values.get('title'), text: values.get('text')})});
+      openArticle(article, document.querySelector('#reader-result'));
+      panel.open = false;
+      toast('已保存，可选词查词或开始朗读。');
+    } catch (e) {
+      error.textContent = e.message;
+      error.hidden = false;
+    } finally {
+      button.disabled = false;
+      button.textContent = '保存并阅读';
+    }
+  };
+  const note = document.createElement('p');
+  note.className = 'web-runtime-note';
+  note.textContent = 'Web 本地版 · 词典与阅读可离线使用。日刊自动更新仅在本地服务运行期间执行。';
+  document.querySelector('#settings-view .section-head').after(note);
+  const addVoice = document.querySelector('#add-voice');
+  addVoice.disabled = true;
+  addVoice.title = 'Irodori 服务尚未接入；可修改下方浏览器声线。';
+  const voiceHelp = document.createElement('p');
+  voiceHelp.className = 'web-runtime-note';
+  voiceHelp.textContent = '当前使用浏览器日语语音。Irodori 自定义声线尚未接入。';
+  document.querySelector('.voice-overview').before(voiceHelp);
+  document.querySelector('.refresh-panel .panel-heading p').textContent = '校验文章文件并重建新闻、收藏索引；同步书架，备份后清理已删除书籍目录的记录。不会删除现有文件。';
+  document.querySelector('.refresh-panel .status-badge').textContent = 'FILES → INDEX';
+  api('/api/health').then(health => {
+    note.textContent += health.translation_configured ? ' 翻译已配置，处理时会发送正文到 DeepSeek。' : ' 翻译未配置，章节处理仅生成假名。';
+  }).catch(() => {});
+
+  // Trap keyboard focus in the mobile navigation drawer and restore it on close.
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Tab' || document.documentElement.dataset.mobileNavOpen !== 'true') return;
+    const items = [...document.querySelectorAll('#primary-sidebar button')].filter(el => el.offsetParent !== null);
+    if (!items.length) return;
+    if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1).focus(); }
+    else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0].focus(); }
+  });
+})();
