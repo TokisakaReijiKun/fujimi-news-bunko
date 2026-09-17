@@ -88,6 +88,24 @@ class StoreTests(unittest.TestCase):
         recovered=ArticleStore(self.data)
         self.assertEqual(recovered.load(a['id'])['title'],'committed title')
 
+    def test_save_retries_temporary_windows_directory_sharing_violation(self):
+        article=self.store.create(sample(),'2026-09-07')
+        article['title']='Windows retry'
+        original=os.replace
+        replacements=[]
+        def briefly_locked(source,target):
+            source,target=Path(source),Path(target)
+            if target.name=='old':
+                replacements.append((source,target))
+                if len(replacements)==1:
+                    raise PermissionError(5,'simulated Windows directory sharing violation')
+            return original(source,target)
+        with patch('article_store.os.replace',side_effect=briefly_locked):
+            saved=self.store.save(article)
+        self.assertEqual(saved['title'],'Windows retry')
+        self.assertEqual(len(replacements),2)
+        self.assertEqual(self.store.load(article['id'])['title'],'Windows retry')
+
     def test_asset_isolation_missing_asset_and_stale_updates(self):
         a=self.store.create(sample(),'2026-09-07')
         source=self.data/'fixture.jpg';source.write_bytes(b'fixture')
@@ -101,6 +119,39 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(StorageError):self.store.save(a)
         self.store.asset(a['id'],'media/image-001.jpg').unlink()
         self.assertTrue(self.store.rebuild()['errors'])
+
+    def test_tts_manifest_commit_survives_index_interruption_without_runtime_folder(self):
+        a=self.store.create(sample(),'2026-09-07')
+        source=self.data/'audio.wav';source.write_bytes(b'synthetic audio')
+        a['_assets']=[{'path':'audio/voice.wav','kind':'audio'}]
+        a['audio_path']='audio/voice.wav'
+        with patch.object(self.store,'_index',side_effect=KeyboardInterrupt()):
+            with self.assertRaises(KeyboardInterrupt):
+                self.store.save_tts(a,files={'audio/voice.wav':source})
+        self.assertFalse((self.data/'tts').exists())
+        restored=ArticleStore(self.data)
+        self.assertEqual(restored.asset(a['id'],'audio/voice.wav').read_bytes(),b'synthetic audio')
+        self.assertEqual(restored.load(a['id'])['paragraphs'],a['paragraphs'])
+
+    def test_tts_commit_never_renames_article_directory(self):
+        a=self.store.create(sample(),'2026-09-07')
+        folder=self.store.root/a['_directory']
+        source=self.data/'audio.wav';source.write_bytes(b'synthetic audio')
+        a['_assets']=[{'path':'audio/voice.wav','kind':'audio'}]
+        a['audio_path']='audio/voice.wav'
+        original=os.replace
+        calls=[]
+        def no_directory_replace(source_path,target_path):
+            source_path,target_path=Path(source_path),Path(target_path)
+            calls.append((source_path,target_path))
+            if source_path==folder or target_path.name=='old':
+                raise PermissionError(5,'simulated Windows directory sharing violation')
+            return original(source_path,target_path)
+        with patch('article_store.os.replace',side_effect=no_directory_replace):
+            saved=self.store.save_tts(a,files={'audio/voice.wav':source})
+        self.assertEqual(saved['audio_path'],'audio/voice.wav')
+        self.assertEqual(self.store.asset(a['id'],'audio/voice.wav').read_bytes(),b'synthetic audio')
+        self.assertFalse(any(source==folder or target.name=='old' for source,target in calls))
 
     def test_index_failure_keeps_committed_file_and_recovers_index(self):
         a=self.store.create(sample(),'2026-09-07');a['title']='Committed despite index failure'

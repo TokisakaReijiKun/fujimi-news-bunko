@@ -93,7 +93,7 @@ class BookStore:
             if digest(blob)!=ch['sha256']:raise StorageError('章节文件校验失败。')
             return b,json.loads(blob)
 
-    def save(self,b, directory=None, assets=None, original=None, digest_value=None):
+    def save(self,b, directory=None, assets=None, original=None, digest_value=None, audio_files=None, *, tts=False):
         with self.locks.locked():
             self.recover();bid=b['id']
             folder=safe_path(self.root,directory) if directory else self.folder(bid)
@@ -114,6 +114,12 @@ class BookStore:
                 if not dest.exists() or digest(dest.read_bytes())!=digest(blob):files[name]=blob
             book['chapters']=summary
             resources=deepcopy(oldmeta.get('resources',{})) if oldmeta else {}
+            audio_manifest=deepcopy(oldmeta.get('audio',{})) if oldmeta else {}
+            for path, source in (audio_files or {}).items():
+                safe_path(folder/'audio',path)
+                blob=Path(source).read_bytes()
+                files['audio/'+path]=blob
+                audio_manifest[path]={'sha256':digest(blob),'bytes':len(blob)}
             for path,blob in (assets or {}).items():
                 safe_path(folder/'resources',path)
                 files['resources/'+path]=blob;resources[path]={'sha256':digest(blob),'bytes':len(blob)}
@@ -125,7 +131,7 @@ class BookStore:
                 source_name=(oldmeta or {}).get('source_file','source.epub')
                 source_sha=oldmeta.get('source_sha256') if oldmeta else None
             meta={'version':2,'digest':digest_value or (oldmeta['digest'] if oldmeta else b.get('digest','')),
-                  'source_file':source_name,'source_sha256':source_sha,'book':book,'resources':resources}
+                  'source_file':source_name,'source_sha256':source_sha,'book':book,'resources':resources,'audio':audio_manifest}
             files['book.json']=json.dumps(meta,ensure_ascii=False,indent=2).encode('utf-8')
             files['state.json']=json.dumps(state,ensure_ascii=False,indent=2).encode('utf-8')
             job=self.transactions/uuid.uuid4().hex;stage=job/'new';stage.mkdir(parents=True)
@@ -172,6 +178,36 @@ class BookStore:
             state['revision']=state.get('revision',0)+1
             write_json(folder/'state.json',state);self._index(folder)
             return self.load(bid,False)
+
+    def audio_asset(self,bid,path):
+        with self.locks.locked():
+            folder=self.folder(bid)
+            meta=json.loads((folder/'book.json').read_text(encoding='utf-8'))
+            entry=meta.get('audio',{}).get(path)
+            if not entry:raise LookupError('书籍音频未登记。')
+            target=safe_path(folder/'audio',path)
+            if not target.is_file():raise LookupError('书籍音频文件不存在。')
+            if digest(target.read_bytes())!=entry['sha256']:raise StorageError('书籍音频校验失败。')
+            return target
+
+    def save_audio(self,bid,cid,paragraphs,path,metadata):
+        """Merge into the latest chapter/state under the same store lock."""
+        with self.locks.locked():
+            b=self.load(bid)
+            ch=next((c for c in b['chapters'] if c['id']==cid),None)
+            if not ch:raise LookupError('章节已不存在。')
+            current=[block['text_ja'] for block in ch['blocks'] if block.get('text_ja')]
+            if current!=paragraphs:raise StorageError('章节原文已变化，请重新生成朗读。')
+            versions = ch.setdefault('audio_versions', [])
+            previous = ch.get('audio')
+            if previous and previous not in versions:
+                versions.append(deepcopy(previous))
+            versions[:] = [v for v in versions if v.get('path') != metadata['path']]
+            versions.append(deepcopy(metadata))
+            ch.update(audio=metadata,voice_mode='voice',voice_id=metadata['voice_id'],voice_selected=True)
+            if b.get('progress',{}).get('chapter_id')==cid:
+                b['progress']['audio_time']=0
+            return self.save(b,audio_files={metadata['path']:path},tts=True)
 
     def backup(self,bid,reason):
         folder=self.folder(bid);dest=self.data/'backups'/f"book-{bid}-{reason}-{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}"

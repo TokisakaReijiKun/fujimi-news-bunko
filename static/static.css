@@ -3576,6 +3576,20 @@ rt {
     grid-template-columns: 1fr;
   }
 
+  .article-meta {
+    position: relative;
+  }
+
+  .reread-popover-wrap {
+    position: static;
+  }
+
+  .reread-panel {
+    left: 0;
+    width: 100%;
+    max-width: 420px;
+  }
+
   #reader-view:not(.is-reading) .reader-import-workspace {
     margin-top: 44px;
   }

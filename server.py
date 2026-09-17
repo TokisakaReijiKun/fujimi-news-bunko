@@ -201,7 +201,7 @@ def translate(paragraphs):
     return result
 
 
-def create_app(data_dir=None):
+def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
     app = Flask(__name__, static_folder=str(ROOT / 'static'))
     app.json.ensure_ascii = False
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
@@ -228,8 +228,7 @@ def create_app(data_dir=None):
         'library': {'sort': 'recent', 'lookup_chinese_translations': True},
         'voice-mode': {'mode': 'browser', 'browser_voice_name': '', 'browser_voice_label': 'ブラウザー'},
         'daily-content': {'target_count': 10},
-        'news-sources': default_sources(),
-        'voices': []}
+        'news-sources': default_sources()}
 
     @contextmanager
     def connect():
@@ -271,6 +270,10 @@ def create_app(data_dir=None):
 
     store = ArticleStore(data)
     book_store = BookStore(data)
+    from tts_integration import TTSController
+    tts = TTSController(app, ROOT, data, store, book_store, setting, download,
+                        enabled=enable_tts, backend=tts_backend)
+    app.extensions['tts'] = tts
 
     def article(aid):
         return store.load(aid)
@@ -310,7 +313,10 @@ def create_app(data_dir=None):
             check_work()
             a = add_article(extracted['title'], extracted['paragraphs'], extracted['url'],
                             source or urlparse(extracted['url']).hostname, published=extracted.get('published_at'), annotate=False)
-            return provider_for(url).postprocess(a, extracted, processing_services())
+            saved = provider_for(url).postprocess(a, extracted, processing_services())
+            configured_source = next((s for s in setting('news-sources')
+                                      if urlparse(s['homepage']).hostname == urlparse(url).hostname), None)
+            return tts.auto_article(saved, configured_source)
         finally:
             WORK_CONTEXT.deadline = None
 
@@ -528,6 +534,7 @@ def create_app(data_dir=None):
                     store.add_day(article['id'], day)
                     accepted_ids.add(article['id'])
                     counts[source['name']] += 1
+                    tts.auto_article(article, source)
                     job.update(completed=len(accepted_ids), source_counts=dict(counts),
                                percent=min(99, round(len(accepted_ids) / planned_total * 100)))
                 except WorkCancelled:
@@ -613,7 +620,16 @@ def create_app(data_dir=None):
     @app.get('/api/health')
     def health():
         return jsonify(status='ok', runtime='web', dictionary=dictionary.exists(),
-                       translation_configured=bool(os.environ.get('DEEPSEEK_API_KEY')), tts='browser')
+                       translation_configured=bool(os.environ.get('DEEPSEEK_API_KEY')),
+                       tts='irodori' if tts.enabled else 'browser', tts_details=tts.health())
+
+    @app.get('/api/runtime/tasks')
+    def runtime_tasks():
+        with tasks_lock:
+            values = [dict(t) for t in tasks.values()] + [dict(daily)]
+        if tts.queue: values.extend(tts.queue.list())
+        fields = ('id', 'kind', 'status', 'stage', 'article_id', 'book_id', 'chapter_id')
+        return jsonify(tasks=[{k:t[k] for k in fields if k in t} for t in values])
 
     @app.get('/api/media/<path:filename>')
     def article_media(filename):
@@ -669,16 +685,16 @@ def create_app(data_dir=None):
         sources = setting('news-sources')
         counts = {s['name']: sum(a['source_name'] == s['name'] for a in articles) for s in sources}
         missing = [s['name'] for s in sources if counts[s['name']] < s.get('minimum_count', 0)]
-        return jsonify(date=day, articles=[store.wire(a) for a in articles], source_counts=counts, missing_sources=missing)
+        return jsonify(date=day, articles=[tts.article_wire(a) for a in articles], source_counts=counts, missing_sources=missing)
 
     @app.get('/api/bookmarks')
     def bookmarks():
         ids = store.ids(bookmarked=True)
-        return jsonify([dict(store.wire(article(aid)), bookmark_context=True) for aid in ids])
+        return jsonify([dict(tts.article_wire(article(aid)), bookmark_context=True) for aid in ids])
 
     @app.get('/api/articles/<int:aid>')
     @app.get('/api/bookmarks/<int:aid>')
-    def article_detail(aid): return jsonify(store.wire(article(aid)))
+    def article_detail(aid): return jsonify(tts.article_wire(article(aid)))
 
     @app.route('/api/articles/<int:aid>/bookmarks', methods=['POST', 'DELETE'])
     def bookmark_article(aid):
@@ -692,18 +708,21 @@ def create_app(data_dir=None):
         payload = request.get_json()
         text = str(payload.get('text', ''))
         paragraphs = [p.strip() for p in re.split(r'\n\s*\n|\n', text) if p.strip()]
-        return jsonify(store.wire(add_article(str(payload.get('title', '')), paragraphs))), 201
+        saved = add_article(str(payload.get('title', '')), paragraphs)
+        return jsonify(tts.article_wire(tts.auto_article(saved))), 201
 
     @app.post('/api/import/tasks')
     def import_article():
         url = request.get_json().get('url', '')
         public_url(url)
-        task = start_task('article', lambda t: {'article': store.wire(import_url(url))})
+        task = start_task('article', lambda t: {'article': tts.article_wire(import_url(url))})
         return jsonify(task_id=task['id'], id=task['id'], status='started'), 202
 
     @app.route('/api/import/tasks/<task_id>', methods=['GET', 'DELETE'])
     @app.route('/api/books/tasks/<task_id>', methods=['GET', 'DELETE'])
     def task_detail(task_id):
+        if tts.queue and task_id in tts.queue.tasks:
+            return jsonify(tts.queue.cancel(task_id) if request.method == 'DELETE' else tts.queue.get(task_id))
         task = tasks.get(task_id)
         if not task: raise LookupError('任务不存在或服务已重启，请重新导入。')
         if request.method == 'DELETE' and task['status'] in ('queued', 'running'):
@@ -741,21 +760,23 @@ def create_app(data_dir=None):
                 provider_for(a['url']).retranslate(a, processing_services())
             return jsonify(task_id=start_task('translation', work, article_id=aid)['id'])
         if action in ('reread', 'tts'):
-            mode = (request.get_json(silent=True) or {}).get('mode', 'browser')
-            if mode not in ('browser', 'none'): return fail('此 Web 版使用浏览器朗读；Irodori 模型服务尚未接入。', 503)
-            a['audio_status'] = 'browser' if mode == 'browser' else 'disabled'
-            save_article(a)
-            return jsonify(status=a['audio_status'], article=store.wire(a))
+            if request.method == 'GET':
+                return jsonify(tts.queue.latest(f'article:{aid}') if tts.queue else {'status': 'idle'})
+            if request.method == 'DELETE':
+                result = tts.cancel_target(f'article:{aid}')
+            else:
+                payload = request.get_json(silent=True) or {}
+                result = tts.submit_article(aid, payload)
+            return jsonify(**result, article=tts.article_wire(article(aid)))
         return fail('接口不存在。', 404)
 
     @app.route('/api/settings/<key>', methods=['GET', 'PUT', 'POST'])
     def settings(key):
         if key == 'active-voice':
             payload = request.get_json()
-            if payload.get('voice_id'): return fail('Irodori 模型服务尚未接入。', 503)
-            value = setting('voice-mode')
-            value['mode'] = 'none' if payload.get('disabled') else 'browser'
-            return jsonify(setting('voice-mode', value))
+            return jsonify(tts.active_voice(payload))
+        if key == 'voices':
+            return jsonify(tts.voice_list()) if request.method == 'GET' else tts.edit_voice()
         if key == 'browser-voice':
             payload = request.get_json()
             value = setting('voice-mode')
@@ -772,7 +793,6 @@ def create_app(data_dir=None):
         value = setting(key)
         if request.method != 'GET':
             payload = request.get_json(silent=True) or {}
-            if key == 'voices': return fail('自定义声线需要 Irodori 服务；当前可在浏览器声线中选择系统语音。', 503)
             if key == 'news-sources':
                 public_url(payload.get('homepage', ''))
                 minimum = int(payload.get('minimum_count', 1))
@@ -821,7 +841,9 @@ def create_app(data_dir=None):
         return jsonify(books=[wire_book(b) for b in values])
 
     @app.get('/api/books/tasks')
-    def book_tasks(): return jsonify(tasks=[t for t in tasks.values() if t['kind'] in ('import', 'enhance')])
+    def book_tasks():
+        return jsonify(tasks=[t for t in tasks.values() if t['kind'] in ('import', 'enhance')]
+                       + [t for t in (tts.queue.list() if tts.queue else []) if t.get('book_id')])
 
     @app.post('/api/books/import')
     def import_books():
@@ -887,10 +909,14 @@ def create_app(data_dir=None):
     @app.get('/api/books/<int:bid>/chapters/<int:cid>')
     def chapter_detail(bid, cid):
         b,ch = book_store.chapter(bid,cid)
-        return jsonify(book=wire_book(b), chapter=ch)
+        return jsonify(book=wire_book(b), chapter=tts.chapter_wire(bid, ch))
 
     @app.route('/api/books/<int:bid>/chapters/<int:cid>/<action>', methods=['POST', 'PUT', 'DELETE'])
     def chapter_action(bid, cid, action):
+        if action in ('voice', 'reread'):
+            if request.method == 'DELETE':
+                return jsonify(tts.cancel_target(f'book:{bid}:{cid}'))
+            return jsonify(tts.submit_chapter(bid, cid, request.get_json(silent=True) or {}, configure_only=action == 'voice'))
         with db_lock:
             b = book(bid)
             ch = next((ch for ch in b['chapters'] if ch['id'] == cid), None)
@@ -904,12 +930,6 @@ def create_app(data_dir=None):
                 else: b['bookmarks'].insert(0, dict(chapter_id=cid, block_index=idx, excerpt=str(payload.get('excerpt', ''))[:500]))
                 book_store.patch_state(bid,{'bookmarks':b['bookmarks']})
                 return jsonify(bookmarked=not bool(existing))
-            if action in ('voice', 'reread'):
-                mode = payload.get('mode', 'browser')
-                if mode not in ('browser', 'none'): return fail('此版本使用浏览器朗读；Irodori 服务尚未接入。', 503)
-                ch['voice_mode'] = mode
-                save_book(b)
-                return jsonify(status=mode)
             if action == 'enrichment' and request.method == 'DELETE':
                 for block in ch['blocks']:
                     if not block.get('bilingual_pair'):block['text_zh']=''
@@ -977,16 +997,26 @@ if __name__ == '__main__':
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8427)
     args = parser.parse_args()
-    app = create_app()
-    http_server = make_local_server(app, args.host, args.port)
+    # Bind before initializing storage or recovering TTS tasks. A second launch
+    # must not mark the running instance's queue as interrupted.
+    http_server = make_local_server(lambda environ, start_response: app(environ, start_response), args.host, args.port)
+    try:
+        app = create_app(enable_tts=True)
+    except Exception:
+        http_server.server_close()
+        raise
     pid_file = ROOT / 'logs' / 'server.pid'
     pid_file.parent.mkdir(exist_ok=True)
     pid_file.write_text(str(os.getpid()), encoding='utf-8')
     # Do not start a second scheduler or replace the PID if binding failed.
     threading.Thread(target=app.fujimi_scheduler, daemon=True).start()
+    display_host = f'[{args.host}]' if ':' in args.host and not args.host.startswith('[') else args.host
+    print(f' * Running on http://{display_host}:{args.port}', flush=True)
+    print(' * Press CTRL+C to quit', flush=True)
     try:
         http_server.serve_forever()
     finally:
+        app.extensions['tts'].close()
         http_server.server_close()
         if pid_file.exists() and pid_file.read_text(encoding='utf-8').strip() == str(os.getpid()):
             pid_file.unlink()

@@ -20,12 +20,18 @@ from irodori_tts.inference_runtime import (
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
-CHECKPOINT = PROJECT_DIR / "model" / "model.safetensors"
-REFERENCE_AUDIO = PROJECT_DIR / "朽木冬子.mp3"
-OUTPUT_AUDIO = PROJECT_DIR / "demo_output.wav"
+# CHECKPOINT = PROJECT_DIR / "model" / "model.safetensors"
+CHECKPOINT = 'D:\夢を叶う担当政府—内阁\文部科学省（もんぶかがくしょう）\開発部\富士見新聞文庫\Irodori-TTS\model\Irodori-TTS-500M-v3\model.safetensors'
+# CHECKPOINT = 'D:\夢を叶う担当政府—内阁\文部科学省（もんぶかがくしょう）\開発部\富士見新聞文庫\Irodori-TTS\model\Irodori-TTS-v4-Small\model.safetensors'
+# CHECKPOINT = 'D:\夢を叶う担当政府—内阁\文部科学省（もんぶかがくしょう）\開発部\富士見新聞文庫\Irodori-TTS\model\Irodori-TTS-v4.1-Small\model.safetensors'
+# REFERENCE_AUDIO = PROJECT_DIR / "朽木冬子.mp3"
+CHECKPOINT = Path(CHECKPOINT)
+REFERENCE_AUDIO = PROJECT_DIR / "浅仓透.mp3"
+OUTPUT_AUDIO = PROJECT_DIR / "demo_output1.wav"
 
 # A short, natural Japanese test sentence.
-TEXT = "おじんぽください。豚の私を妊娠させてください。"
+# TEXT = "おじんぽください。豚の私を妊娠させてください。"
+TEXT = "東日本大震災で被災して東京都目黒区の区民住宅で避難生活をしていた70代女性が、退去の期限後も住み続けたとして区が家賃などの支払いを求めた訴訟の判決で、最高裁第二小法廷（三浦守裁判長）は14日、女性側の上告を棄却した。女性を敗訴とした一、二審判決が確定した。"
 SEED = 20260907
 
 

@@ -10,6 +10,7 @@ import re
 import shutil
 import sqlite3
 import threading
+import time
 import uuid
 from database_layout import check_database_layout
 
@@ -36,6 +37,19 @@ def write_json(path, value):
         output.flush()
         os.fsync(output.fileno())
     os.replace(temp, path)
+
+
+def replace_transaction_directory(source, target):
+    """Retry transient Windows sharing violations during an article directory switch."""
+    for attempt in range(6):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError as error:
+            code = getattr(error, 'winerror', None) or error.errno
+            if os.name != 'nt' or code not in (5, 32) or attempt == 5:
+                raise
+            time.sleep(0.1 * (2 ** attempt))
 
 
 def safe_path(root, relative):
@@ -144,7 +158,6 @@ class ArticleStore:
                     handle.close()
 
     def recover(self):
-        if not self.transactions.exists(): return
         for journal in self.transactions.glob('*/journal.json'):
             record = json.loads(journal.read_text(encoding='utf-8'))
             target = safe_path(self.root, record['target'])
@@ -153,7 +166,7 @@ class ArticleStore:
                 # No committed new directory: restore the previous version.
                 if old.exists() and not target.exists():
                     target.parent.mkdir(parents=True, exist_ok=True)
-                    os.replace(old, target)
+                    replace_transaction_directory(old, target)
             elif target.exists():
                 # Directory switch completed. Index is derived and reconciled below.
                 try:
@@ -163,7 +176,7 @@ class ArticleStore:
                         raise  # Retain journal; never hide an unavailable index.
             elif old.exists():
                 target.parent.mkdir(parents=True, exist_ok=True)
-                os.replace(old, target)
+                replace_transaction_directory(old, target)
             else:
                 raise StorageError(f'无法恢复文章事务：{journal.parent.name}')
             shutil.rmtree(journal.parent)
@@ -362,14 +375,77 @@ class ArticleStore:
                 self._read(stage,verify_media=True)
                 write_json(tx/'journal.json',{'target':directory})
                 target.parent.mkdir(parents=True,exist_ok=True)
-                if target.exists(): os.replace(target,tx/'old')
-                os.replace(stage,target)
+                if target.exists(): replace_transaction_directory(target,tx/'old')
+                replace_transaction_directory(stage,target)
                 self._index(target,self._read(target))
                 shutil.rmtree(tx)
             except Exception:
                 if (tx/'journal.json').exists(): self.recover()
                 elif tx.exists(): shutil.rmtree(tx)
                 raise
+            return self.load(a['id'])
+
+    def save_tts(self, article, files=None):
+        """Commit TTS files without renaming a Windows directory being streamed."""
+        with self.locked():
+            a = deepcopy(article)
+            current = self.load(a['id'])
+            if a.get('_revision') != current['_revision']:
+                raise StorageError('文章已被另一任务更新，请重试。')
+            if any(a.get(field) != current.get(field) for field in TEXT_FIELDS):
+                raise StorageError('TTS 提交不能修改文章正文或译文。')
+            folder = safe_path(self.root, current['_directory'])
+            files = files or {}
+            references = set(a.get('image_paths', [])) | set(a.get('video_urls', [])) | {a.get('audio_path')}
+            missing = [item for item in a['_assets']
+                       if item['path'].startswith('audio/') and item['path'] not in references
+                       and item['path'] not in files
+                       and not safe_path(folder, item['path']).exists()]
+            if missing:
+                backup = self.data/'backups'/f"tts-article-{a['id']}-{uuid.uuid4().hex}"
+                backup.mkdir(parents=True)
+                shutil.copytree(folder, backup/'article')
+                with db_connection(self.db_path) as source, db_connection(backup/'fujimi.sqlite3') as target:
+                    source.backup(target)
+                write_json(backup/'repair.json', {'article_id': a['id'], 'missing_assets': missing})
+                a['_assets'] = [item for item in a['_assets'] if item not in missing]
+
+            assets = deepcopy(a.pop('_assets', []))
+            for item in assets:
+                relative = item['path']
+                if relative.split('/')[0] not in ('media', 'audio'):
+                    raise StorageError('附件必须位于 media 或 audio。')
+                source = Path(files[relative]) if relative in files else safe_path(folder, relative)
+                if not source.is_file():
+                    raise StorageError(f'附件缺失或校验失败：{relative}')
+                blob = source.read_bytes()
+                item.update(sha256=digest(blob), bytes=len(blob))
+            registered = {item['path'] for item in assets}
+            local_videos = [p for p in a.get('video_urls', []) if not p.startswith(('http://','https://'))]
+            referenced = list(a.get('image_paths', [])) + local_videos
+            if a.get('audio_path'):
+                referenced.append(a['audio_path'])
+            if any(path not in registered for path in referenced):
+                raise StorageError('文章引用了未登记的附件。')
+            for relative, source in files.items():
+                destination = safe_path(folder, relative)
+                source = Path(source)
+                if destination.exists():
+                    if digest(destination.read_bytes()) != digest(source.read_bytes()):
+                        raise StorageError('目标音频文件已存在且内容不同，请使用新的文件名。')
+                    continue
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                temporary = destination.with_name(destination.name+'.'+uuid.uuid4().hex+'.tmp')
+                with source.open('rb') as input_stream, temporary.open('wb') as output_stream:
+                    shutil.copyfileobj(input_stream, output_stream)
+                    output_stream.flush(); os.fsync(output_stream.fileno())
+                os.replace(temporary, destination)
+            source_manifest = json.loads((folder/'article.json').read_text(encoding='utf-8'))
+            metadata = {k:v for k,v in a.items() if k not in TEXT_FIELDS and not k.startswith('_')}
+            write_json(folder/'article.json', {'schema_version':1, 'revision':current['_revision']+1,
+                'article':metadata, 'text_files':source_manifest['text_files'], 'assets':assets})
+            saved = self._read(folder, verify_media=True)
+            self._index(folder, saved)
             return self.load(a['id'])
 
     def patch(self, aid, updates):

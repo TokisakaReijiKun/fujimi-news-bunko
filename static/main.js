@@ -2014,7 +2014,7 @@ function articleDetail(article) {
   setArticleTranslationView(root, "show");
 
   const audio = $(".audio", root);
-  const hasAudio = Boolean(article.audio_path) && article.audio_status !== "browser";
+  const hasAudio = Boolean(article.audio_path) && !["browser", "disabled"].includes(article.audio_status);
   if (hasAudio) audio.src = mobileMediaUrl(article.audio_path, "/api/audio/");
   const bookmarkButton = $(".bookmark", root);
   renderBookmarkButton(bookmarkButton, Boolean(article.bookmarked));
@@ -2135,6 +2135,8 @@ function openArticle(article, target) {
     const total = Number(article.audio_total || 0);
     setRereadTask(root, "running", article.audio_task_detail || "生成状況を確認しています…", total ? `${current}/${total}` : "", "", current, total || 1, { cancellable: true });
     startRereadTracking(article, target, root, "reread");
+  } else if (root && ["failed", "replace_failed"].includes(article.audio_status)) {
+    setRereadTask(root, "failed", article.audio_task_detail || "朗読生成に失敗しました。再試行してください。");
   }
   target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -2179,7 +2181,13 @@ async function rereadArticle(article, voiceValue, target, root) {
     const mode = voiceValue.startsWith("voice:") ? "voice" : voiceValue;
     const voiceId = mode === "voice" ? Number(voiceValue.split(":", 2)[1]) : null;
     setRereadTask(root, "running", "音声生成を準備しています…", "", "", 0, 1, { cancellable: true });
-    await api(articleApiPath(article, "/reread"), { method: "POST", body: JSON.stringify({ mode, voice_id: voiceId }) });
+    const result = await api(articleApiPath(article, "/reread"), { method: "POST", body: JSON.stringify({ mode, voice_id: voiceId }) });
+    if (result.status === "ready") {
+      stopRereadTracking();
+      openArticle(result.article, target);
+      toast("保存済みの朗読を読み込みました。");
+      return;
+    }
     startRereadTracking(article, target, root, "reread");
   } catch (error) {
     setRereadTask(root, "failed", "読み返しを開始できませんでした。", "", error.message);
@@ -2194,25 +2202,18 @@ async function cancelReread(article, target, root, mode = "reread") {
   if (button) button.disabled = true;
   if (taskButton) taskButton.disabled = true;
   const initial = mode === "initial";
-  setRereadTask(root, "running", initial ? "日刊ニュースの生成を中止しています…" : "読み返し音声の生成を中止しています…", "", "", 0, 1, { cancellable: true });
+  setRereadTask(root, "running", "朗読音声の生成を中止しています…", "", "", 0, 1, { cancellable: true });
   if (button) button.disabled = true;
   if (taskButton) taskButton.disabled = true;
   try {
-    const importTaskId = initial && (state.importTracker?.taskId || rememberedReaderImportTaskId());
-    const result = initial
-      ? importTaskId
-        ? await api(`/api/import/tasks/${importTaskId}`, { method: "DELETE" })
-        : await api(articleApiPath(article, "/tts"), { method: "DELETE" })
-      : await api(articleApiPath(article, "/reread"), { method: "DELETE" });
-    if (initial && state.importTracker?.taskId === importTaskId) state.importTracker.cancelled = true;
-    if (initial) forgetReaderImportTask();
+    const result = await api(articleApiPath(article, initial ? "/tts" : "/reread"), { method: "DELETE" });
     stopRereadTracking();
     openArticle(result.article || await api(articleApiPath(article)), target);
     toast(result.status === "cancelled"
-      ? initial ? "日刊ニュースの生成を中止しました" : "読み返し音声の生成を中止しました"
+      ? "朗読音声の生成を中止しました"
       : "実行中の生成はありません");
   } catch (error) {
-    setRereadTask(root, "failed", initial ? "日刊ニュースの生成を中止できませんでした。" : "読み返し音声を中止できませんでした。", "", error.message);
+    setRereadTask(root, "failed", "朗読音声の生成を中止できませんでした。", "", error.message);
     if (button) button.disabled = false;
     if (taskButton) taskButton.disabled = false;
   }
@@ -2236,7 +2237,7 @@ function startRereadTracking(article, target, root, mode = "reread") {
 }
 
 async function pollReread(articleReference, target, root, tracker) {
-  for (let attempt = 0; attempt < 600; attempt += 1) {
+  while (!tracker.cancelled && root.isConnected) {
     await new Promise(resolve => setTimeout(resolve, 800));
     if (tracker.cancelled) return;
     const article = await api(articleApiPath(articleReference));
@@ -2244,7 +2245,12 @@ async function pollReread(articleReference, target, root, tracker) {
     const current = Number(article.audio_progress || 0);
     const total = Number(article.audio_total || (article.paragraphs || []).length || 0);
     const initial = tracker.mode === "initial";
-    const completedStatuses = initial ? ["ready", "browser", "disabled"] : ["ready", "browser"];
+    if (["cancelled", "interrupted", "failed"].includes(article.audio_task_status)) {
+      openArticle(article, target);
+      if (article.audio_task_status !== "cancelled") setRereadTask($(".article-detail", target), "failed", article.audio_task_detail || "朗読生成が中断されました。再試行してください。");
+      return;
+    }
+    const completedStatuses = ["ready", "browser", "disabled"];
     if (completedStatuses.includes(article.audio_status)) {
       openArticle(article, target);
       toast(initial ? "読み上げ音声の準備が完了しました" : "読み返し音声の準備が完了しました");
@@ -2257,9 +2263,6 @@ async function pollReread(articleReference, target, root, tracker) {
     if (initial && article.audio_status === "failed") throw new Error("読み上げ音声の生成に失敗しました。");
     if (!initial && article.audio_status === "replace_failed") throw new Error("読み返しの生成に失敗しました。元の音声は残されています。");
   }
-  throw new Error(tracker.mode === "initial"
-    ? "読み上げ音声はバックグラウンドで生成中です。しばらくしてから記事を開き直してください。"
-    : "読み返しはバックグラウンドで続いています。しばらくしてから記事を開き直してください。");
 }
 
 async function retranslateArticle(articleId, target, root) {
@@ -2336,9 +2339,11 @@ async function loadDaily(date = null) {
       : "いま起きていることを、ひとつずつ。";
     const list = $("#daily-list");
     if (!snapshot.articles.length) { list.innerHTML = '<p class="empty">本日のニュースを準備しています。まもなくここに並びます。</p>'; }
-    else list.replaceChildren(...snapshot.articles.map(article => {
-      const card = document.createElement("article");
+    else {
+      const cards = snapshot.articles.map(article => {
+      const card = list.querySelector(`[data-article-id="${Number(article.id)}"]`) || document.createElement("article");
       card.className = "news-card";
+      card.dataset.articleId = String(article.id);
       const current = Number(article.audio_progress || 0);
       const total = Number(article.audio_total || 0);
       const firstTts = ["pending", "processing"].includes(article.audio_status);
@@ -2348,10 +2353,21 @@ async function loadDaily(date = null) {
       const audioState = firstTts || rereading
         ? `<div class="card-tts-progress" role="status"><div><span>${escapeText(taskDetail)}</span><span>${total ? `${current}/${total}` : "準備中"}</span></div><progress max="${Math.max(1, total)}" value="${current}"></progress></div>`
         : `<p class="muted">假名 · ${article.translated_paragraphs?.length ? "翻译 · " : ""}${audioLabel}</p>`;
-      card.innerHTML = `<span class="source">${escapeText(article.source_name)}</span><h3>${escapeText(article.title)}</h3>${audioState}<button>阅读する</button>`;
+      if (!card.querySelector("button")) {
+        card.innerHTML = '<span class="source"></span><h3></h3><div class="card-audio-state"></div><button>阅读する</button>';
+      }
+      $(".source", card).textContent = article.source_name;
+      $("h3", card).textContent = article.title;
+      const audioStateNode = $(".card-audio-state", card);
+      if (audioStateNode.dataset.state !== audioState) {
+        audioStateNode.innerHTML = audioState;
+        audioStateNode.dataset.state = audioState;
+      }
       $("button", card).onclick = () => openArticleInReader(article);
       return card;
-    }));
+      });
+      if (cards.length !== list.children.length || cards.some((card, index) => card !== list.children[index])) list.replaceChildren(...cards);
+    }
     select.onchange = () => {
       rememberDailyDate(select.value);
       loadDaily(select.value);
@@ -3689,7 +3705,7 @@ function bookAudioPlayerMarkup() {
 }
 
 function bookVoiceOptions(chapter) {
-  const options = [new Option(`ブラウザー音声（${state.browserVoiceLabel || "ブラウザー"}）`, "browser")];
+  const options = [new Option("默认声线", "model"), new Option(`ブラウザー音声（${state.browserVoiceLabel || "ブラウザー"}）`, "browser")];
   state.voices.forEach(voice => options.push(new Option(voice.name, `voice:${voice.id}`)));
   const selected = chapter.voice_mode === "voice" ? `voice:${chapter.voice_id}` : chapter.voice_mode;
   options.forEach(option => { option.selected = option.value === selected; });
@@ -4259,7 +4275,7 @@ function setupBookAudio(payload, root) {
       state.browserSpeech.index = Math.max(0, Math.min(state.browserSpeech.text.length, Number(payload.book.progress?.audio_time || 0)));
       renderBrowserSpeech(state.browserSpeech);
     }
-  } else if (payload.chapter.audio?.url) {
+  } else if (payload.chapter.voice_mode !== "none" && payload.chapter.audio?.url) {
     audio.src = mobileMediaUrl(payload.chapter.audio.url);
     setupNativeArticlePlayer({ paragraphs, audio_segments: payload.chapter.audio.segments || [] }, root, audio);
     if (Number(payload.book.progress?.chapter_id) === Number(payload.chapter.id) && payload.book.progress?.audio_time) audio.currentTime = Number(payload.book.progress.audio_time);
@@ -4269,11 +4285,14 @@ function setupBookAudio(payload, root) {
 
 async function startBookTaskTracking(taskId, root) {
   const taskBox = $(".book-task", root);
+  const trackedBook = state.libraryChapter;
+  const generateButton = $(".generate-book-audio", root);
+  generateButton.disabled = true;
   state.libraryTaskId = taskId;
   taskBox.dataset.taskId = taskId;
   closeBookSettings(root);
   try {
-    while (root.isConnected && state.currentView === "library") {
+    while (root.isConnected && state.currentView === "library" && state.libraryChapter === trackedBook) {
       const task = await api(`/api/books/tasks/${taskId}`);
       taskBox.hidden = false;
       $("strong", taskBox).textContent = task.message || "処理しています…";
@@ -4285,7 +4304,7 @@ async function startBookTaskTracking(taskId, root) {
         if (task.status === "completed") {
           toast("処理が完了しました。");
           await navigateBookChapter(state.libraryChapter.book.id, state.libraryChapter.chapter.id, { historyMode: "replace" });
-        } else if (task.status === "failed") {
+        } else if (["failed", "interrupted"].includes(task.status)) {
           toast(task.message, true);
         } else if (task.status === "cancelled") {
           taskBox.hidden = true;
@@ -4297,12 +4316,13 @@ async function startBookTaskTracking(taskId, root) {
   } catch (error) {
     toast(error.message, true);
   } finally {
+    if (state.libraryChapter === trackedBook) generateButton.disabled = false;
     if (state.libraryTaskId === taskId) state.libraryTaskId = null;
     if (taskBox.dataset.taskId === taskId) delete taskBox.dataset.taskId;
   }
 }
 
-async function generateBookChapterAudio(root, force = false) {
+async function generateBookChapterAudio(root) {
   const payload = state.libraryChapter;
   const value = $(".book-voice", root).value;
   const [mode, rawId] = value.split(":");
@@ -4314,7 +4334,7 @@ async function generateBookChapterAudio(root, force = false) {
     progress.max = 1;
     progress.value = 0;
     $(".cancel-book-task", taskBox).hidden = false;
-    const result = await api(`/api/books/${payload.book.id}/chapters/${payload.chapter.id}/reread`, { method: "POST", body: JSON.stringify({ mode, voice_id: rawId ? Number(rawId) : null, force }) });
+    const result = await api(`/api/books/${payload.book.id}/chapters/${payload.chapter.id}/reread`, { method: "POST", body: JSON.stringify({ mode, voice_id: rawId ? Number(rawId) : null }) });
     if (result.status === "browser") {
       await navigateBookChapter(payload.book.id, payload.chapter.id, { historyMode: "replace" });
       toast("ブラウザー音声を設定しました。");
@@ -4524,7 +4544,7 @@ async function renderBookReader(payload, { blockId = null, blockIndex = null, an
   root.querySelectorAll("[data-language-mode]").forEach(button => { button.onclick = () => setBookLanguageMode(root, button.dataset.languageMode); });
   $(".previous-chapter", root).onclick = () => previous && navigateBookChapter(payload.book.id, previous.id);
   $(".next-chapter", root).onclick = () => next && navigateBookChapter(payload.book.id, next.id);
-  $(".generate-book-audio", root).onclick = () => generateBookChapterAudio(root, payload.chapter.audio?.status === "ready");
+  $(".generate-book-audio", root).onclick = () => generateBookChapterAudio(root);
   $(".enhance-book-chapter", root).onclick = async () => {
     try {
       const result = await api(`/api/books/${payload.book.id}/chapters/${payload.chapter.id}/enhance`, { method: "POST" });
@@ -4536,7 +4556,7 @@ async function renderBookReader(payload, { blockId = null, blockIndex = null, an
     let taskId = bookTask.dataset.taskId || state.libraryTaskId;
     if (!taskId) {
       const tasks = await api("/api/books/tasks");
-      const running = (tasks.tasks || []).find(task => Number(task.chapter_id) === Number(payload.chapter.id) && ["queued", "running", "cancelling"].includes(task.status));
+      const running = (tasks.tasks || []).find(task => Number(task.book_id) === Number(payload.book.id) && Number(task.chapter_id) === Number(payload.chapter.id) && ["queued", "running", "cancelling"].includes(task.status));
       taskId = running?.id || "";
     }
     if (!taskId) {
@@ -4568,8 +4588,13 @@ async function renderBookReader(payload, { blockId = null, blockIndex = null, an
   window.addEventListener("scroll", state.libraryScrollHandler, { passive: true });
   $(".book-chapter-body", root).addEventListener("scroll", state.libraryScrollHandler, {passive:true});
   setupBookAudio(payload, root);
+  if (["failed", "interrupted"].includes(payload.chapter.audio_task?.status)) {
+    bookTask.hidden = false;
+    $(".reread-task-label", bookTask).textContent = payload.chapter.audio_task.message;
+    $(".cancel-book-task", bookTask).hidden = true;
+  }
   api("/api/books/tasks").then(tasks => {
-    const running = (tasks.tasks || []).find(task => Number(task.chapter_id) === Number(payload.chapter.id) && ["queued", "running", "cancelling"].includes(task.status));
+    const running = (tasks.tasks || []).find(task => Number(task.book_id) === Number(payload.book.id) && Number(task.chapter_id) === Number(payload.chapter.id) && ["queued", "running", "cancelling"].includes(task.status));
     if (running) startBookTaskTracking(running.id, root);
   }).catch(() => { });
   requestAnimationFrame(() => {
@@ -4909,14 +4934,20 @@ showView(initialView, { historyMode: "replace", resetReader: false });
   document.querySelector('#settings-view .section-head').after(note);
   const addVoice = document.querySelector('#add-voice');
   addVoice.disabled = true;
-  addVoice.title = 'Irodori 服务尚未接入；可修改下方浏览器声线。';
+  addVoice.title = '正在检查 Irodori 服务…';
   const voiceHelp = document.createElement('p');
   voiceHelp.className = 'web-runtime-note';
-  voiceHelp.textContent = '当前使用浏览器日语语音。Irodori 自定义声线尚未接入。';
+  voiceHelp.textContent = '正在检查本地朗读服务…';
   document.querySelector('.voice-overview').before(voiceHelp);
   document.querySelector('.refresh-panel .panel-heading p').textContent = '校验文章文件并重建新闻、收藏索引；同步书架，备份后清理已删除书籍目录的记录。不会删除现有文件。';
   document.querySelector('.refresh-panel .status-badge').textContent = 'FILES → INDEX';
   api('/api/health').then(health => {
+    addVoice.disabled = !health.tts_details?.enabled;
+    addVoice.title = health.tts_details?.enabled ? '添加参考音频声线' : 'Irodori 尚未启用。';
+    voiceHelp.textContent = health.tts_details?.enabled
+      ? 'Irodori 本地朗读 · 新闻保存后自动生成，书籍按章节生成。模型空闲 5 分钟后释放显存。'
+      : '当前使用浏览器日语语音。Irodori 尚未启用。';
+    if (health.tts_details?.error) voiceHelp.textContent += ` ${health.tts_details.error}`;
     note.textContent += health.translation_configured ? ' 翻译已配置，处理时会发送正文到 DeepSeek。' : ' 翻译未配置，章节处理仅生成假名。';
   }).catch(() => {});
 
