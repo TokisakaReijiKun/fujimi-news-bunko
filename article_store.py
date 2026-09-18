@@ -82,6 +82,10 @@ def directory_name(title, aid, max_length=65):
     return name
 
 
+def edition_storage_key(url, day):
+    return f'edition:{day}:{url}'
+
+
 @contextmanager
 def db_connection(path):
     connection = sqlite3.connect(path, timeout=30)
@@ -97,6 +101,7 @@ class ArticleStore:
     def __init__(self, data, initialize=True):
         self.data = Path(data).resolve()
         self.root = self.data / 'articles'
+        self.bookmarks = self.data / 'bookmarks'
         self.db_path = self.data / 'fujimi.sqlite3'
         self.transactions = self.data / 'diagnostics/transactions'
         with _GUARD:
@@ -104,7 +109,8 @@ class ArticleStore:
         self._local = threading.local()
         if initialize:
             check_database_layout(self.data)
-            for folder in (self.root, self.db_path.parent, self.transactions, self.data/'backups', self.data/'diagnostics/reports'):
+            for folder in (self.root, self.bookmarks, self.db_path.parent, self.transactions,
+                           self.data/'backups', self.data/'diagnostics/reports'):
                 folder.mkdir(parents=True, exist_ok=True)
             with self.locked():
                 self.recover()
@@ -283,10 +289,29 @@ class ArticleStore:
             if not row: raise LookupError('文章不存在。')
             return self._read(safe_path(self.root, row['directory']))
 
-    def find_url(self, url):
+    def find_url(self, url, day=None):
         with self.locked(), db_connection(self.db_path) as db:
+            if day:
+                row = db.execute('SELECT id FROM articles WHERE url=?',(edition_storage_key(url,day),)).fetchone()
+                if row:
+                    return row['id']
+                # Legacy rows used the canonical URL as their unique key. Reuse
+                # one only when its physical article directory belongs to this day.
+                row = db.execute('SELECT id,directory FROM articles WHERE url=?',(url,)).fetchone()
+                if row and Path(row['directory']).parts[0] == day:
+                    return row['id']
+                return None
             row = db.execute('SELECT id FROM articles WHERE url=?',(url,)).fetchone()
-            return row['id'] if row else None
+            if row:
+                return row['id']
+            rows = db.execute('SELECT id,directory FROM articles ORDER BY id DESC').fetchall()
+        for row in rows:
+            try:
+                if self._read(safe_path(self.root,row['directory'])).get('url') == url:
+                    return row['id']
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+        return None
 
     def ids(self, day=None, bookmarked=False):
         with self.locked(), db_connection(self.db_path) as db:
@@ -300,18 +325,39 @@ class ArticleStore:
         with self.locked(), db_connection(self.db_path) as db:
             return [r[0] for r in db.execute('SELECT DISTINCT day FROM article_days ORDER BY day DESC')]
 
-    def create(self, article, day):
+    def create(self, article, day, files=None):
         with self.locked():
-            key = article.get('storage_key') or article.get('url') or 'local:'+uuid.uuid4().hex
-            existing = self.find_url(key)
+            url = article.get('url')
+            if url:
+                key = edition_storage_key(url,day)
+                existing = self.find_url(url,day)
+            else:
+                key = article.get('storage_key') or 'local:'+uuid.uuid4().hex
+                existing = self.find_url(key)
             if existing:
-                self.add_day(existing,day)
                 return self.load(existing)
             with db_connection(self.db_path) as db:
                 aid = db.execute('SELECT next_id FROM article_sequence WHERE singleton=1').fetchone()[0]
                 db.execute('UPDATE article_sequence SET next_id=next_id+1 WHERE singleton=1')
             a = dict(article,id=aid,storage_key=key,edition_dates=[day],bookmarked=False)
-            return self.save(a, directory=self.allocate_directory(a,day))
+            return self.save(a, directory=self.allocate_directory(a,day), files=files)
+
+    def copy_to_day(self, aid, day, created_at=None):
+        with self.locked():
+            source = self.load(aid)
+            if source.get('url'):
+                existing = self.find_url(source['url'],day)
+                if existing:
+                    return self.load(existing)
+            folder = safe_path(self.root,source['_directory'])
+            files = {item['path']:safe_path(folder,item['path']) for item in source['_assets']}
+            article = deepcopy(source)
+            for key in ('id','storage_key','_directory','_revision'):
+                article.pop(key,None)
+            article.pop('bookmark_directory',None)
+            article['created_at'] = created_at or f'{day}T00:00:00+08:00'
+            article['bookmarked'] = False
+            return self.create(article,day,files=files)
 
     def _texts(self, article):
         files, specs = {}, {}
@@ -450,7 +496,56 @@ class ArticleStore:
 
     def patch(self, aid, updates):
         with self.locked():
+            if set(updates) == {'bookmarked'}:
+                return self.set_bookmarked(aid,bool(updates['bookmarked']))
             a = self.load(aid); a.update(updates); return self.save(a)
+
+    def _bookmark_copy(self, aid):
+        for directory in self.bookmarks.iterdir():
+            manifest = directory/'article.json'
+            if not directory.is_dir() or not manifest.is_file():
+                continue
+            try:
+                if json.loads(manifest.read_text(encoding='utf-8')).get('article',{}).get('id') == aid:
+                    return directory
+            except (OSError, ValueError, json.JSONDecodeError):
+                continue
+        return None
+
+    def _bookmark_destination(self, article):
+        maximum = min(65, 225-len(str(self.bookmarks))-45)
+        name = directory_name(article['title'],article['id'],maximum)
+        destination = self.bookmarks/name
+        if destination.exists():
+            suffix = f"--{article['id']}"
+            name = name[:maximum-len(suffix)].rstrip(' .')+suffix
+            destination = self.bookmarks/name
+        return destination
+
+    def set_bookmarked(self, aid, marked):
+        with self.locked():
+            article = self.load(aid)
+            copy = self._bookmark_copy(aid)
+            if marked and article.get('bookmarked') and copy:
+                return article
+            article['bookmarked'] = marked
+            saved = self.save(article)
+            try:
+                if marked:
+                    if copy:
+                        return saved
+                    source = safe_path(self.root,saved['_directory'])
+                    destination = self._bookmark_destination(saved)
+                    stage = self.bookmarks/f'.{uuid.uuid4().hex}.tmp'
+                    shutil.copytree(source,stage)
+                    replace_transaction_directory(stage,destination)
+                elif copy:
+                    shutil.rmtree(copy)
+            except Exception:
+                saved['bookmarked'] = not marked
+                self.save(saved)
+                raise
+            return self.load(aid)
 
     def add_day(self, aid, day):
         with self.locked():

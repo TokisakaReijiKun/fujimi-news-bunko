@@ -4889,24 +4889,30 @@ showView(initialView, { historyMode: "replace", resetReader: false });
     if (state.currentView === 'settings') { loadVoices(); loadNewsSources(); }
   });
   document.documentElement.classList.remove('mobile-app-booting');
-  document.querySelector('#article-url').setAttribute('aria-label', '新闻文章网址');
-  const workspace = document.querySelector('#reader-import-workspace');
-  const panel = document.createElement('details');
-  panel.className = 'web-text-import';
-  panel.innerHTML = `<summary>本文を貼り付ける · 粘贴正文</summary>
-    <form id="web-text-form">
-      <label>标题<input name="title" required maxlength="500" autocomplete="off"></label>
-      <label>日文正文<textarea name="text" required placeholder="ここに読みたい文章を貼り付けてください。"></textarea></label>
-      <p class="web-runtime-note">自动添加假名并保存到本地。可选中正文中的词语查词，也可使用浏览器朗读。</p>
-      <p class="web-import-error" role="alert" hidden></p>
-      <div class="web-form-actions"><button type="submit">保存并阅读</button><button type="button" class="quiet web-example">填入示例</button></div>
-    </form>`;
-  workspace.append(panel);
-  panel.querySelector('.web-example').onclick = () => {
-    panel.querySelector('[name="title"]').value = '読書の時間（操作示例）';
-    panel.querySelector('[name="text"]').value = '朝の静かな時間に、本を開きました。窓の外では、小さな鳥が歌っています。\n\n知らない言葉に出会ったら、辞書で調べてみましょう。一つの言葉から、新しい世界が広がります。\n\nこれは閲読室の使い方を確認するための例文です。実際のニュースではありません。';
+  const textDialog = document.querySelector('#web-text-dialog');
+  const textDialogTrigger = document.querySelector('#open-web-text-dialog');
+  const textForm = document.querySelector('#web-text-form');
+  const closeTextDialog = () => { if (textDialog.open) textDialog.close(); };
+  textDialogTrigger.onclick = () => {
+    textDialogTrigger.setAttribute('aria-expanded', 'true');
+    textDialog.showModal();
+    requestAnimationFrame(() => textForm.querySelector('[name="title"]').focus());
   };
-  panel.querySelector('form').onsubmit = async event => {
+  document.querySelector('#close-web-text-dialog').onclick = closeTextDialog;
+  document.querySelector('#cancel-web-text-dialog').onclick = closeTextDialog;
+  textDialog.addEventListener('close', () => {
+    textDialogTrigger.setAttribute('aria-expanded', 'false');
+    textDialogTrigger.focus({ preventScroll: true });
+  });
+  textDialog.addEventListener('click', event => { if (event.target === textDialog) closeTextDialog(); });
+  const textExample = textDialog.querySelector('.web-example');
+  textExample.onclick = () => {
+    textForm.querySelector('[name="title"]').value = textExample.dataset.exampleTitle;
+    const body = textForm.querySelector('[name="text"]');
+    body.value = textExample.dataset.exampleText;
+    body.focus();
+  };
+  textForm.onsubmit = async event => {
     event.preventDefault();
     const form = event.currentTarget;
     const button = form.querySelector('[type="submit"]');
@@ -4917,8 +4923,8 @@ showView(initialView, { historyMode: "replace", resetReader: false });
     try {
       const values = new FormData(form);
       const article = await api('/api/articles/text', {method: 'POST', body: JSON.stringify({title: values.get('title'), text: values.get('text')})});
+      closeTextDialog();
       openArticle(article, document.querySelector('#reader-result'));
-      panel.open = false;
       toast('已保存，可选词查词或开始朗读。');
     } catch (e) {
       error.textContent = e.message;

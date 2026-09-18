@@ -88,6 +88,18 @@ class ProviderParsingTests(unittest.TestCase):
         self.assertNotIn('article-box-heading',str(soup))
         self.assertEqual(soup.get_text('\n'), '調査報告書\n前半: \nPDF\n後半: 危険')
 
+    def test_nikkei_drops_company_entity_links_but_keeps_content_links(self):
+        report='https://partsa.nikkei.com/report.pdf'
+        blob=page('nikkei').replace(
+            '第一段。'.encode(),
+            ('<a href="/nkd/company/?scode=9502">中部電力</a>は報告書を公表した。'
+             '<a href="'+report+'">報告書本文</a>').encode(),1)
+        result=nikkei.extract_page(blob,URLS['nikkei'])
+        self.assertEqual(result['paragraphs'][0],'中部電力は報告書を公表した。報告書本文')
+        self.assertEqual(result['paragraph_links'][0],[{
+            'start':14,'end':19,'url':report,
+        }])
+
     def test_yahoo_lead_survives_embedded_related_photo_link(self):
         blob=page('yahoo').replace('第一段。\n\n第二段。'.encode(),
             '第一段。\n\n<a href="https://example.com/photo" data-cl-params="_cl_vmodule:related;_cl_link:photo">推薦</a>\n\n第二段。'.encode())

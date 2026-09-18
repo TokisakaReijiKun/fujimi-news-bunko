@@ -700,7 +700,7 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
     def bookmark_article(aid):
         article(aid)
         marked = request.method == 'POST'
-        store.patch(aid, {'bookmarked': marked})
+        store.set_bookmarked(aid, marked)
         return jsonify(bookmarked=marked, ok=True)
 
     @app.post('/api/articles/text')

@@ -60,7 +60,13 @@
       <section id="reader-view" class="view" hidden>
         <div class="section-head"><div><p class="section-kicker">READING ROOM</p><h2>閲読室</h2><p>ひとつの記事を、ことばから深く読む。</p></div></div>
         <div id="reader-import-workspace" class="reader-import-workspace">
-          <form id="import-form" class="url-form"><input id="article-url" type="url" placeholder="https://news.web.nhk/newsweb/..." required><button type="submit">导入并处理</button></form>
+          <form id="import-form" class="url-form">
+            <input id="article-url" type="url" placeholder="https://news.web.nhk/newsweb/..." aria-label="新闻文章网址" required>
+            <button type="submit" class="reader-url-submit">导入并处理</button>
+            <button id="open-web-text-dialog" class="reader-text-trigger icon-tool" type="button" aria-label="粘贴正文" aria-controls="web-text-dialog" aria-haspopup="dialog" aria-expanded="false" title="本文を貼り付ける · 粘贴正文">
+              <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6"></path><path d="M13 3h-2a2 2 0 0 0-2 2 2 2 0 0 0 2 2h2a2 2 0 0 0 2-2 2 2 0 0 0-2-2Z"></path><path d="M11 14h10m-4-4 4 4-4 4"></path></svg>
+            </button>
+          </form>
           <div id="reader-import-notice" class="reader-import-notice" role="status" aria-live="polite" hidden>
             <div class="reader-import-status-line"><span class="reader-import-message"></span><span class="reader-import-count"></span></div>
             <progress class="reader-import-progress" max="1" value="0"></progress>
@@ -287,6 +293,28 @@
       </section>
     </main>
   </div>
+
+  <dialog id="web-text-dialog" class="web-text-dialog" aria-labelledby="web-text-dialog-title">
+    <form id="web-text-form">
+      <header class="dialog-heading web-text-dialog-heading">
+        <div><p class="section-kicker">TEXT IMPORT</p><h3 id="web-text-dialog-title">ことばを置いて、読む時間へ。</h3></div>
+        <button id="close-web-text-dialog" type="button" class="icon-button" aria-label="关闭正文导入">
+          <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+        </button>
+      </header>
+      <div class="web-text-fields">
+        <label><span>標題 · 标题</span><input name="title" required maxlength="500" autocomplete="off"></label>
+        <label><span>本文 · 日文正文</span><textarea name="text" required placeholder="ここに読みたい文章を貼り付けてください。"></textarea></label>
+      </div>
+      <p class="web-runtime-note">自动添加假名并保存到本地。可选中正文中的词语查词，也可使用浏览器朗读。</p>
+      <p class="web-import-error" role="alert" hidden></p>
+      <footer class="web-form-actions">
+        <button id="cancel-web-text-dialog" type="button" class="quiet">取消</button>
+        <button type="button" class="quiet web-example" data-example-title="雪国（川端康成）" data-example-text="国境の長いトンネルを抜けると雪国であった。夜の底が白くなった。信号所に汽車が止まった。&#10;内側の座席から娘が立って来て、島村の前のガラス窓を落とした。雪の冷気が流れ込んだ。娘は窓いっぱいに乗り出して、遠くへ叫ぶように、&#10;「駅長さん、駅長さん」&#10;明かりをさげてゆっくり吹きを踏んできた男は、襟巻で鼻の上まで包み、耳に帽子の毛皮を垂れていた。&#10;もうそんな寒さかと島村は外を眺めると鉄道の官舎らしいバラックが山裾に寒々と散らばっているだけで、雪の色はそこまで行かぬうちに闇に飲まれていた。&#10;「駅長さん、私です、御機嫌よろしゅうございます」&#10;「ああ、葉子さんじゃないか。お帰りかい。また寒くなったよ」&#10;「弟が今度こちらに勤めさせていただいておりますのですってね。お世話さまですわ」&#10;「こんなところ、今に寂しくて参るだろうよ。若いのに可哀想だな」&#10;「ほんの子供ですから、駅長さんからよく教えてやっていただいて、よろしくお願いいたしますわ」&#10;「よろしい。元気で働いてるよ。これからいそがしくなる。去年は大雪だったよ。よく雪崩れてね、汽車が立往生するんで、村も炊出しがいそがしかったよ」&#10;「駅長さんずいぶん厚着に見えますわ。弟の手紙には、まだチョッキも着ていないようなことを書いてありましたけれど」&#10;私は着物を四枚重ねだ。若い者は寒いと酒ばがり飲んでいるよ。それでごろごろあすこにぶっ倒れてるのさ、風邪を引いてね」&#10;駅長は宿舎の方へ手の明かりを振り向けた。&#10;「弟もお酒をいただきますでしょうか」&#10;「いや」&#10;「駅長さんもうお帰りですの？」&#10;「私は怪我をして、医者に通ってるんだ」&#10;「まあ。いけませんわ」&#10;和服に外套の駅長は寒い立話をさっさと切り上げたいらしく、もう後姿を見せながら、&#10;「それじゃまあ大事にいらっしゃい」&#10;「駅長さん、弟は今出ておりませんの？」と葉子は雪の上を目探しして、&#10;「駅長さん、弟をよく見てやって、お願いです」&#10;悲しいほど美しい声であった。高い響きのまま夜の雪から木魂して来そうだった。&#10;汽車が動き出しても、彼女は窓から胸を入れなかった。そうして線路の下を歩いている駅長に追いつくと、&#10;「駅長さあん、今度の休みの日に家へお帰りって、弟に言ってやって下さあい」&#10;「はあい」と、駅長が声を張り上げた。&#10;葉子は窓をしめて、赤らんだ頬に両手をあてた。">填入示例</button>
+        <button type="submit">保存并阅读</button>
+      </footer>
+    </form>
+  </dialog>
 
   <aside id="selection-lookup" class="selection-lookup" role="dialog" aria-label="划词查询" hidden>
     <header class="selection-lookup-head">

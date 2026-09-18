@@ -165,6 +165,11 @@ def extract_page(blob, url):
             target=urljoin(url,anchor['href']);parsed=urlparse(target)
             if start<0:continue
             cursor=start+len(label)
+            # Nikkei automatically links company names to its stock/company
+            # database. Keep the prose, but do not turn those entity mentions
+            # into reader links. Explicit report and source links remain.
+            if parsed.hostname in ('www.nikkei.com','nikkei.com') and parsed.path.startswith('/nkd/company/'):
+                continue
             if parsed.scheme in ('https','http') and parsed.hostname and not parsed.username and not parsed.password:
                 items.append({'start':start,'end':cursor,'url':target})
         links.append(items)

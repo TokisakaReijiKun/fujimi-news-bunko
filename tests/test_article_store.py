@@ -28,8 +28,8 @@ class StoreTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_files_authority_roundtrip_and_date_memberships(self):
-        a=self.store.create(sample(),'2026-09-08')
+    def test_files_authority_roundtrip_and_date_copies(self):
+        a=self.store.create(sample(),'2026-09-07')
         self.assertTrue(a['_directory'].startswith('2026-09-07/'))
         folder=self.store.root/a['_directory']
         self.assertTrue((folder/'audio').is_dir());self.assertTrue((folder/'media').is_dir())
@@ -38,10 +38,29 @@ class StoreTests(unittest.TestCase):
         self.assertNotIn('paragraphs',m['article']);self.assertNotIn('full_translation',m['article'])
         self.assertEqual(a['translated_paragraphs'],['第一段。',''])
         old_path=a['_directory'];a['title']='新しいタイトル';self.store.save(a)
-        again=self.store.create(sample(),'2026-09-09')
-        self.assertEqual(again['id'],a['id']);self.assertEqual(again['_directory'],old_path)
-        self.assertEqual(self.store.days(),['2026-09-09','2026-09-08'])
-        self.assertEqual(len(self.store.ids()),1)
+        same_day=self.store.create(sample(),'2026-09-07')
+        self.assertEqual(same_day['id'],a['id']);self.assertEqual(same_day['_directory'],old_path)
+        next_day=sample();next_day['created_at']='2026-09-08T08:00:00+08:00'
+        again=self.store.create(next_day,'2026-09-08')
+        self.assertNotEqual(again['id'],a['id'])
+        self.assertTrue(again['_directory'].startswith('2026-09-08/'))
+        self.assertEqual(a['edition_dates'],['2026-09-07'])
+        self.assertEqual(again['edition_dates'],['2026-09-08'])
+        self.assertEqual(self.store.days(),['2026-09-08','2026-09-07'])
+        self.assertEqual(len(self.store.ids()),2)
+
+    def test_copy_to_day_creates_independent_article_with_assets(self):
+        article=self.store.create(sample(),'2026-09-07')
+        media=self.data/'fixture.jpg';media.write_bytes(b'image bytes')
+        article['_assets']=[{'path':'media/image-001.jpg','kind':'image'}]
+        article['image_paths']=['media/image-001.jpg']
+        article=self.store.save(article,files={'media/image-001.jpg':media})
+        copied=self.store.copy_to_day(article['id'],'2026-09-18','2026-09-18T16:00:00+08:00')
+        self.assertNotEqual(copied['id'],article['id'])
+        self.assertTrue(copied['_directory'].startswith('2026-09-18/'))
+        self.assertEqual(copied['edition_dates'],['2026-09-18'])
+        self.assertEqual(self.store.asset(copied['id'],'media/image-001.jpg').read_bytes(),b'image bytes')
+        self.assertEqual(self.store.load(article['id'])['edition_dates'],['2026-09-07'])
 
     def test_names_conflicts_and_manual_change_detection(self):
         a=self.store.create(sample('CON.','https://example.com/1'),'2026-09-07')

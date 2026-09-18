@@ -54,6 +54,32 @@ class WebTests(unittest.TestCase):
             with self.client.get(url) as response:
                 self.assertEqual(response.status_code, 200, url)
 
+    def test_reader_manual_text_import_uses_an_accessible_dialog_trigger(self):
+        from bs4 import BeautifulSoup
+
+        with self.client.get('/') as response:
+            page = BeautifulSoup(response.data, 'html.parser')
+        trigger = page.select_one('#open-web-text-dialog')
+        dialog = page.select_one('dialog#web-text-dialog')
+        self.assertIsNotNone(trigger)
+        self.assertEqual(trigger.get('aria-controls'), 'web-text-dialog')
+        self.assertEqual(trigger.get('aria-haspopup'), 'dialog')
+        self.assertTrue(trigger.get('aria-label'))
+        self.assertIsNotNone(dialog)
+        self.assertEqual(dialog.get('aria-labelledby'), 'web-text-dialog-title')
+        self.assertIsNotNone(dialog.select_one('form#web-text-form textarea[name="text"]'))
+        self.assertEqual(dialog.select_one('#web-text-dialog-title').get_text(strip=True), 'ことばを置いて、読む時間へ。')
+        example = dialog.select_one('button.web-example')
+        self.assertEqual(example.get('data-example-title'), '雪国（川端康成）')
+        example_text = example.get('data-example-text')
+        self.assertTrue(example_text.startswith('国境の長いトンネルを抜けると雪国であった。夜の底が白くなった。信号所に汽車が止まった。'))
+        self.assertIn('「駅長さん、私です、御機嫌よろしゅうございます」', example_text)
+        self.assertIn('悲しいほど美しい声であった。', example_text)
+        self.assertTrue(example_text.rstrip().endswith('葉子は窓をしめて、赤らんだ頬に両手をあてた。'))
+        self.assertGreaterEqual(len(example_text.splitlines()), 20)
+        self.assertNotIn('\n\n', example_text)
+        self.assertNotIn('&#x20;', example_text)
+
     def test_dictionary_real_entries_and_romaji(self):
         self.assertEqual(self.client.get('/api/dictionary/stats').json['entries'], 159396)
         for query in ('新聞', 'しんぶん', 'shinbun', '报纸'):
@@ -75,10 +101,18 @@ class WebTests(unittest.TestCase):
         aid = a['id']
         self.client.post(f'/api/articles/{aid}/bookmarks')
         self.assertTrue(self.client.get(f'/api/articles/{aid}').json['bookmarked'])
+        bookmark_root = Path(self.temp.name) / 'bookmarks'
+        copies = [path for path in bookmark_root.iterdir() if path.is_dir()]
+        self.assertEqual(len(copies), 1)
+        self.assertEqual((copies[0] / 'original.txt').read_text(encoding='utf-8'), a['original_text'])
+        self.assertTrue((copies[0] / 'furigana.html').is_file())
+        self.assertTrue((copies[0] / 'media').is_dir())
+        self.assertTrue((copies[0] / 'audio').is_dir())
         restored = create_app(self.temp.name).test_client()
         self.assertTrue(restored.get(f'/api/articles/{aid}').json['bookmarked'])
         self.client.delete(f'/api/articles/{aid}/bookmarks')
         self.assertFalse(self.client.get(f'/api/articles/{aid}').json['bookmarked'])
+        self.assertEqual([path for path in bookmark_root.iterdir() if path.is_dir()], [])
 
     def test_epub_reading_order_sanitization_and_roundtrip(self):
         blob = fixture_epub()
