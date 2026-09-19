@@ -1455,6 +1455,12 @@ nav {
   border-top: 0;
 }
 
+/* 🌸 */
+#book-reader:not(.is-vertical) .book-chapter-body > .book-block.book-block-paragraph{
+  margin-bottom: 30px;
+}
+
+
 .book-chapter-body>.book-block[data-audio-index]:hover {
   background: transparent;
 }
@@ -4928,6 +4934,7 @@ dialog.book-editor-dialog {
 
 .book-block {
   margin-bottom: 1.9rem;
+  /* margin-bottom: 18.1rem; */
   padding-right: 2rem;
   scroll-margin-block: 20vh;
 }

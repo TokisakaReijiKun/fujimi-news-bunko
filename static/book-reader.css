@@ -16,13 +16,19 @@
 #book-reader.is-vertical .book-chapter-body { height:min(68vh,760px);overscroll-behavior-x:contain;scrollbar-width:thin; }
 #book-reader.is-vertical .book-block-image img { max-height:60vh;max-width:85vw;height:auto;width:auto; }
 .book-storage-note { font-size:13px;line-height:1.7;color:var(--muted); }
-/* Existing bilingual display follows the EPUB: translation, then original. */
-#book-reader[data-language-mode="parallel"] .book-source-pair { display:block; }
-#book-reader[data-language-mode="parallel"] .book-source-pair > .book-block-zh {
-  margin:0 0 .8em;padding:0;border:0;border-radius:0;background:none;box-shadow:none;
-  color:var(--ink);font-size:19px;line-height:1.9;
+/* Show the Japanese original before its Chinese translation. */
+#book-reader[data-language-mode="parallel"] .book-block-zh,
+#book-reader[data-language-mode="click"] .book-block-zh {
+  color:var(--ink);font-size:17px;line-height:1.9;
+  margin:.1em 0 0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;
 }
-#book-reader[data-language-mode="parallel"] .book-source-pair > .book-block-ja { opacity:.4; }
+#book-reader[data-language-mode="parallel"] .book-block-zh .translation-main,
+#book-reader[data-language-mode="click"] .book-block-zh.is-revealed .translation-main { opacity:.4; }
+#book-reader[data-language-mode="click"] .book-block-zh .translation-placeholder {
+  inset:0;justify-content:center;align-items:center;
+  font-size:17px;line-height:1.9;text-align:center;text-indent:0;
+}
+#book-reader[data-language-mode="parallel"] .book-source-pair { display:block; }
 #book-reader.is-frontmatter:not(.is-vertical) .book-block { padding:0;margin-bottom:1.2em;border:0; }
 #book-reader.is-frontmatter:not(.is-vertical) .book-block-ja,
 #book-reader.is-frontmatter:not(.is-vertical) .book-block-zh { text-indent:0; }

@@ -4038,7 +4038,8 @@ function setBookTranslationReveal(root, mode) {
       translationMain.textContent = element.dataset.translationText;
       translationPlaceholder = document.createElement("span");
       translationPlaceholder.className = "translation-placeholder";
-      translationPlaceholder.textContent = "クリックで訳文を表示";
+      // translationPlaceholder.textContent = "クリックで訳文を表示";
+      translationPlaceholder.textContent = "［クリックで表示］";
       element.replaceChildren(translationMain, translationPlaceholder);
     }
     if (!clickToReveal) element.dataset.translationRevealed = "false";
@@ -4202,7 +4203,10 @@ function renderBookBlocks(payload, root) {
   const bookmarks = new Set((payload.book.bookmarks || []).filter(item => Number(item.chapter_id) === Number(payload.chapter.id)).map(item => Number(item.block_index)));
   let audioIndex = 0;
   const body = $(".book-chapter-body", root);
-  body.replaceChildren(...(payload.book.parser_version >= 2 ? (payload.chapter.blocks || []) : normalizeBookBlocks(payload.chapter.blocks || [])).map(block => {
+  const blocks = payload.book.parser_version >= 2 ? (payload.chapter.blocks || []) : normalizeBookBlocks(payload.chapter.blocks || []);
+  // Temporarily disable spacer DOM generation. Remove this filter to restore EPUB blank lines.
+  // Keep stored blocks and their indexes unchanged so reading progress remains stable.
+  body.replaceChildren(...blocks.filter(block => block.kind !== "spacer").map(block => {
     const section = document.createElement("section");
     section.className = `paragraph book-block book-block-${block.kind}`;
     section.classList.toggle('book-source-pair', Boolean(block.bilingual_pair && block.text_zh));
@@ -4215,6 +4219,13 @@ function renderBookBlocks(payload, root) {
     const japanese = document.createElement("div");
     japanese.className = "book-block-ja";
     japanese.innerHTML = block.furigana_html || block.html || escapeText(block.text_ja || "");
+    // EPUB illustrations may be wrapped in navigation links; display them as static images.
+    japanese.querySelectorAll("a").forEach(link => {
+      if (!link.querySelector("img") || link.textContent.trim()) return;
+      for (const attribute of ["href", "data-book-href", "target", "rel", "tabindex", "role"]) {
+        link.removeAttribute(attribute);
+      }
+    });
     if (block.kind === "paragraph" && !(payload.book.parser_version >= 2)) normalizeBookParagraphIndent(japanese);
     japanese.querySelectorAll("ruby").forEach(ruby => {
       if (ruby.querySelector(":scope > rb")) return;
@@ -4243,8 +4254,7 @@ function renderBookBlocks(payload, root) {
         japanese.prepend(anchor);
       }
     }
-    if (block.bilingual_pair && block.text_zh) section.append(chinese, japanese);
-    else section.append(japanese, chinese);
+    section.append(japanese, chinese);
     if (!payload.chapter.is_frontmatter && !['image', 'spacer'].includes(block.kind)) section.append(bookmark);
     return section;
   }));
