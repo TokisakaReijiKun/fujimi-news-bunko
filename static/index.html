@@ -14,7 +14,7 @@
       if (isMobileApp) root.classList.add("mobile-app-booting");
     })();
   </script>
-  <link rel="stylesheet" href="/static/static.css?v=20260914-asahi-headings">
+  <link rel="stylesheet" href="/static/static.css?v=20260920-voice-count-right">
   <link rel="stylesheet" href="/static/book-reader.css?v=3">
 </head>
 <body>
@@ -132,11 +132,10 @@
         <div class="settings-stack">
           <section class="settings-panel voice-panel">
             <div class="panel-heading">
-              <div><h3>声の形</h3><p>管理首次朗读与読み返し使用的参考声线。</p></div>
+              <div class="voice-heading-copy"><h3>声の形</h3><div class="voice-heading-meta"><p>管理首次朗读与読み返し使用的参考声线。</p><div class="voice-overview"><span id="voice-count" role="status" aria-atomic="true">0 个声线</span></div></div></div>
               <div class="panel-actions"><span id="active-voice-badge" class="status-badge">未选择声线</span><button id="add-voice" type="button">添加声线</button></div>
             </div>
             <p id="voice-error" class="panel-notice error" role="alert" hidden></p>
-            <div class="voice-overview"><span id="voice-count">0 个声线</span></div>
             <div id="voice-list" class="voice-list"></div>
           </section>
 
@@ -414,6 +413,6 @@
     </article>
   </template>
   <script src="/static/book-reader.js?v=4"></script>
-  <script src="/static/main.js?v=20260919-bookmark-progress-end"></script>
+  <script src="/static/main.js?v=20260920-voice-count-heading"></script>
 </body>
 </html>

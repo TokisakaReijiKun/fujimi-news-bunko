@@ -2,12 +2,22 @@ import json
 from pathlib import Path
 import subprocess
 import unittest
+from bs4 import BeautifulSoup
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 class FrontendBehaviorTests(unittest.TestCase):
+    def test_voice_count_is_beside_the_voice_description(self):
+        page = BeautifulSoup((ROOT/'static/index.html').read_text(encoding='utf-8'), 'html.parser')
+        meta = page.select_one('.voice-panel .voice-heading-meta')
+        self.assertIsNotNone(meta)
+        self.assertEqual(meta.select_one(':scope > p').get_text(strip=True),
+                         '管理首次朗读与読み返し使用的参考声线。')
+        self.assertIsNotNone(meta.select_one(':scope > .voice-overview > #voice-count'))
+        self.assertIsNone(page.select_one('.voice-panel > .voice-overview'))
+
     def test_frontmatter_text_blocks_support_bookmarks(self):
         script = r'''
 const { bookBlockSupportsBookmark, chapterProgressPercent, selectBookReadingPosition } = require('./static/book-reader.js');

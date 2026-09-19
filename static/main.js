@@ -229,7 +229,9 @@ function enhanceAndroidSettingsLayout() {
     summary.innerHTML = "<span><strong>声线管理</strong><small>选择、修改或删除参考声线</small></span>";
     summary.append(voiceCount);
     disclosure.append(summary, voiceList);
-    voiceOverview.replaceWith(disclosure);
+    const voiceHeading = voiceOverview.closest('.panel-heading');
+    voiceOverview.remove();
+    voiceHeading?.after(disclosure);
   }
 
   const sourceList = $("#source-list");
@@ -4964,19 +4966,11 @@ showView(initialView, { historyMode: "replace", resetReader: false });
   const addVoice = document.querySelector('#add-voice');
   addVoice.disabled = true;
   addVoice.title = '正在检查 Irodori 服务…';
-  const voiceHelp = document.createElement('p');
-  voiceHelp.className = 'web-runtime-note';
-  voiceHelp.textContent = '正在检查本地朗读服务…';
-  document.querySelector('.voice-overview').before(voiceHelp);
   document.querySelector('.refresh-panel .panel-heading p').textContent = '校验文章文件并重建新闻、收藏索引；同步书架，备份后清理已删除书籍目录的记录。不会删除现有文件。';
   document.querySelector('.refresh-panel .status-badge').textContent = 'FILES → INDEX';
   api('/api/health').then(health => {
     addVoice.disabled = !health.tts_details?.enabled;
     addVoice.title = health.tts_details?.enabled ? '添加参考音频声线' : 'Irodori 尚未启用。';
-    voiceHelp.textContent = health.tts_details?.enabled
-      ? 'Irodori 本地朗读 · 新闻保存后自动生成，书籍按章节生成。模型空闲 5 分钟后释放显存。'
-      : '当前使用浏览器日语语音。Irodori 尚未启用。';
-    if (health.tts_details?.error) voiceHelp.textContent += ` ${health.tts_details.error}`;
     note.textContent += health.translation_configured ? ' 翻译已配置，处理时会发送正文到 DeepSeek。' : ' 翻译未配置，章节处理仅生成假名。';
   }).catch(() => {});
 
