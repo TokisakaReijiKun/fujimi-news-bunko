@@ -3,6 +3,22 @@ function bookBlockSupportsBookmark(_chapter, block) {
   return !['image', 'spacer'].includes(block.kind);
 }
 
+function chapterProgressPercent(chapter, blockIndex) {
+  const total = Number(chapter?.block_count || 0);
+  if (!total) return 0;
+  return Math.min(100, Math.max(0, (Number(blockIndex || 0) + 1) / total * 100));
+}
+
+function selectBookReadingPosition(book) {
+  const bookmark = (book?.bookmarks || [])[0];
+  const chapterId = Number(bookmark?.chapter_id || book?.progress?.chapter_id || book?.chapters?.[0]?.id || 0);
+  return {
+    chapterId,
+    blockIndex: bookmark ? Number(bookmark.block_index) : null,
+    startAtBeginning: !bookmark && !book?.progress?.chapter_id,
+  };
+}
+
 function setupBookNavigation(payload, root) {
   const panel = root.querySelector('.book-toc');
   const header = panel.querySelector(':scope > div');
@@ -31,5 +47,5 @@ function setupBookNavigation(payload, root) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { bookBlockSupportsBookmark };
+  module.exports = { bookBlockSupportsBookmark, chapterProgressPercent, selectBookReadingPosition };
 }

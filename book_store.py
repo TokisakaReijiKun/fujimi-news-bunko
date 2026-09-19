@@ -75,6 +75,8 @@ class BookStore:
                     if not source.is_file() or digest(source.read_bytes())!=meta['source_sha256']:
                         raise StorageError('原始 EPUB 缺失或校验失败。')
                 b=deepcopy(meta['book']);b.update(state);b['_revision']=state.get('revision',1)
+                if isinstance(b.get('bookmarks'), list):
+                    b['bookmarks'] = b['bookmarks'][:1]
                 if full:
                     for ch in b['chapters']:
                         blob=safe_path(folder,ch['file']).read_bytes()
@@ -103,6 +105,8 @@ class BookStore:
             book={k:deepcopy(v) for k,v in b.items() if k not in ('progress','bookmarks','last_read_at','cover_url') and not k.startswith('_')}
             book['title']=book['title'].strip();book['author']=book.get('author','').strip()
             state={k:deepcopy(b.get(k,{} if k=='progress' else [] if k=='bookmarks' else '')) for k in ('progress','bookmarks','last_read_at')}
+            if isinstance(state.get('bookmarks'), list):
+                state['bookmarks'] = state['bookmarks'][:1]
             state['revision']=oldstate.get('revision',0)+1
             files={};summary=[]
             for ch in book['chapters']:
@@ -176,6 +180,7 @@ class BookStore:
             folder=self.folder(bid);state=json.loads((folder/'state.json').read_text(encoding='utf-8'))
             for k,v in changes.items():
                 if k=='progress':state.setdefault(k,{}).update(v)
+                elif k=='bookmarks':state[k]=list(v or [])[:1]
                 else:state[k]=v
             state['revision']=state.get('revision',0)+1
             write_json(folder/'state.json',state);self._index(folder)

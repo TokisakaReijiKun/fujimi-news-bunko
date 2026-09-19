@@ -3691,12 +3691,12 @@ async function openLibrarySeries(series) {
 
 async function openBook(bookId) {
   const book = await api(`/api/books/${bookId}`);
-  const latestBookmark = (book.bookmarks || [])[0];
-  const chapterId = Number(book.progress?.chapter_id || latestBookmark?.chapter_id || book.chapters?.[0]?.id);
+  const position = selectBookReadingPosition(book);
+  const chapterId = position.chapterId;
   if (!chapterId) return toast("この書籍には読める章がありません。", true);
   await navigateBookChapter(bookId, chapterId, {
-    blockIndex: book.progress?.chapter_id ? null : latestBookmark ? Number(latestBookmark.block_index) : null,
-    startAtBeginning: !book.progress?.chapter_id && !latestBookmark,
+    blockIndex: position.blockIndex,
+    startAtBeginning: position.startAtBeginning,
   });
 }
 
@@ -3982,10 +3982,12 @@ function updateBookReaderProgress(payload, root) {
   const chapterIndex = chapters.findIndex(chapter => Number(chapter.id) === Number(payload.chapter?.id));
   if (chapterIndex < 0) return;
   const currentBlock = currentBookBlock(root);
-  const blockIndex = Number(currentBlock?.dataset.blockIndex ?? payload.book.progress?.block_index ?? 0);
-  const previousBlocks = chapters.slice(0, chapterIndex).reduce((total, chapter) => total + Number(chapter.block_count || 0), 0);
-  const totalBlocks = Number(payload.book.block_count || 0);
-  const percent = totalBlocks ? Math.min(100, Math.max(0, (previousBlocks + blockIndex) / totalBlocks * 100)) : 0;
+  const atEnd = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
+  const chapterBlocks = Number(payload.chapter.block_count || chapters[chapterIndex].block_count || 0);
+  const blockIndex = atEnd && chapterBlocks ? chapterBlocks - 1 : Number(currentBlock?.dataset.blockIndex ?? payload.book.progress?.block_index ?? 0);
+  const bookmark = (payload.book.bookmarks || []).find(item => Number(item.chapter_id) === Number(payload.chapter?.id));
+  const position = bookmark ? Number(bookmark.block_index) : blockIndex;
+  const percent = chapterProgressPercent({ block_count: chapterBlocks }, position);
   const label = `${payload.chapter.title}（${percent.toFixed(2)}%）`;
   indicator.textContent = label;
   indicator.setAttribute("aria-label", `読書進捗 ${label}`);
@@ -4156,10 +4158,21 @@ async function toggleBookBlockBookmark(button, block) {
   try {
     const wasBookmarked = button.classList.contains("is-bookmarked");
     const result = await api(`/api/books/${payload.book.id}/chapters/${payload.chapter.id}/bookmarks`, { method: "POST", body: JSON.stringify({ block_index: block.block_index, excerpt: block.text_ja || block.text_zh || "" }), mobileChangeAction: wasBookmarked ? "delete" : "upsert" });
+    if (result.bookmarked) {
+      button.closest('#book-reader')?.querySelectorAll('.book-block-bookmark').forEach(other => {
+        if (other !== button) {
+          other.classList.remove('is-bookmarked');
+          other.setAttribute('aria-pressed', 'false');
+        }
+      });
+    }
     button.classList.toggle("is-bookmarked", result.bookmarked);
     button.setAttribute("aria-pressed", String(result.bookmarked));
     toast(result.bookmarked ? "しおりを挟みました。" : "しおりを外しました。");
-    if (!result.queued) payload.book = await api(`/api/books/${payload.book.id}`);
+    if (!result.queued) {
+      payload.book = await api(`/api/books/${payload.book.id}`);
+      updateBookReaderProgress(payload, button.closest('#book-reader'));
+    }
   } catch (error) { toast(error.message, true); }
 }
 

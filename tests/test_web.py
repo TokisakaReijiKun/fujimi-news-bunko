@@ -133,6 +133,9 @@ class WebTests(unittest.TestCase):
         self.assertEqual(progress.json['progress']['chapter_id'], 2)
         self.client.post(f'/api/books/{bid}/chapters/1/bookmarks', json={'block_index': 1, 'excerpt': '鳥'})
         self.assertEqual(len(self.client.get(f'/api/books/{bid}').json['bookmarks']), 1)
+        self.client.post(f'/api/books/{bid}/chapters/2/bookmarks', json={'block_index': 1, 'excerpt': '物語'})
+        stored_book = self.client.get(f'/api/books/{bid}').json
+        self.assertEqual(stored_book['bookmarks'], [{'chapter_id': 2, 'block_index': 1, 'excerpt': '物語'}])
         enhancement = self.client.post(f'/api/books/{bid}/chapters/1/enhance').json
         self.wait_task('/api/books/tasks/' + enhancement['task_id'])
         chapter = self.client.get(f'/api/books/{bid}/chapters/1').json['chapter']

@@ -926,8 +926,10 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
                 idx = int(payload.get('block_index', 0))
                 if not 0 <= idx < len(ch['blocks']): raise ValueError('段落不存在。')
                 existing = next((v for v in b['bookmarks'] if v['chapter_id'] == cid and v['block_index'] == idx), None)
-                if existing: b['bookmarks'].remove(existing)
-                else: b['bookmarks'].insert(0, dict(chapter_id=cid, block_index=idx, excerpt=str(payload.get('excerpt', ''))[:500]))
+                if existing:
+                    b['bookmarks'] = []
+                else:
+                    b['bookmarks'] = [dict(chapter_id=cid, block_index=idx, excerpt=str(payload.get('excerpt', ''))[:500])]
                 book_store.patch_state(bid,{'bookmarks':b['bookmarks']})
                 return jsonify(bookmarked=not bool(existing))
             if action == 'enrichment' and request.method == 'DELETE':
