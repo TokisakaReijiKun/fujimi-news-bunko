@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import secrets
+import shutil
 import sqlite3
 import threading
 import uuid
@@ -33,6 +34,7 @@ class TTSController:
                 mapping.update(self.voices.migrate_name_ids())
                 self._migrate_voice_ids(mapping)
                 self._initialize()
+                self._migrate_book_audio_paths()
             except Exception as error:
                 self.error = str(error)
             self.queue = TTSQueue(data, self.backend, self._commit)
@@ -114,6 +116,74 @@ class TTSController:
                     self.books.save(book, tts=True)
                 except Exception as error:
                     self.app.logger.warning('Voice ID migration skipped book %s: %s', bid, error)
+
+    def _migrate_book_audio_paths(self):
+        """Move legacy chapter UUID files into the readable book-level audio layout."""
+        for bid in self.books.ids():
+            book = self.books.load(bid)
+            folder = self.books.folder(bid)
+            updates, sources, old_paths, changed = {}, {}, set(), False
+            occupied = {m.get('path') for c in book['chapters']
+                        for m in [c.get('audio', {})] + c.get('audio_versions', []) if isinstance(m, dict)}
+            occupied.update(p.name for p in (folder/'audio').glob('*.wav'))
+            for chapter in book['chapters']:
+                title = chapter.get('title') or f"第{chapter['id']}章"
+                recordings = [chapter.get('audio', {})] + chapter.get('audio_versions', [])
+                for metadata in recordings:
+                    if not isinstance(metadata, dict):
+                        continue
+                    old = metadata.get('path', '')
+                    source = folder/'audio'/old
+                    if not re.fullmatch(r'\d+/[^/]+\.wav', old or ''):
+                        continue
+                    if old in updates:
+                        new = updates[old]
+                        metadata.update(path=new, url=f'/api/books/{bid}/audio/{new}')
+                        changed = True
+                        continue
+                    if not source.is_file():
+                        replacement = next((item for item in recordings if isinstance(item, dict)
+                            and item is not metadata and item.get('task_id') == metadata.get('task_id')
+                            and item.get('voice_id') == metadata.get('voice_id')
+                            and item.get('path') and not re.fullmatch(r'\d+/[^/]+\.wav', item['path'])
+                            and (folder/'audio'/item['path']).is_file()), None)
+                        if replacement:
+                            new = replacement['path']
+                            updates[old] = new
+                            old_paths.add(old)
+                            metadata.update(path=new, url=f'/api/books/{bid}/audio/{new}')
+                            changed = True
+                        continue
+                    voice = next((v for v in self.voices.list() if v['id'] == metadata.get('voice_id')), None)
+                    if not voice:
+                        continue
+                    stem = self._book_audio_stem(voice['name'], title, chapter['id'], occupied)
+                    new = f'{stem}.wav'
+                    updates[old], sources[old] = new, source
+                    old_paths.add(old)
+                    occupied.add(new)
+                    metadata['path'] = new
+                    metadata['url'] = f'/api/books/{bid}/audio/{new}'
+                    changed = True
+            if not changed:
+                continue
+            backup = self.data/'backups'/f'tts-book-{bid}-{uuid.uuid4().hex}'
+            backup.mkdir(parents=True)
+            shutil.copytree(folder, backup/'book')
+            source_db = sqlite3.connect(self.data/'fujimi.sqlite3')
+            target_db = sqlite3.connect(backup/'fujimi.sqlite3')
+            try:
+                source_db.backup(target_db)
+            finally:
+                target_db.close()
+                source_db.close()
+            try:
+                self.books.save(book, audio_files={updates[old]: source for old, source in sources.items()},
+                                audio_remove=old_paths, tts=True)
+                for old in old_paths:
+                    (folder/'audio'/old).unlink(missing_ok=True)
+            except Exception as error:
+                self.app.logger.warning('Book %s audio migration skipped: %s', bid, error)
 
     def health(self):
         if not self.enabled:
@@ -294,7 +364,12 @@ class TTSController:
             article = self.articles.load(ids['article_id'])
             segment_directory = self.articles.root / article['_directory'] / 'audio'
         else:
-            segment_directory = self.books.folder(ids['book_id']) / 'audio' / str(ids['chapter_id'])
+            book, chapter = self.books.chapter(ids['book_id'], ids['chapter_id'])
+            occupied = {m.get('path') for c in book['chapters']
+                        for m in [c.get('audio', {})] + c.get('audio_versions', []) if isinstance(m, dict)}
+            book_stem = self._book_audio_stem(voice['name'], chapter.get('title'), ids['chapter_id'], occupied)
+            segment_directory = self.books.folder(ids['book_id']) / 'audio'
+        segment_voice_name = book_stem if 'book_id' in ids else voice['name']
         # Check finished recordings before consulting/loading the current model.
         # Legacy clients sending force=true still reuse valid same-voice audio.
         with self.queue.lock:
@@ -306,12 +381,12 @@ class TTSController:
                     voice_id=voice['id'], completed=len(paragraphs), total=len(paragraphs), **ids)
                 self.queue.tasks[cached['id']] = cached
                 self.queue._save(cached)
-                remove_segment_files(segment_directory, voice['name'])
+                remove_segment_files(segment_directory, segment_voice_name)
                 return {'status': 'ready'}
         key = cache_key(paragraphs, self.backend.identity(), voice)
         request = {'paragraphs': list(paragraphs), 'reference': str(self.voices.reference(voice)),
                    'voice': voice, 'seed': 42, 'cache_key': key,
-                   'voice_name': voice['name'],
+                   'voice_name': segment_voice_name,
                    'reuse_segments': True,
                    'segment_directory': str(segment_directory)}
         task = self.queue.submit(target, request, key, voice_id=voice['id'], **ids)
@@ -350,9 +425,33 @@ class TTSController:
                     audio_voice_mode='voice', audio_voice_id=voice['id'], audio_cache_key=task['cache_key'])
                 self.articles.save_tts(article, files={relative: path})
         else:
-            relative = f"{task['chapter_id']}/{task['id']}.wav"
+            relative = f"{request['voice_name']}.wav"
+            book = self.books.load(task['book_id'])
+            occupied = {m.get('path') for c in book['chapters']
+                        for m in [c.get('audio', {})] + c.get('audio_versions', []) if isinstance(m, dict)}
+            if relative in occupied or (self.books.folder(task['book_id'])/'audio'/relative).exists():
+                relative = f"{request['voice_name']}-{task['cache_key'][:8]}.wav"
             metadata.update(path=relative, url=f"/api/books/{task['book_id']}/audio/{relative}")
             self.books.save_audio(task['book_id'], task['chapter_id'], request['paragraphs'], path, metadata)
+
+    @staticmethod
+    def _book_audio_stem(voice_name, chapter_title, chapter_id, occupied=()):
+        def component(value):
+            value = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', '_', str(value or ''))
+            return re.sub(r'\s+', ' ', value).strip(' ._') or '未命名'
+        voice, title = component(voice_name), component(chapter_title)
+        base = f'{voice}_{title}'
+        if len(base + '.wav') > 42:
+            marker = hashlib.sha256(f'{voice}\0{title}'.encode('utf-8')).hexdigest()[:8]
+            remaining = 42 - len(marker) - len('.wav') - 1
+            voice_limit = min(len(voice), max(8, remaining // 2))
+            title_limit = max(8, remaining - voice_limit - 1)
+            base = f'{voice[:voice_limit]}_{title[:title_limit]}-{marker}'
+        candidate = f'{base}.wav'
+        if candidate not in set(occupied):
+            return base
+        marker = hashlib.sha256(f'{base}\0{chapter_id}'.encode('utf-8')).hexdigest()[:8]
+        return f'{base[:max(8, 42 - len(marker) - len(".wav") - 1)]}-{marker}'
 
     @staticmethod
     def _article_audio_filename(voice_name, article_title):

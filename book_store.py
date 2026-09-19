@@ -93,7 +93,7 @@ class BookStore:
             if digest(blob)!=ch['sha256']:raise StorageError('章节文件校验失败。')
             return b,json.loads(blob)
 
-    def save(self,b, directory=None, assets=None, original=None, digest_value=None, audio_files=None, *, tts=False):
+    def save(self,b, directory=None, assets=None, original=None, digest_value=None, audio_files=None, audio_remove=None, *, tts=False):
         with self.locks.locked():
             self.recover();bid=b['id']
             folder=safe_path(self.root,directory) if directory else self.folder(bid)
@@ -115,6 +115,8 @@ class BookStore:
             book['chapters']=summary
             resources=deepcopy(oldmeta.get('resources',{})) if oldmeta else {}
             audio_manifest=deepcopy(oldmeta.get('audio',{})) if oldmeta else {}
+            for path in (audio_remove or ()):
+                audio_manifest.pop(path, None)
             for path, source in (audio_files or {}).items():
                 safe_path(folder/'audio',path)
                 blob=Path(source).read_bytes()

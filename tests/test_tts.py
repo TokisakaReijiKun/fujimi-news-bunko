@@ -1,5 +1,6 @@
 import io
 import json
+from copy import deepcopy
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -7,12 +8,14 @@ import threading
 import time
 import unittest
 import wave
+import uuid
 from unittest.mock import patch
 
 from article_store import ArticleStore, digest, write_json
 from book_store import BookStore
 from server import create_app, parse_epub
 from tts_service import TTSQueue, VoiceStore, cache_key
+from tts_integration import text_key
 import tts_worker
 from tts_worker import split_text, segment_plan, merge_segments, segment_path, segment_manifest_path, valid_cached_segment
 from test_web import fixture_epub
@@ -226,6 +229,66 @@ class TTSTests(unittest.TestCase):
         path = books.audio_asset(bid, ch['audio']['path'])
         path.write_bytes(b'corrupt')
         self.assertEqual(self.client.get(ch['audio']['url']).status_code, 400)
+
+    def test_book_audio_uses_readable_root_filename_and_segments(self):
+        self.backend.release.clear()
+        bid = self.book()
+        task = self.client.post(f'/api/books/{bid}/chapters/1/reread', json={'mode': 'model'}).json
+        self.assertTrue(self.backend.entered.wait(2))
+        book = BookStore(self.data)
+        folder = book.folder(bid)
+        audio = folder/'audio'
+        audio.mkdir(exist_ok=True)
+        segment_path(audio, '测试声线_第一章', 0).write_bytes(wav_bytes(.1))
+        self.backend.release.set()
+        self.wait(task['task_id'])
+        _, chapter = book.chapter(bid, 1)
+        self.assertEqual(chapter['audio']['path'], '测试声线_第一章.wav')
+        self.assertTrue((audio/'测试声线_第一章.wav').is_file())
+        self.assertFalse((audio/'1'/f"{task['task_id']}.wav").exists())
+
+    def test_book_audio_filename_is_safe_bounded_and_collision_resistant(self):
+        stem = self.tts._book_audio_stem('声线<>', '非常に長い章題'*20, 1)
+        self.assertLessEqual(len(stem + '.wav'), 42)
+        self.assertNotRegex(stem, r'[<>:"/\\|?*]')
+        collision = self.tts._book_audio_stem('测试声线', '第一章', 2, {'测试声线_第一章.wav'})
+        self.assertNotEqual(collision, '测试声线_第一章')
+        self.assertLessEqual(len(collision + '.wav'), 42)
+
+    def test_book_legacy_audio_path_is_migrated_with_backup(self):
+        bid = self.book()
+        book = BookStore(self.data)
+        loaded, chapter = book.chapter(bid, 1)
+        old = f"1/{uuid.uuid4().hex}.wav"
+        old_path = book.folder(bid)/'audio'/old
+        old_path.parent.mkdir(parents=True, exist_ok=True)
+        old_path.write_bytes(wav_bytes(.1))
+        metadata = {'status': 'ready', 'segments': [{'duration': .1, 'speech_start_offset': 0}],
+                    'sample_rate': 48000, 'voice_id': self.voice['id'],
+                    'voice_sha256': self.voice['sha256'], 'text_sha256': text_key(['窓の外では鳥が歌っています。']),
+                    'cache_key': 'legacy', 'task_id': 'legacy', 'path': old,
+                    'url': f'/api/books/{bid}/audio/{old}'}
+        chapter['audio'] = metadata
+        chapter['audio_versions'] = [deepcopy(metadata)]
+        loaded['chapters'] = [chapter]
+        book.save(loaded, audio_files={old: old_path}, tts=True)
+        self.tts._migrate_book_audio_paths()
+        _, migrated = book.chapter(bid, 1)
+        self.assertEqual(migrated['audio']['path'], '测试声线_第一章.wav')
+        self.assertEqual(migrated['audio_versions'][0]['path'], '测试声线_第一章.wav')
+        self.assertTrue((book.folder(bid)/'audio/测试声线_第一章.wav').is_file())
+        self.assertFalse(old_path.exists())
+        self.assertTrue(list((self.data/'backups').glob('tts-book-*')))
+
+        # A previous interrupted migration may have moved the file while leaving
+        # one duplicate version entry at the legacy path.
+        stale = book.load(bid)
+        stale_version = stale['chapters'][0]['audio_versions'][0]
+        stale_version.update(path=old, url=f'/api/books/{bid}/audio/{old}')
+        book.save(stale, tts=True)
+        self.tts._migrate_book_audio_paths()
+        _, repaired = book.chapter(bid, 1)
+        self.assertEqual(repaired['audio_versions'][0]['path'], '测试声线_第一章.wav')
 
     def test_changed_text_rejects_stale_result(self):
         self.backend.release.clear()

@@ -75,9 +75,10 @@ class DACVAECodec:
                 # Let DACVAE.load surface a clearer error if this is not a valid path/repo.
                 pass
 
-        model = DACVAE.load(location).eval().to(device)
+        model = DACVAE.load(location).eval()
         if dtype is not None:
             model = model.to(dtype=dtype)
+        model = model.to(device)
 
         decoder = getattr(model, "decoder", None)
         if decoder is not None and hasattr(decoder, "alpha"):

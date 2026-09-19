@@ -1,4 +1,8 @@
 /* Reader navigation derives from EPUB nav/NCX, independent of spine file count. */
+function bookBlockSupportsBookmark(_chapter, block) {
+  return !['image', 'spacer'].includes(block.kind);
+}
+
 function setupBookNavigation(payload, root) {
   const panel = root.querySelector('.book-toc');
   const header = panel.querySelector(':scope > div');
@@ -24,4 +28,8 @@ function setupBookNavigation(payload, root) {
   if(payload.book.warnings?.length){
     const note=document.createElement('p');note.className='book-storage-note';note.textContent=payload.book.warnings.join(' ');root.querySelector('.book-reader-header').append(note);
   }
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { bookBlockSupportsBookmark };
 }

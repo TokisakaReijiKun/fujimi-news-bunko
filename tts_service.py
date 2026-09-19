@@ -193,6 +193,10 @@ class VoiceStore:
             self._path(item['name']).unlink()
 
 
+class WorkerLoadExit(RuntimeError):
+    """Unexpected native exit before the worker completed its handshake."""
+
+
 class ProcessBackend:
     def __init__(self, root, data):
         self.root, self.data = Path(root), Path(data)
@@ -218,6 +222,24 @@ class ProcessBackend:
         return self._identity
 
     def _start(self, update, cancelled):
+        for attempt in range(2):
+            if cancelled():
+                raise InterruptedError()
+            try:
+                return self._start_once(update, cancelled)
+            except WorkerLoadExit:
+                if attempt or cancelled():
+                    if cancelled():
+                        raise InterruptedError()
+                    raise
+                update(stage='loading', message='模型进程意外退出，正在重新加载（1/1）…')
+
+    def _diagnostic(self, event):
+        if self.log:
+            print(f'[worker {time.strftime("%Y-%m-%d %H:%M:%S")}] {event}',
+                  file=self.log, flush=True)
+
+    def _start_once(self, update, cancelled):
         if self.process and self.process.poll() is None:
             return
         self.close()
@@ -227,24 +249,38 @@ class ProcessBackend:
         self.log = (logs/'tts-worker.log').open('a', encoding='utf-8')
         self.state, self.error = 'loading', ''
         update(stage='loading', message='Irodori モデルを読み込んでいます…')
-        self.process = subprocess.Popen([sys.executable, '-X', 'utf8', str(self.root/'tts_worker.py'),
+        self.process = subprocess.Popen([sys.executable, '-u', '-X', 'utf8', str(self.root/'tts_worker.py'),
             '--workspace', str(self.workspace), '--model', str(self.model)], cwd=self.root,
             stdout=self.log, stderr=self.log, stdin=subprocess.DEVNULL,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+        self._diagnostic(f'start pid={self.process.pid}')
         deadline = time.monotonic() + 300
         while not (self.workspace/'ready.json').exists():
             if cancelled():
                 self.close()
                 raise InterruptedError()
-            if self.process.poll() is not None or time.monotonic() > deadline:
+            code = self.process.poll()
+            if code is not None or time.monotonic() > deadline:
+                # The child may publish a structured error just before exiting.
+                if (self.workspace/'ready.json').exists():
+                    break
+                stage = 'imports'
+                progress = self.workspace/'loading.json'
+                if progress.exists():
+                    stage = json.loads(progress.read_text(encoding='utf-8')).get('stage', stage)
+                pid = self.process.pid
+                self._diagnostic(f'load ended pid={pid} exit={code} stage={stage}')
                 self.close()
-                raise RuntimeError('Irodori 模型加载失败或超时，请检查 logs/tts-worker.log。')
+                if code is not None:
+                    raise WorkerLoadExit(f'Irodori 加载进程退出：{code} (0x{code & 0xffffffff:08X})；阶段 {stage}；PID {pid}。请检查 logs/tts-worker.log。')
+                raise RuntimeError(f'Irodori 模型加载超过 300 秒；阶段 {stage}。请检查 logs/tts-worker.log。')
             time.sleep(.15)
         result = json.loads((self.workspace/'ready.json').read_text(encoding='utf-8'))
         if result.get('error'):
             self.close()
             raise RuntimeError(result['error'])
         self.state = 'ready'
+        self._diagnostic(f'ready pid={self.process.pid}')
 
     def synthesize(self, request, directory, update, cancelled):
         try:
@@ -289,6 +325,7 @@ class ProcessBackend:
         with self.lifecycle_lock:
             process, self.process = self.process, None
             if process and process.poll() is None:
+                self._diagnostic(f'stop pid={process.pid}')
                 process.terminate()
                 process.wait(timeout=30)
             if self.log:

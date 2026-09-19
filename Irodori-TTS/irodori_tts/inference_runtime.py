@@ -622,7 +622,12 @@ class InferenceRuntime:
         self._lora_adapter_names: dict[str, str] = {}
 
     @classmethod
-    def from_key(cls, key: RuntimeKey) -> InferenceRuntime:
+    def from_key(cls, key: RuntimeKey, *, progress=None) -> InferenceRuntime:
+        def report(stage):
+            if progress is not None:
+                progress(stage)
+
+        report('checkpoint')
         model_device = resolve_runtime_device(key.model_device)
         codec_device = resolve_runtime_device(key.codec_device)
         model_dtype = resolve_runtime_dtype(
@@ -644,6 +649,7 @@ class InferenceRuntime:
             section="checkpoint model_config",
         )
 
+        report('model')
         model = TextToLatentRFDiT(
             model_cfg,
             pretrained_backbone_config=text_encoder_config,
@@ -654,8 +660,16 @@ class InferenceRuntime:
             model_state,
             assign=model_cfg.use_pretrained_text_encoder or quantized_model,
         )
+        if not quantized_model:
+            # Cast before transfer so CUDA never holds a full FP32 copy as well.
+            model = model.to(dtype=model_dtype)
         model = model.to(model_device)
         model = _move_inference_module(model, device=model_device, dtype=model_dtype)
+        # No longer retain CPU checkpoint tensors while loading tokenizer/codec.
+        # Assigned parameters still own their storage on CPU-only runtimes.
+        del model_state
+        gc.collect()
+        report('tokenizer')
         model.eval()
         model = _maybe_compile_inference_model(
             model,
@@ -717,6 +731,7 @@ class InferenceRuntime:
             else:
                 default_caption_max_len = default_text_max_len
 
+        report('codec')
         codec = DACVAECodec.load(
             repo_id=key.codec_repo,
             device=str(codec_device),
@@ -730,6 +745,7 @@ class InferenceRuntime:
                 "Use a compatible codec/checkpoint pair."
             )
 
+        report('runtime')
         return cls(
             key=key,
             model_cfg=model_cfg,

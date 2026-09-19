@@ -162,7 +162,12 @@ def main():
         options = runtime_options(model)
         if not Path(options['codec_repo']).is_file():
             raise FileNotFoundError('本地 DACVAE 权重不存在。')
-        runtime = InferenceRuntime.from_key(RuntimeKey(**options))
+        def loading(stage):
+            write_json(workspace/'loading.json', {'stage': stage})
+            print(f'[loading {time.strftime("%Y-%m-%d %H:%M:%S")}] pid={os.getpid()} stage={stage}', flush=True)
+        runtime = InferenceRuntime.from_key(RuntimeKey(**options), progress=loading)
+        # Return unused initialization allocations to CUDA before real inference.
+        torch.cuda.empty_cache()
         write_json(workspace/'ready.json', {'ready': True})
     except Exception as error:
         write_json(workspace/'ready.json', {'error': f'模型加载失败：{type(error).__name__}；请检查 TTS 日志和本地模型依赖。'})

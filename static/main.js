@@ -4255,7 +4255,7 @@ function renderBookBlocks(payload, root) {
       }
     }
     section.append(japanese, chinese);
-    if (!payload.chapter.is_frontmatter && !['image', 'spacer'].includes(block.kind)) section.append(bookmark);
+    if (bookBlockSupportsBookmark(payload.chapter, block)) section.append(bookmark);
     return section;
   }));
   body.querySelectorAll("img[data-book-asset]").forEach(image => {
