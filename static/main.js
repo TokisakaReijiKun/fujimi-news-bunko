@@ -4929,25 +4929,52 @@ showView(initialView, { historyMode: "replace", resetReader: false });
   document.querySelector('#close-web-text-dialog').onclick = closeTextDialog;
   document.querySelector('#cancel-web-text-dialog').onclick = closeTextDialog;
   textDialog.addEventListener('close', () => {
+    closeExampleMenu();
     textDialogTrigger.setAttribute('aria-expanded', 'false');
     textDialogTrigger.focus({ preventScroll: true });
   });
-  textDialog.addEventListener('click', event => { if (event.target === textDialog) closeTextDialog(); });
-  const textExample = textDialog.querySelector('.web-example');
-  textExample.onclick = () => {
-    textForm.querySelector('[name="title"]').value = textExample.dataset.exampleTitle;
-    const body = textForm.querySelector('[name="text"]');
-    body.value = textExample.dataset.exampleText;
-    body.focus();
+  const textExampleTrigger = textDialog.querySelector('#web-example-trigger');
+  const textExampleOptions = textDialog.querySelector('#web-example-options');
+  const closeExampleMenu = () => {
+    textExampleOptions.hidden = true;
+    textExampleTrigger.setAttribute('aria-expanded', 'false');
   };
+  textDialog.addEventListener('click', event => {
+    if (event.target === textDialog) {
+      closeTextDialog();
+      return;
+    }
+    if (!event.target.closest('.web-example-menu')) closeExampleMenu();
+  });
+  textDialog.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || textExampleOptions.hidden) return;
+    event.preventDefault();
+    closeExampleMenu();
+    textExampleTrigger.focus();
+  });
+  textExampleTrigger.onclick = () => {
+    const expanded = textExampleTrigger.getAttribute('aria-expanded') === 'true';
+    textExampleOptions.hidden = expanded;
+    textExampleTrigger.setAttribute('aria-expanded', String(!expanded));
+  };
+  textExampleOptions.querySelectorAll('[data-example]').forEach(textExample => {
+    textExample.onclick = () => {
+      textForm.querySelector('[name="title"]').value = textExample.dataset.exampleTitle;
+      const body = textForm.querySelector('[name="text"]');
+      body.value = textExample.dataset.exampleText;
+      closeExampleMenu();
+      body.focus();
+    };
+  });
+  textForm.addEventListener('reset', closeExampleMenu);
   textForm.onsubmit = async event => {
     event.preventDefault();
     const form = event.currentTarget;
     const button = form.querySelector('[type="submit"]');
     const error = form.querySelector('[role="alert"]');
+    error.hidden = true;
     button.disabled = true;
     button.textContent = '正在保存…';
-    error.hidden = true;
     try {
       const values = new FormData(form);
       const article = await api('/api/articles/text', {method: 'POST', body: JSON.stringify({title: values.get('title'), text: values.get('text')})});

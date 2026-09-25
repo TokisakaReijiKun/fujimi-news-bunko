@@ -51,7 +51,7 @@ conda run -n Tokyo python -m pip install -r requirements.txt
 | `apk-original/` | 未修改的 APK 提取资源和原始词典 |
 | `data/` | 用户文章、书籍、索引、媒体、备份及诊断数据 |
 | `docs/` | 架构、迁移及行为说明 |
-| `tests/` | 临时数据目录中的自动化测试 |
+| `tests/` | 自动化测试、临时测试页面和非正式样式 demo；这些内容不作为正式前端资源提供 |
 | `Irodori-TTS/` | 独立模型项目；任务不涉及它时不要修改 |
 
 ## 新闻来源架构
@@ -152,6 +152,7 @@ data/books/书名/
 
 - 六个主视图为 `daily`、`reader`、`bookmarks`、`library`、`dictionary`、`settings`，使用 hash 路由。
 - 主交互、浏览器适配和播客播放器统一维护在 `static/main.js`，主样式统一维护在 `static/static.css`；EPUB 阅读器局部适配保留在 `static/book-reader.*`。不要修改 `apk-original/`。
+- 一切非正式测试页面和样式 demo 统一放在 `tests/`，不得放入 `static/`；`static/` 只保留正式应用需要提供的前端资源。
 - 保持 API 字段和值类型兼容。任务状态变更时同步检查轮询、取消、按钮状态和页面刷新。
 - 桌面侧栏和手机抽屉都要可用；`data-mobile-app` 也承担移动布局标记，不代表 Android 原生接口存在。
 - 用户内容使用 `textContent` 或经过清洗的 HTML。不要使用不可信文本拼接 `innerHTML`。
