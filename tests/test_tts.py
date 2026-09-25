@@ -105,6 +105,76 @@ class TTSTests(unittest.TestCase):
         self.assertEqual(result.status_code, 201, result.json)
         return result.json
 
+    def test_text_import_uses_chosen_voice_instead_of_global_voice(self):
+        other = self.tts.voices.save('另一个示例声线', wav_bytes(1.2))
+        result = self.client.post('/api/articles/text', json={
+            'title': '声线选择', 'text': '選んだ声で読みます。',
+            'voice_mode': 'voice', 'voice_id': other['id'],
+        })
+        self.assertEqual(result.status_code, 201, result.json)
+        self.wait(result.json['audio_task_id'])
+        saved = self.client.get(f"/api/articles/{result.json['id']}").json
+        self.assertEqual(saved['audio_voice_id'], other['id'])
+        self.assertIn('另一个示例声线_', saved['audio_path'])
+        self.assertEqual(self.tts.setting('voice-mode')['voice_id'], self.voice['id'])
+
+    def test_browser_example_skips_global_model_synthesis(self):
+        result = self.client.post('/api/articles/text', json={
+            'title': '浏览器示例', 'text': '読みます。', 'voice_mode': 'browser',
+            'browser_voice_name': 'Haruka',
+        })
+        self.assertEqual(result.status_code, 201, result.json)
+        self.assertEqual(result.json['audio_status'], 'browser')
+        self.assertEqual(self.backend.calls, [])
+
+    def test_generated_tts_is_copied_to_example_and_reused(self):
+        text = '示例正文。'
+        example = self.client.post('/api/examples', json={'title': '带缓存音频示例', 'text': text, 'voice_mode': 'voice', 'voice_id': self.voice['id']}).json
+        article = self.client.post('/api/articles/text', json={'title': example['title'], 'text': text, 'example_id': example['id'], 'voice_mode': 'voice', 'voice_id': self.voice['id']}).json
+        self.wait(article['audio_task_id'])
+        saved_example = next(item for item in self.client.get('/api/examples').json if item['id'] == example['id'])
+        example_audio = Path(self.data) / 'articles' / 'examples' / saved_example['directory'] / 'audio'
+        self.assertTrue(list(example_audio.glob('*.wav')))
+        self.assertTrue(saved_example['audio_versions'])
+        calls_before = len(self.backend.calls)
+        copy = self.tts.articles.copy_to_day(article['id'], '2099-01-01')
+        for asset in list(copy['_assets']):
+            if asset['path'].startswith('audio/'):
+                Path(self.data / 'articles' / copy['_directory'] / asset['path']).unlink(missing_ok=True)
+        copy['_assets'] = [asset for asset in copy['_assets'] if not asset['path'].startswith('audio/')]
+        copy.update(audio_path='', audio_status='browser', audio_segments=[], audio_voice_id=None, audio_voice_mode='browser')
+        self.tts.articles.save_tts(copy)
+        self.tts.submit_article(copy['id'], {'mode': 'voice', 'voice_id': self.voice['id'], 'example_id': example['id']})
+        self.assertEqual(len(self.backend.calls), calls_before)
+
+    def test_example_import_with_cached_files_never_loads_model_or_translates(self):
+        examples = self.app.extensions['examples']
+        example = examples.create('缓存導入', '今日は晴れです。', translated_paragraphs=['今天天气晴朗。'])
+        source = self.data / 'cached.wav'
+        source.write_bytes(wav_bytes(.1))
+        examples.save_audio(example['id'], self.voice['id'], source, {
+            'voice_name': self.voice['name'], 'voice_sha256': self.voice['sha256'],
+            'text_sha256': text_key(['今日は晴れです。']),
+            'segments': [{'duration': .1, 'speech_start_offset': 0}], 'sample_rate': 48000,
+        })
+        payload = dict(title=example['title'], text=example['text'], example_id=example['id'],
+                       voice_mode='voice', voice_id=self.voice['id'])
+        with patch.object(self.backend, 'identity', side_effect=AssertionError('model must stay unloaded')), \
+             patch('server.translate', side_effect=AssertionError('translation must be reused')):
+            with patch('server.now', return_value='2026-09-25T12:00:00+08:00'):
+                a = self.client.post('/api/articles/text', json=payload).json
+                repeat = self.client.post('/api/articles/text', json=payload).json
+            with patch('server.now', return_value='2026-09-26T12:00:00+08:00'):
+                b = self.client.post('/api/articles/text', json=payload).json
+        self.assertEqual(a['id'], repeat['id'])
+        self.assertNotEqual(a['id'], b['id'])
+        for item in (a, repeat, b):
+            self.assertEqual(item['audio_status'], 'ready', item)
+            self.assertEqual(item['translated_paragraphs'], ['今天天气晴朗。'])
+            with self.client.get(item['audio_path']) as audio:
+                self.assertEqual(audio.data, source.read_bytes())
+        self.assertEqual(self.backend.calls, [])
+
     def book(self):
         blob = fixture_epub()
         parsed, assets = parse_epub(blob, 'test.epub')

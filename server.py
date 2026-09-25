@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import html
+import hashlib
 import io
 import ipaddress
 import json
@@ -35,6 +36,7 @@ from article_store import ArticleStore, StorageError, write_json
 from database_layout import check_database_layout
 from epub_parser import parse_epub
 from book_store import BookStore
+from example_store import ExampleStore
 from news_providers import provider_for
 from news_providers.services import ArticleServices
 
@@ -270,10 +272,13 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
 
     store = ArticleStore(data)
     book_store = BookStore(data)
+    example_store = ExampleStore(data, article_store=store)
+    example_import_lock = threading.RLock()
     from tts_integration import TTSController
     tts = TTSController(app, ROOT, data, store, book_store, setting, download,
-                        enabled=enable_tts, backend=tts_backend)
+                        enabled=enable_tts, backend=tts_backend, examples=example_store)
     app.extensions['tts'] = tts
+    app.extensions['examples'] = example_store
 
     def article(aid):
         return store.load(aid)
@@ -284,17 +289,18 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
         a.update(saved)
         return a
 
-    def add_article(title, paragraphs, url='', source='テキスト', published=None, translations=None, *, annotate=True):
+    def add_article(title, paragraphs, url='', source='テキスト', published=None, translations=None, *, annotate=True, storage_key='', example_id='', edition_day=None):
         if not title.strip() or not paragraphs:
             raise ValueError('请输入标题与正文。')
         if sum(map(len, paragraphs)) > 150000:
             raise ValueError('正文过长，请按章节导入。')
-        a = {'title': title[:500], 'url': url, 'source_name': source, 'published_at': published or now(),
+        a = {'title': title[:500], 'url': url, 'storage_key': storage_key, 'example_id': example_id,
+             'source_name': source, 'published_at': published or now(),
              'status': 'ready', 'audio_status': 'browser', 'paragraphs': paragraphs,
              'furigana_paragraphs': [ruby(p) for p in paragraphs] if annotate else [], 'translated_paragraphs': translations or [],
              'original_text': '\n\n'.join(paragraphs), 'full_translation': '\n\n'.join(translations or []),
              'image_paths': [], 'video_urls': [], 'failure_reason': '', 'created_at': now()}
-        return store.create(a, now()[:10])
+        return store.create(a, edition_day or now()[:10])
 
     def processing_services():
         def reset_budget():
@@ -678,6 +684,34 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
     def days():
         return jsonify(store.days())
 
+    @app.get('/api/examples')
+    def examples_list():
+        return jsonify(example_store.list())
+
+    @app.post('/api/examples')
+    def examples_create():
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            raise ValueError('示例数据格式不正确。')
+        voice = example_store.validate_voice(payload.get('voice_mode', 'inherit'),
+                                             payload.get('voice_id'), payload.get('browser_voice_name', ''))
+        if voice['voice_mode'] == 'voice':
+            tts.resolve({'mode': 'voice', 'voice_id': voice['voice_id']})
+        text = str(payload.get('text') or '')
+        paragraphs = [part.strip() for part in re.split(r'\n\s*\n|\n', text) if part.strip()]
+        translations = translate(paragraphs) if os.environ.get('DEEPSEEK_API_KEY') else []
+        item = example_store.create(payload.get('title'), text,
+                                    payload.get('voice_mode', 'inherit'), payload.get('voice_id'),
+                                    payload.get('browser_voice_name', ''), translated_paragraphs=translations)
+        return jsonify(item), 201
+
+    @app.post('/api/examples/migrate')
+    def examples_migrate():
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            raise ValueError('旧示例数据格式不正确。')
+        return jsonify(example_store.migrate(payload.get('examples')))
+
     @app.get('/api/daily')
     def daily_articles():
         day = request.args.get('date', now()[:10])
@@ -705,11 +739,56 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
 
     @app.post('/api/articles/text')
     def text_article():
-        payload = request.get_json()
+        payload = request.get_json(silent=True) or {}
+        if not isinstance(payload, dict):
+            raise ValueError('文章数据格式不正确。')
+        voice = example_store.validate_voice(payload.get('voice_mode', 'inherit'),
+                                             payload.get('voice_id'), payload.get('browser_voice_name', ''))
+        if voice['voice_mode'] != 'inherit':
+            tts.resolve({'mode': voice['voice_mode'], 'voice_id': voice['voice_id']})
         text = str(payload.get('text', ''))
+        example = example_store.get(payload['example_id']) if payload.get('example_id') else None
         paragraphs = [p.strip() for p in re.split(r'\n\s*\n|\n', text) if p.strip()]
-        saved = add_article(str(payload.get('title', '')), paragraphs)
-        return jsonify(tts.article_wire(tts.auto_article(saved))), 201
+        if example and (paragraphs != example_store.paragraphs(example['text'])
+                        or str(payload.get('title', '')).strip() != example['title']):
+            raise ValueError('示例内容已改变，请重新选择示例，或作为普通正文导入。')
+        with example_import_lock:
+            translations = list(example.get('translated_paragraphs', [])) if example else []
+            if example and len(translations) != len(paragraphs) and os.environ.get('DEEPSEEK_API_KEY'):
+                translations = translate(paragraphs)
+                example_store.save_translation(example['id'], translations)
+            day = now()[:10]
+            content_key = hashlib.sha256(json.dumps(paragraphs, ensure_ascii=False).encode('utf-8')).hexdigest()
+            storage_key = f"example:{day}:{example['id']}:{content_key}" if example else ''
+            try:
+                saved = add_article(str(payload.get('title', '')), paragraphs, translations=translations,
+                                    storage_key=storage_key,
+                                    example_id=example['id'] if example else '', edition_day=day)
+            except FileNotFoundError as error:
+                raise StorageError('已保存的文章目录缺失，请从 data/backups 恢复后重试。') from error
+            changed_text = bool(example and translations and saved['translated_paragraphs'] != translations)
+            changed_metadata = (saved.get('example_id', '') != (example['id'] if example else '')
+                                or saved.get('example_voice_mode') != voice['voice_mode']
+                                or saved.get('example_voice_id') != voice['voice_id']
+                                or saved.get('example_browser_voice_name', '') != voice['browser_voice_name'])
+            if example and translations:
+                saved['translated_paragraphs'] = translations
+                saved['full_translation'] = '\n\n'.join(translations)
+            saved.update(example_voice_mode=voice['voice_mode'], example_voice_id=voice['voice_id'],
+                         example_browser_voice_name=voice['browser_voice_name'])
+            if changed_text:
+                try:
+                    saved = store.save(saved)
+                except PermissionError as error:
+                    raise StorageError('文章文件正被占用；关闭该文章的播放页面后重试。') from error
+            elif changed_metadata:
+                saved = store.save_tts(saved)
+        if not tts.enabled and voice['voice_mode'] in ('browser', 'none'):
+            tts.submit_article(saved['id'], {'mode': voice['voice_mode']})
+            saved = store.load(saved['id'])
+        else:
+            saved = tts.auto_article(saved, {**voice, 'example_id': example['id'] if example else ''})
+        return jsonify(tts.article_wire(saved)), 201
 
     @app.post('/api/import/tasks')
     def import_article():

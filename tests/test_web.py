@@ -49,7 +49,7 @@ class WebTests(unittest.TestCase):
     def test_boot_endpoints_and_original_assets(self):
         for url in ('/', '/static/main.js', '/static/static.css', '/static/book-reader.js', '/static/book-reader.css', '/api/health',
                     '/api/days', '/api/daily', '/api/bookmarks', '/api/books', '/api/books/tasks',
-                    '/api/settings/voices', '/api/settings/voice-mode', '/api/settings/news-sources',
+                    '/api/settings/voices', '/api/settings/voice-mode', '/api/settings/news-sources', '/api/examples',
                     '/api/settings/daily-schedule', '/api/settings/daily-content', '/api/settings/library'):
             with self.client.get(url) as response:
                 self.assertEqual(response.status_code, 200, url)
@@ -73,10 +73,22 @@ class WebTests(unittest.TestCase):
         self.assertIsNotNone(picker)
         self.assertEqual(picker.get_text(strip=True), '填入示例')
         self.assertEqual(picker.get('aria-controls'), 'web-example-options')
-        options = dialog.select('#web-example-options button[data-example-title]')
-        self.assertEqual([option.get('data-example-title') for option in options], ['雪国（川端康成）', '読書の時間（操作示例）'])
-        self.assertEqual([option.get_text(strip=True) for option in options], ['雪国（川端康成）', '読書の時間（操作示例）'])
-        snow_country = options[0].get('data-example-text')
+        self.assertIsNotNone(dialog.select_one('input[name="voice_mode"]'))
+        self.assertIsNotNone(dialog.select_one('input[name="voice_id"]'))
+        self.assertIsNotNone(dialog.select_one('input[name="browser_voice_name"]'))
+        article_voice = dialog.select_one('footer.web-form-actions select#web-text-voice')
+        self.assertIsNotNone(article_voice)
+        self.assertTrue(article_voice.has_attr('required'))
+        self.assertNotIn('默认声线', article_voice.get_text())
+        self.assertIsNone(dialog.select_one('.web-text-fields select#web-text-voice'))
+        example_voice = page.select_one('dialog#web-example-editor select#web-example-voice')
+        self.assertIsNotNone(example_voice)
+        self.assertTrue(example_voice.has_attr('required'))
+        self.assertNotIn('默认声线', example_voice.get_text())
+        options = self.client.get('/api/examples').json
+        builtins = [option for option in options if option['builtin']]
+        self.assertEqual({option['title'] for option in builtins}, {'雪国（川端康成）', '読書の時間（操作示例）'})
+        snow_country = next(option['text'] for option in builtins if option['title'] == '雪国（川端康成）')
         self.assertTrue(snow_country.startswith('国境の長いトンネルを抜けると雪国であった。夜の底が白くなった。信号所に汽車が止まった。'))
         self.assertIn('「駅長さん、私です、御機嫌よろしゅうございます」', snow_country)
         self.assertIn('悲しいほど美しい声であった。', snow_country)
@@ -84,8 +96,43 @@ class WebTests(unittest.TestCase):
         self.assertGreaterEqual(len(snow_country.splitlines()), 20)
         self.assertNotIn('\n\n', snow_country)
         self.assertNotIn('&#x20;', snow_country)
-        operation_example = options[1].get('data-example-text')
+        operation_example = next(option['text'] for option in builtins if option['title'] == '読書の時間（操作示例）')
         self.assertEqual(operation_example, '朝の静かな時間に、本を開きました。窓の外では、小さな鳥が歌っています。\n\n知らない言葉に出会ったら、辞書で調べてみましょう。一つの言葉から、新しい世界が広がります。\n\nこれは閲読室の使い方を確認するための例文です。実際のニュースではありません。')
+
+    def test_reader_can_open_custom_example_editor(self):
+        from bs4 import BeautifulSoup
+
+        with self.client.get('/') as response:
+            page = BeautifulSoup(response.data, 'html.parser')
+        add = page.select_one('#web-example-options button#web-example-add')
+        self.assertIsNotNone(add)
+        self.assertEqual(add.get_text(strip=True), '增加示例')
+        editor = page.select_one('dialog#web-example-editor')
+        self.assertIsNotNone(editor)
+        self.assertEqual(editor.get('aria-labelledby'), 'web-example-editor-title')
+        self.assertIsNotNone(editor.select_one('form#web-example-form input[name="title"][required]'))
+        self.assertIsNotNone(editor.select_one('form#web-example-form textarea[name="text"][required]'))
+        self.assertIsNotNone(editor.select_one('[role="alert"]'))
+        self.assertIsNotNone(editor.select_one('button[type="submit"]'))
+        self.assertIsNotNone(editor.select_one('button#cancel-web-example-editor'))
+
+    def test_reader_custom_examples_use_file_store_update_policy(self):
+        response = self.client.post('/api/examples', json={'title': '重复示例', 'text': '第一版。'})
+        self.assertEqual(response.status_code, 201)
+        updated = self.client.post('/api/examples', json={'title': '重复示例', 'text': '第二版。', 'voice_mode': 'browser', 'browser_voice_name': 'Microsoft Nanami'})
+        self.assertEqual(updated.status_code, 201)
+        self.assertEqual(updated.json['text'], '第二版。')
+        self.assertEqual(updated.json['voice_mode'], 'browser')
+
+    def test_reader_custom_example_save_shows_success_toast(self):
+        from bs4 import BeautifulSoup
+
+        source = (Path(__file__).resolve().parents[1] / 'static' / 'main.js').read_text(encoding='utf-8')
+        self.assertIn('showExampleSavedToast();', source)
+        page = BeautifulSoup((Path(__file__).resolve().parents[1] / 'static' / 'index.html').read_text(encoding='utf-8'), 'html.parser')
+        saved = page.select_one('#web-example-save-toast[role="status"]')
+        self.assertIsNotNone(saved)
+        self.assertTrue(saved.has_attr('hidden'))
 
     def test_dictionary_real_entries_and_romaji(self):
         self.assertEqual(self.client.get('/api/dictionary/stats').json['entries'], 159396)
@@ -120,6 +167,49 @@ class WebTests(unittest.TestCase):
         self.client.delete(f'/api/articles/{aid}/bookmarks')
         self.assertFalse(self.client.get(f'/api/articles/{aid}').json['bookmarked'])
         self.assertEqual([path for path in bookmark_root.iterdir() if path.is_dir()], [])
+
+    def test_same_example_import_reuses_same_day_article(self):
+        example = self.client.get('/api/examples').json[0]
+        payload = {'title': example['title'], 'text': example['text'], 'example_id': example['id'], 'voice_mode': 'browser'}
+        first = self.client.post('/api/articles/text', json=payload)
+        second = self.client.post('/api/articles/text', json=payload)
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 201)
+        self.assertEqual(first.json['id'], second.json['id'])
+
+    def test_repeat_example_import_with_open_article_file_does_not_replace_directory(self):
+        example = self.client.get('/api/examples').json[0]
+        payload = {'title': example['title'], 'text': example['text'],
+                   'example_id': example['id'], 'voice_mode': 'browser'}
+        first = self.client.post('/api/articles/text', json=payload)
+        self.assertEqual(first.status_code, 201)
+        article = self.app.article_store.load(first.json['id'])
+        path = Path(self.temp.name) / 'articles' / article['_directory']
+        revision = article['_revision']
+        with (path / 'original.txt').open('rb') as reader:
+            again = self.client.post('/api/articles/text', json=payload)
+            self.assertEqual(reader.read().decode('utf-8'), article['original_text'])
+        self.assertEqual(again.status_code, 201, again.json)
+        self.assertEqual(again.json['id'], first.json['id'])
+        self.assertTrue(path.is_dir())
+        self.assertGreaterEqual(self.app.article_store.load(first.json['id'])['_revision'], revision)
+
+    def test_missing_existing_article_folder_reports_recovery_error(self):
+        import shutil
+        from article_store import safe_path
+        with tempfile.TemporaryDirectory() as directory:
+            app = create_app(directory)
+            client = app.test_client()
+            example = client.get('/api/examples').json[0]
+            payload = {'title': example['title'], 'text': example['text'],
+                       'example_id': example['id'], 'voice_mode': 'browser'}
+            first = client.post('/api/articles/text', json=payload)
+            self.assertEqual(first.status_code, 201)
+            article = app.article_store.load(first.json['id'])
+            shutil.rmtree(safe_path(app.article_store.root, article['_directory']))
+            again = client.post('/api/articles/text', json=payload)
+            self.assertEqual(again.status_code, 400)
+            self.assertIn('文章目录缺失', again.json['detail'])
 
     def test_epub_reading_order_sanitization_and_roundtrip(self):
         blob = fixture_epub()

@@ -19,9 +19,9 @@ from tts_service import ACTIVE, VoiceStore, ProcessBackend, TTSQueue, cache_key,
 
 
 class TTSController:
-    def __init__(self, app, root, data, articles, books, setting, download, enabled=False, backend=None):
+    def __init__(self, app, root, data, articles, books, setting, download, enabled=False, backend=None, examples=None):
         self.app, self.root, self.data = app, Path(root), Path(data)
-        self.articles, self.books, self.setting, self.download = articles, books, setting, download
+        self.articles, self.books, self.setting, self.download, self.examples = articles, books, setting, download, examples
         self.enabled = enabled or backend is not None
         self.lock = threading.RLock()
         self.queue = None
@@ -243,7 +243,8 @@ class TTSController:
             return article
         try:
             self.submit_article(article['id'], {'mode': (source or {}).get('voice_mode', 'model'),
-                                'voice_id': (source or {}).get('voice_id')})
+                                'voice_id': (source or {}).get('voice_id'),
+                                'example_id': article.get('example_id')})
         except Exception as error:
             # Audio failures never roll back a successfully imported article.
             latest = self.articles.load(article['id'])
@@ -264,7 +265,8 @@ class TTSController:
                 self.articles.save_tts(article)
                 return {'status': 'browser' if mode == 'browser' else 'disabled'}
             self.require()
-            return self._submit(f'article:{aid}', article['paragraphs'], voice, article_id=aid)
+            return self._submit(f'article:{aid}', article['paragraphs'], voice, article_id=aid,
+                                example_id=payload.get('example_id') or article.get('example_id'))
 
     def submit_chapter(self, bid, cid, payload, configure_only=False):
         with self.lock:
@@ -337,6 +339,27 @@ class TTSController:
                         audio_voice_id=voice['id'], audio_voice_mode='voice', audio_cache_key=metadata.get('cache_key'))
                     self.articles.save_tts(article)
                     return True
+                if article.get('example_id') and self.examples:
+                    cached = self.examples.cached_audio(article['example_id'], voice['id'], text_key(paragraphs))
+                    if cached:
+                        source, metadata = cached
+                        if not self._matches_audio(metadata, paragraphs, voice):
+                            return False
+                        try:
+                            self._validate_audio(source, metadata)
+                        except (OSError, ValueError, EOFError, wave.Error):
+                            return False
+                        relative = f"audio/{self._article_audio_filename(voice['name'], article['title'])}"
+                        destination = self.articles.root / article['_directory'] / relative
+                        audio_hash = digest(source.read_bytes())
+                        if destination.exists() and digest(destination.read_bytes()) != audio_hash:
+                            relative = f"audio/{Path(relative).stem}-{audio_hash[:8]}.wav"
+                        article['_assets'] = [asset for asset in article['_assets'] if asset['path'] != relative]
+                        article['_assets'].append({'path': relative, 'kind': 'audio', 'tts': dict(metadata)})
+                        article.update(audio_path=relative, audio_segments=metadata['segments'], audio_status='ready',
+                            audio_voice_id=voice['id'], audio_voice_mode='voice', audio_cache_key=metadata.get('cache_key'))
+                        self.articles.save_tts(article, files={relative: source})
+                        return True
         else:
             with self.books.locks.locked():
                 book = self.books.load(ids['book_id'])
@@ -424,6 +447,9 @@ class TTSController:
                 article.update(audio_path=relative, audio_status='ready', audio_segments=result['segments'],
                     audio_voice_mode='voice', audio_voice_id=voice['id'], audio_cache_key=task['cache_key'])
                 self.articles.save_tts(article, files={relative: path})
+                if self.examples and task.get('example_id'):
+                    self.examples.save_audio(task['example_id'], voice['id'], self.articles.root / article['_directory'] / relative,
+                                             dict(metadata, voice_name=voice['name']))
         else:
             relative = f"{request['voice_name']}.wav"
             book = self.books.load(task['book_id'])

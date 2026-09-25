@@ -9,7 +9,8 @@ import re
 import sys
 import time
 
-from article_store import write_json, digest
+from article_store import digest
+from tts_protocol import read_json, write_json
 
 
 def runtime_options(model):
@@ -178,7 +179,7 @@ def main():
         if not request_path.exists():
             time.sleep(.1)
             continue
-        request = json.loads(request_path.read_text(encoding='utf-8'))
+        request = read_json(request_path)
         request_path.unlink()
         job = Path(request['directory'])
         try:

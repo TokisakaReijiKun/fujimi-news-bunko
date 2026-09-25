@@ -8,6 +8,8 @@
 
 ## 使用与状态
 
+服务与模型进程之间的临时 JSON 通信通过 `tts_protocol.py` 读写。Windows 短暂占用文件导致的 `PermissionError` 最多尝试六次，总退避等待不超过 0.575 秒；写入仍通过临时文件原子替换，避免读取半份进度。持续权限错误继续报告失败，不修改系统权限，也不会将失败任务标为成功。
+
 新闻仅在验证、来源后处理和保存成功后排队，音频不参与新闻配额或日刊终态。文本导入同样自动排队。书籍仅处理用户选中的章节；标题和非空日文块依阅读顺序朗读，ruby 注音和图片本身不作为额外文本。模型不生成中文译文音频。
 
 任务状态为 `queued/running/completed/failed/cancelled/interrupted`，阶段包括 `queued/loading/tts/merging/saving/complete`。每个自然段优先整段合成，只有 tokenizer 计数超过 `min(256, 模型文本上限)` 才按原句界、逗号和 token 上限拆分。`split_text` 的兼容参数名 `max_chars=256` 在这里表示 token 预算，不按 Unicode 字符数截断。计数以实际合成单元为单位，合并后的时间表仍对应原文段落。全部单元按顺序流式拼接为 PCM16、48 kHz、单声道 WAV；完成必须意味着完整 WAV 已验证、附件已登记并提交。

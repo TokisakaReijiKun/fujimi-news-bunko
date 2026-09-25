@@ -14,7 +14,7 @@
       if (isMobileApp) root.classList.add("mobile-app-booting");
     })();
   </script>
-  <link rel="stylesheet" href="/static/static.css?v=20260920-voice-count-right">
+  <link rel="stylesheet" href="/static/static.css?v=20260925-remove-voice-count">
   <link rel="stylesheet" href="/static/book-reader.css?v=3">
 </head>
 <body>
@@ -132,7 +132,7 @@
         <div class="settings-stack">
           <section class="settings-panel voice-panel">
             <div class="panel-heading">
-              <div class="voice-heading-copy"><h3>声の形</h3><div class="voice-heading-meta"><p>管理首次朗读与読み返し使用的参考声线。</p><div class="voice-overview"><span id="voice-count" role="status" aria-atomic="true">0 个声线</span></div></div></div>
+              <div class="voice-heading-copy"><h3>声の形</h3></div>
               <div class="panel-actions"><span id="active-voice-badge" class="status-badge">未选择声线</span><button id="add-voice" type="button">添加声线</button></div>
             </div>
             <p id="voice-error" class="panel-notice error" role="alert" hidden></p>
@@ -295,6 +295,10 @@
 
   <dialog id="web-text-dialog" class="web-text-dialog" aria-labelledby="web-text-dialog-title">
     <form id="web-text-form">
+      <input type="hidden" name="example_id" value="">
+      <input type="hidden" name="voice_mode" value="inherit">
+      <input type="hidden" name="voice_id" value="">
+      <input type="hidden" name="browser_voice_name" value="">
       <header class="dialog-heading web-text-dialog-heading">
         <div><p class="section-kicker">TEXT IMPORT</p><h3 id="web-text-dialog-title">ことばを置いて、読む時間へ。</h3></div>
         <button id="close-web-text-dialog" type="button" class="icon-button" aria-label="关闭正文导入">
@@ -309,8 +313,32 @@
       <p class="web-import-error" role="alert" hidden></p>
       <footer class="web-form-actions">
         <button id="cancel-web-text-dialog" type="button" class="quiet">取消</button>
-        <div class="web-example-menu"><button id="web-example-trigger" type="button" class="quiet" aria-controls="web-example-options" aria-expanded="false">填入示例</button><div id="web-example-options" class="web-example-options" hidden><button type="button" data-example="snow-country" data-example-title="雪国（川端康成）" data-example-text="国境の長いトンネルを抜けると雪国であった。夜の底が白くなった。信号所に汽車が止まった。&#10;内側の座席から娘が立って来て、島村の前のガラス窓を落とした。雪の冷気が流れ込んだ。娘は窓いっぱいに乗り出して、遠くへ叫ぶように、&#10;「駅長さん、駅長さん」&#10;明かりをさげてゆっくり吹きを踏んできた男は、襟巻で鼻の上まで包み、耳に帽子の毛皮を垂れていた。&#10;もうそんな寒さかと島村は外を眺めると鉄道の官舎らしいバラックが山裾に寒々と散らばっているだけで、雪の色はそこまで行かぬうちに闇に飲まれていた。&#10;「駅長さん、私です、御機嫌よろしゅうございます」&#10;「ああ、葉子さんじゃないか。お帰りかい。また寒くなったよ」&#10;「弟が今度こちらに勤めさせていただいておりますのですってね。お世話さまですわ」&#10;「こんなところ、今に寂しくて参るだろうよ。若いのに可哀想だな」&#10;「ほんの子供ですから、駅長さんからよく教えてやっていただいて、よろしくお願いいたしますわ」&#10;「よろしい。元気で働いてるよ。これからいそがしくなる。去年は大雪だったよ。よく雪崩れてね、汽車が立往生するんで、村も炊出しがいそがしかったよ」&#10;「駅長さんずいぶん厚着に見えますわ。弟の手紙には、まだチョッキも着ていないようなことを書いてありましたけれど」&#10;私は着物を四枚重ねだ。若い者は寒いと酒ばがり飲んでいるよ。それでごろごろあすこにぶっ倒れてるのさ、風邪を引いてね」&#10;駅長は宿舎の方へ手の明かりを振り向けた。&#10;「弟もお酒をいただきますでしょうか」&#10;「いや」&#10;「駅長さんもうお帰りですの？」&#10;「私は怪我をして、医者に通ってるんだ」&#10;「まあ。いけませんわ」&#10;和服に外套の駅長は寒い立話をさっさと切り上げたいらしく、もう後姿を見せながら、&#10;「それじゃまあ大事にいらっしゃい」&#10;「駅長さん、弟は今出ておりませんの？」と葉子は雪の上を目探しして、&#10;「駅長さん、弟をよく見てやって、お願いです」&#10;悲しいほど美しい声であった。高い響きのまま夜の雪から木魂して来そうだった。&#10;汽車が動き出しても、彼女は窓から胸を入れなかった。そうして線路の下を歩いている駅長に追いつくと、&#10;「駅長さあん、今度の休みの日に家へお帰りって、弟に言ってやって下さあい」&#10;「はあい」と、駅長が声を張り上げた。&#10;葉子は窓をしめて、赤らんだ頬に両手をあてた。">雪国（川端康成）</button><button type="button" data-example="operation-example" data-example-title="読書の時間（操作示例）" data-example-text="朝の静かな時間に、本を開きました。窓の外では、小さな鳥が歌っています。&#10;&#10;知らない言葉に出会ったら、辞書で調べてみましょう。一つの言葉から、新しい世界が広がります。&#10;&#10;これは閲読室の使い方を確認するための例文です。実際のニュースではありません。">読書の時間（操作示例）</button></div></div>
+        <div class="web-example-menu"><button id="web-example-trigger" type="button" class="quiet" aria-controls="web-example-options" aria-expanded="false">填入示例</button><div id="web-example-options" class="web-example-options" hidden><p id="web-example-storage-error" class="web-example-storage-error" role="alert" hidden></p><button id="web-example-add" type="button">增加示例</button></div></div>
+        <select id="web-text-voice" class="web-text-voice-control" aria-label="本次阅读声线" required><option value="" disabled selected>正在读取声线…</option></select>
         <button type="submit">保存并阅读</button>
+      </footer>
+    </form>
+    <div id="web-example-save-toast" class="toast web-example-save-toast" role="status" hidden>示例已保存</div>
+  </dialog>
+
+  <dialog id="web-example-editor" class="web-example-editor" aria-labelledby="web-example-editor-title">
+    <form id="web-example-form">
+      <header class="dialog-heading web-text-dialog-heading">
+        <div><p class="section-kicker">TEXT IMPORT</p><h3 id="web-example-editor-title">增加示例</h3></div>
+        <button id="close-web-example-editor" type="button" class="icon-button" aria-label="关闭示例编辑">
+          <svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+        </button>
+      </header>
+      <div class="web-text-fields">
+        <label><span>標題 · 标题</span><input name="title" required maxlength="500" autocomplete="off"></label>
+        <label><span>本文 · 日文正文</span><textarea name="text" required maxlength="100000" placeholder="ここに読みたい文章を貼り付けてください。"></textarea></label>
+      </div>
+      <label class="web-example-voice-row"><span>阅读声线</span><select id="web-example-voice" name="voice_choice" aria-label="阅读声线" required><option value="" disabled selected>正在读取声线…</option></select></label>
+      <p class="web-example-storage-note">保存在本地 data/articles/examples 文件夹；目录名使用标题。同名标题会更新示例和声线，并备份旧版本。</p>
+      <p class="web-example-editor-error" role="alert" hidden></p>
+      <footer class="web-example-editor-actions">
+        <button id="cancel-web-example-editor" type="button" class="quiet">取消</button>
+        <button type="submit">保存示例</button>
       </footer>
     </form>
   </dialog>
@@ -414,6 +442,6 @@
   </template>
   <script src="/static/book-reader.js?v=4"></script>
   <script src="/static/browser-speech.js?v=1"></script>
-  <script src="/static/main.js?v=20260920-voice-count-heading"></script>
+  <script src="/static/main.js?v=20260925-example-voice-names"></script>
 </body>
 </html>

@@ -218,19 +218,15 @@ function enhanceAndroidSettingsLayout() {
   if (!window.FujimiMobile || $("#voice-settings-disclosure")) return;
   $("#settings-view .section-head")?.classList.add("settings-page-head");
 
-  const voiceOverview = $("#settings-view .voice-overview");
   const voiceList = $("#voice-list");
-  const voiceCount = $("#voice-count");
-  if (voiceOverview && voiceList && voiceCount) {
+  if (voiceList) {
     const disclosure = document.createElement("details");
     disclosure.id = "voice-settings-disclosure";
     disclosure.className = "settings-disclosure";
     const summary = document.createElement("summary");
     summary.innerHTML = "<span><strong>声线管理</strong><small>选择、修改或删除参考声线</small></span>";
-    summary.append(voiceCount);
     disclosure.append(summary, voiceList);
-    const voiceHeading = voiceOverview.closest('.panel-heading');
-    voiceOverview.remove();
+    const voiceHeading = voiceList.closest('.voice-panel')?.querySelector('.panel-heading');
     voiceHeading?.after(disclosure);
   }
 
@@ -1657,8 +1653,8 @@ function configuredBrowserVoice() {
   return preferredJapaneseBrowserVoice(voices);
 }
 
-function preferredJapaneseBrowserVoice(voices = japaneseBrowserVoices()) {
-  return voices.find(voice => voice.name === state.browserVoiceName)
+function preferredJapaneseBrowserVoice(voices = japaneseBrowserVoices(), preferredName = state.browserVoiceName) {
+  return voices.find(voice => voice.name === preferredName)
     || voices.find(voice => voice.default)
     || voices.find(voice => /(?:^|\s)Nanami(?:\s|$)/i.test(voice.name))
     || voices.find(voice => /(?:^|\s)Keita(?:\s|$)/i.test(voice.name))
@@ -1666,8 +1662,12 @@ function preferredJapaneseBrowserVoice(voices = japaneseBrowserVoices()) {
     || null;
 }
 
-function waitForJapaneseBrowserVoice(timeout = 3000) {
-  const ready = preferredJapaneseBrowserVoice();
+function waitForJapaneseBrowserVoice(timeout = 3000, preferredName = '') {
+  const selectedName = preferredName || state.browserVoiceName;
+  const choose = () => selectedName
+    ? japaneseBrowserVoices().find(voice => voice.name === selectedName) || null
+    : preferredJapaneseBrowserVoice(japaneseBrowserVoices());
+  const ready = choose();
   if (ready || !("speechSynthesis" in window)) return Promise.resolve(ready);
   return new Promise(resolve => {
     let complete = false;
@@ -1682,7 +1682,7 @@ function waitForJapaneseBrowserVoice(timeout = 3000) {
       resolve(voice);
     };
     const refresh = () => {
-      const voice = preferredJapaneseBrowserVoice();
+      const voice = choose();
       if (voice) finish(voice);
     };
     speechSynthesis.addEventListener("voiceschanged", refresh);
@@ -1692,24 +1692,23 @@ function waitForJapaneseBrowserVoice(timeout = 3000) {
   });
 }
 
-async function resolveJapaneseBrowserVoice({ persistDefault = false } = {}) {
-  const voice = await waitForJapaneseBrowserVoice();
+async function resolveJapaneseBrowserVoice({ persistDefault = false, preferredName = '' } = {}) {
+  const selectedName = preferredName || state.browserVoiceName;
+  const voice = await waitForJapaneseBrowserVoice(3000, selectedName);
   if (!voice) return null;
-  const configuredVoiceIsAvailable = japaneseBrowserVoices().some(candidate => candidate.name === state.browserVoiceName);
-  if (!configuredVoiceIsAvailable) {
-    state.browserVoiceName = voice.name;
-    if (persistDefault) {
-      try {
-        await api("/api/settings/browser-voice", {
-          method: "PUT",
-          body: JSON.stringify({ name: voice.name, label: state.browserVoiceLabel || "ブラウザー" }),
-        });
-      } catch (_error) {
-        // The selected in-memory voice still prevents a system-language fallback.
-      }
+  if (selectedName) return voice;
+  state.browserVoiceName = voice.name;
+  if (persistDefault) {
+    try {
+      await api("/api/settings/browser-voice", {
+        method: "PUT",
+        body: JSON.stringify({ name: voice.name, label: state.browserVoiceLabel || "ブラウザー" }),
+      });
+    } catch (_error) {
+      // The selected in-memory voice still prevents a system-language fallback.
     }
   }
-  return preferredJapaneseBrowserVoice() || voice;
+  return voice;
 }
 
 async function initializeBrowserVoice() {
@@ -1728,6 +1727,23 @@ function browserVoiceShortName(voiceName = "") {
   const match = voiceName.match(/^Microsoft\s+(.+?)(?:\s+Online|\s+Desktop|\s+-\s+Japanese|\s*\()/i);
   const shortName = (match?.[1] || voiceName).trim();
   return ({ Nanami: "七海", Keita: "圭太" })[shortName] || shortName;
+}
+
+function exampleVoiceChoices(voices, modeSettings, browserName, currentChoice) {
+  const browserChoice = browserName ? `browser:${encodeURIComponent(browserName)}` : '';
+  const options = [
+    ...(browserChoice ? [{ label: browserVoiceShortName(browserName), value: browserChoice }] : []),
+    ...voices.map(voice => ({ label: voice.name, value: `voice:${voice.id}` })),
+  ];
+  const activeVoice = voices.find(voice => voice.active);
+  const activeChoice = modeSettings.mode === 'voice' && activeVoice
+    ? `voice:${activeVoice.id}` : browserChoice || (activeVoice ? `voice:${activeVoice.id}` : options[0]?.value || '');
+  const choice = currentChoice === 'browser' ? browserChoice || activeChoice
+    : currentChoice && currentChoice !== 'inherit' ? currentChoice : activeChoice;
+  if (choice.startsWith('browser:') && !options.some(option => option.value === choice)) {
+    options.push({ label: browserVoiceShortName(decodeURIComponent(choice.slice(8))), value: choice });
+  }
+  return { options, choice };
 }
 
 async function populateRereadVoices(select, article) {
@@ -2829,14 +2845,14 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
   controller.needsRestart = false;
   controller.token += 1;
   const token = controller.token;
-  const browserVoice = window.FujimiMobile?.speak ? null : await resolveJapaneseBrowserVoice({ persistDefault: true });
+  const browserVoice = window.FujimiMobile?.speak ? null : await resolveJapaneseBrowserVoice({ persistDefault: true, preferredName: controller.browserVoiceName || '' });
   if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
   if (!window.FujimiMobile?.speak && !browserVoice) {
     controller.playing = false;
     controller.started = false;
     controller.needsRestart = true;
     renderBrowserSpeech(controller);
-    notice("未检测到日语系统声线，已阻止中文声线朗读日文。请安装 Windows 日语（日本）语音包后重试。", true);
+    notice(controller.browserVoiceName ? "此示例选择的浏览器声线不可用，请重新选择声线。" : "未检测到日语系统声线，请安装 Windows 日语（日本）语音包后重试。", true);
     return;
   }
   const speech = window.FujimiMobile?.speak ? null : new SpeechSynthesisUtterance(controller.text.slice(controller.offset));
@@ -2898,6 +2914,7 @@ function setupBrowserArticlePlayer(article, root) {
     duration: Math.max(1, model.text.length / charactersPerSecond),
     charactersPerSecond,
     rate: savedPlaybackRate(),
+    browserVoiceName: article.example_browser_voice_name || '',
     hasBoundaryEvents: false,
     playing: false,
     paused: false,
@@ -3229,7 +3246,7 @@ async function loadVoices() {
         ? selectedBrowserName || "ブラウザー"
         : mode.mode === "voice" && activeVoice
           ? activeVoice.name
-          : "未选择声线"; $("#voice-count").textContent = `${voices.length + 1} 个声线`;
+          : "未选择声线";
 
     const appendVoice = (voice, { isBrowser = false } = {}) => {
       const row = document.createElement("div");
@@ -3473,11 +3490,21 @@ async function populateBrowserVoiceSelect() {
   await waitForJapaneseBrowserVoice();
   if (!state.editingBrowserVoice) return;
   const voices = japaneseBrowserVoices();
-  select.replaceChildren(...voices.map(voice => new Option(browserVoiceShortName(voice.name), voice.name)));
-  const selected = preferredJapaneseBrowserVoice(voices);
+  const selected = voices.find(voice => voice.name === state.browserVoiceName)
+    || (!state.browserVoiceName ? preferredJapaneseBrowserVoice(voices) : null);
+  const options = voices.map(voice => new Option(browserVoiceShortName(voice.name), voice.name));
+  if (state.browserVoiceName && !selected) {
+    const unavailable = new Option(`${browserVoiceShortName(state.browserVoiceName)}（当前设备不可用）`, state.browserVoiceName);
+    unavailable.disabled = true;
+    options.unshift(unavailable);
+  }
+  select.replaceChildren(...options);
   if (selected) select.value = selected.name;
+  else if (state.browserVoiceName) select.value = state.browserVoiceName;
   select.disabled = voices.length === 0;
-  $("#submit-voice").disabled = voices.length === 0;
+  const updateSubmit = () => { $("#submit-voice").disabled = !voices.some(voice => voice.name === select.value); };
+  select.onchange = updateSubmit;
+  updateSubmit();
   panelNotice("#voice-editor-notice", voices.length ? "" : "未检测到日语系统声线。请先在 Windows 设置中安装日语（日本）语音包。", voices.length === 0);
 }
 
@@ -4925,6 +4952,8 @@ showView(initialView, { historyMode: "replace", resetReader: false });
     textDialogTrigger.setAttribute('aria-expanded', 'true');
     textDialog.showModal();
     requestAnimationFrame(() => textForm.querySelector('[name="title"]').focus());
+    loadExamples();
+    loadExampleVoices();
   };
   document.querySelector('#close-web-text-dialog').onclick = closeTextDialog;
   document.querySelector('#cancel-web-text-dialog').onclick = closeTextDialog;
@@ -4935,10 +4964,141 @@ showView(initialView, { historyMode: "replace", resetReader: false });
   });
   const textExampleTrigger = textDialog.querySelector('#web-example-trigger');
   const textExampleOptions = textDialog.querySelector('#web-example-options');
+  const addExampleButton = textDialog.querySelector('#web-example-add');
+  const exampleStorageError = textDialog.querySelector('#web-example-storage-error');
+  const exampleEditor = document.querySelector('#web-example-editor');
+  const exampleForm = document.querySelector('#web-example-form');
+  const exampleEditorError = exampleEditor.querySelector('[role="alert"]');
+  const exampleTitle = exampleForm.querySelector('[name="title"]');
+  const exampleText = exampleForm.querySelector('[name="text"]');
+  const exampleVoiceSelect = exampleForm.querySelector('#web-example-voice');
+  const articleVoiceSelect = textForm.querySelector('#web-text-voice');
+  const articleTitle = textForm.querySelector('[name="title"]');
+  const articleText = textForm.querySelector('[name="text"]');
+  const articleExampleId = textForm.querySelector('[name="example_id"]');
+  const detachExample = () => { articleExampleId.value = ''; };
+  articleTitle.addEventListener('input', detachExample);
+  articleText.addEventListener('input', detachExample);
+  const articleVoiceMode = textForm.querySelector('[name="voice_mode"]');
+  const articleVoiceId = textForm.querySelector('[name="voice_id"]');
+  const articleBrowserVoiceName = textForm.querySelector('[name="browser_voice_name"]');
+  const exampleSavedToast = textDialog.querySelector('#web-example-save-toast');
+  let exampleSavedToastTimer = null;
+  let examples = [];
+  let voiceLoadSequence = 0;
+  let defaultVoiceChoice = '';
+  let browserVoiceChoice = '';
+  let examplesLoadPromise = null;
+  let focusArticleAfterSave = false;
+  const showExampleSavedToast = () => {
+    if (!exampleSavedToast) return;
+    if (exampleSavedToastTimer) clearTimeout(exampleSavedToastTimer);
+    exampleSavedToast.hidden = false;
+    exampleSavedToast.classList.remove('is-leaving');
+    requestAnimationFrame(() => exampleSavedToast.classList.add('is-visible'));
+    exampleSavedToastTimer = setTimeout(() => {
+      exampleSavedToast.classList.add('is-leaving');
+      setTimeout(() => {
+        exampleSavedToast.hidden = true;
+        exampleSavedToast.classList.remove('is-visible', 'is-leaving');
+      }, 220);
+    }, 2600);
+  };
   const closeExampleMenu = () => {
     textExampleOptions.hidden = true;
     textExampleTrigger.setAttribute('aria-expanded', 'false');
   };
+  const choiceForExample = item => item.voice_mode === 'browser' && item.browser_voice_name
+    ? `browser:${encodeURIComponent(item.browser_voice_name)}`
+    : item.voice_mode === 'voice' && item.voice_id ? `voice:${item.voice_id}` : (item.voice_mode || 'inherit');
+  const setArticleVoice = choice => {
+    const [mode, raw] = String(choice || 'inherit').split(':', 2);
+    articleVoiceMode.value = mode === 'browser' || mode === 'voice' || mode === 'none' ? mode : 'inherit';
+    articleVoiceId.value = mode === 'voice' ? raw || '' : '';
+    articleBrowserVoiceName.value = mode === 'browser' ? decodeURIComponent(raw || '') : '';
+  };
+  const ensureVoiceOption = (select, value, label) => {
+    if ([...select.options].some(option => option.value === value)) return;
+    select.add(new Option(label, value));
+  };
+  const fillExample = example => {
+    articleExampleId.value = example.id;
+    articleTitle.value = example.title;
+    articleText.value = example.text;
+    const savedChoice = choiceForExample(example);
+    const choice = savedChoice === 'inherit' ? defaultVoiceChoice || articleVoiceSelect.value
+      : savedChoice === 'browser' ? browserVoiceChoice || defaultVoiceChoice : savedChoice;
+    if (choice) {
+      ensureVoiceOption(articleVoiceSelect, choice, '已保存的声线（当前不可用）');
+      articleVoiceSelect.value = choice;
+      setArticleVoice(choice);
+    }
+    closeExampleMenu();
+    articleText.focus();
+  };
+  const renderExamples = () => {
+    textExampleOptions.querySelectorAll('[data-example-id]').forEach(button => button.remove());
+    examples.forEach(example => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.exampleId = example.id;
+      button.textContent = example.title;
+      button.title = example.title;
+      button.onclick = () => fillExample(example);
+      addExampleButton.before(button);
+    });
+  };
+  const loadExamples = () => {
+    if (examplesLoadPromise) return examplesLoadPromise;
+    examplesLoadPromise = (async () => {
+      try {
+        examples = await api('/api/examples');
+        renderExamples();
+        // Keep the legacy browser copy intact. The server backs it up before importing.
+        const legacyKey = 'fujimi-reader-examples-v1';
+        const markerKey = 'fujimi-reader-examples-file-migrated-v1';
+        const raw = localStorage.getItem(legacyKey);
+        if (raw && raw !== localStorage.getItem(markerKey)) {
+          examples = await api('/api/examples/migrate', { method: 'POST', body: JSON.stringify({ examples: JSON.parse(raw) }) });
+          renderExamples();
+          localStorage.setItem(markerKey, raw);
+        }
+        exampleStorageError.hidden = true;
+      } catch (error) {
+        exampleStorageError.textContent = `示例读取或旧数据迁移失败：${error.message}；旧数据已保留。`;
+        exampleStorageError.hidden = false;
+      }
+    })().finally(() => { examplesLoadPromise = null; });
+    return examplesLoadPromise;
+  };
+  const loadExampleVoices = async () => {
+    const sequence = ++voiceLoadSequence;
+    try {
+      const [voices, modeSettings] = await Promise.all([api('/api/settings/voices'), api('/api/settings/voice-mode')]);
+      state.browserVoiceName = modeSettings.browser_voice_name || '';
+      state.browserVoiceLabel = modeSettings.browser_voice_label || 'ブラウザー';
+      await waitForJapaneseBrowserVoice();
+      if (sequence !== voiceLoadSequence) return;
+      const browserName = preferredJapaneseBrowserVoice()?.name || state.browserVoiceName || '';
+      const defaults = exampleVoiceChoices(voices, modeSettings, browserName, 'inherit');
+      defaultVoiceChoice = defaults.choice;
+      browserVoiceChoice = browserName ? `browser:${encodeURIComponent(browserName)}` : '';
+      for (const select of [articleVoiceSelect, exampleVoiceSelect]) {
+        const { options, choice } = exampleVoiceChoices(voices, modeSettings, browserName, select.value);
+        select.replaceChildren(...options.map(option => new Option(option.label, option.value)));
+        if (choice && !options.some(option => option.value === choice)) {
+          ensureVoiceOption(select, choice, '已保存的声线（当前不可用）');
+        }
+        select.value = choice;
+        if (select === articleVoiceSelect) setArticleVoice(choice);
+      }
+    } catch (error) {
+      exampleStorageError.textContent = `声线读取失败：${error.message}`;
+      exampleStorageError.hidden = false;
+    }
+  };
+  loadExamples();
+  loadExampleVoices();
   textDialog.addEventListener('click', event => {
     if (event.target === textDialog) {
       closeTextDialog();
@@ -4956,16 +5116,59 @@ showView(initialView, { historyMode: "replace", resetReader: false });
     const expanded = textExampleTrigger.getAttribute('aria-expanded') === 'true';
     textExampleOptions.hidden = expanded;
     textExampleTrigger.setAttribute('aria-expanded', String(!expanded));
+    if (!expanded) loadExamples();
   };
-  textExampleOptions.querySelectorAll('[data-example]').forEach(textExample => {
-    textExample.onclick = () => {
-      textForm.querySelector('[name="title"]').value = textExample.dataset.exampleTitle;
-      const body = textForm.querySelector('[name="text"]');
-      body.value = textExample.dataset.exampleText;
-      closeExampleMenu();
-      body.focus();
-    };
+  addExampleButton.onclick = () => {
+    closeExampleMenu();
+    exampleForm.reset();
+    exampleTitle.value = articleTitle.value;
+    exampleText.value = articleText.value;
+    const choice = articleVoiceSelect.value || defaultVoiceChoice;
+    if (choice) {
+      ensureVoiceOption(exampleVoiceSelect, choice, '已保存的声线（当前不可用）');
+      exampleVoiceSelect.value = choice;
+    }
+    exampleEditorError.hidden = true;
+    exampleEditor.showModal();
+    requestAnimationFrame(() => exampleTitle.focus());
+  };
+  const closeExampleEditor = () => { if (exampleEditor.open) exampleEditor.close(); };
+  document.querySelector('#close-web-example-editor').onclick = closeExampleEditor;
+  document.querySelector('#cancel-web-example-editor').onclick = closeExampleEditor;
+  exampleEditor.addEventListener('close', () => {
+    (focusArticleAfterSave ? articleText : textExampleTrigger).focus({ preventScroll: true });
+    focusArticleAfterSave = false;
   });
+  exampleForm.onsubmit = async event => {
+    event.preventDefault();
+    const title = exampleTitle.value.trim();
+    const text = exampleText.value.trim();
+    const showError = message => {
+      exampleEditorError.textContent = message;
+      exampleEditorError.hidden = false;
+    };
+    if (!title || !text) { showError('请填写标题和日文正文。'); return; }
+    const saveButton = exampleForm.querySelector('[type="submit"]');
+    if (saveButton.disabled) return;
+    saveButton.disabled = true;
+    exampleEditorError.hidden = true;
+    const [mode, raw] = String(exampleVoiceSelect.value || 'inherit').split(':', 2);
+    const payload = { title, text, voice_mode: mode === 'browser' || mode === 'voice' || mode === 'none' ? mode : 'inherit', voice_id: mode === 'voice' ? Number(raw) : null, browser_voice_name: mode === 'browser' ? decodeURIComponent(raw || '') : '' };
+    try {
+      const saved = await api('/api/examples', { method: 'POST', body: JSON.stringify(payload) });
+      examples = [...examples.filter(item => item.title !== saved.title), saved];
+      renderExamples();
+      fillExample(saved);
+      focusArticleAfterSave = true;
+      closeExampleEditor();
+      showExampleSavedToast();
+    } catch (error) {
+      showError(error.message || '示例保存失败。');
+    } finally {
+      saveButton.disabled = false;
+    }
+  };
+  articleVoiceSelect.onchange = () => setArticleVoice(articleVoiceSelect.value);
   textForm.addEventListener('reset', closeExampleMenu);
   textForm.onsubmit = async event => {
     event.preventDefault();
@@ -4977,7 +5180,14 @@ showView(initialView, { historyMode: "replace", resetReader: false });
     button.textContent = '正在保存…';
     try {
       const values = new FormData(form);
-      const article = await api('/api/articles/text', {method: 'POST', body: JSON.stringify({title: values.get('title'), text: values.get('text')})});
+      const article = await api('/api/articles/text', {method: 'POST', body: JSON.stringify({
+        title: values.get('title'),
+        text: values.get('text'),
+        example_id: values.get('example_id') || '',
+        voice_mode: values.get('voice_mode') || 'inherit',
+        voice_id: values.get('voice_id') ? Number(values.get('voice_id')) : null,
+        browser_voice_name: values.get('browser_voice_name') || '',
+      })});
       closeTextDialog();
       openArticle(article, document.querySelector('#reader-result'));
       toast('已保存，可选词查词或开始朗读。');

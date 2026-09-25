@@ -20,7 +20,8 @@ import unicodedata
 import uuid
 import wave
 
-from article_store import write_json, safe_path, digest
+from article_store import safe_path, digest
+from tts_protocol import read_json, write_json
 
 ACTIVE = ('queued', 'running', 'cancelling')
 
@@ -267,7 +268,7 @@ class ProcessBackend:
                 stage = 'imports'
                 progress = self.workspace/'loading.json'
                 if progress.exists():
-                    stage = json.loads(progress.read_text(encoding='utf-8')).get('stage', stage)
+                    stage = read_json(progress).get('stage', stage)
                 pid = self.process.pid
                 self._diagnostic(f'load ended pid={pid} exit={code} stage={stage}')
                 self.close()
@@ -275,7 +276,7 @@ class ProcessBackend:
                     raise WorkerLoadExit(f'Irodori 加载进程退出：{code} (0x{code & 0xffffffff:08X})；阶段 {stage}；PID {pid}。请检查 logs/tts-worker.log。')
                 raise RuntimeError(f'Irodori 模型加载超过 300 秒；阶段 {stage}。请检查 logs/tts-worker.log。')
             time.sleep(.15)
-        result = json.loads((self.workspace/'ready.json').read_text(encoding='utf-8'))
+        result = read_json(self.workspace/'ready.json')
         if result.get('error'):
             self.close()
             raise RuntimeError(result['error'])
@@ -294,7 +295,7 @@ class ProcessBackend:
                     (directory/'cancel').touch(exist_ok=True)
                 progress = directory/'progress.json'
                 if progress.exists():
-                    value = json.loads(progress.read_text(encoding='utf-8'))
+                    value = read_json(progress)
                     if value != previous:
                         update(**value)
                         previous = value
@@ -303,7 +304,7 @@ class ProcessBackend:
                     self.close()
                     raise RuntimeError('合成进程退出或单段处理超时，请重试。')
                 time.sleep(.15)
-            result = json.loads((directory/'result.json').read_text(encoding='utf-8'))
+            result = read_json(directory/'result.json')
             if cancelled() or result.get('cancelled'):
                 raise InterruptedError()
             if result.get('error'):
