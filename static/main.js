@@ -2813,7 +2813,7 @@ function startBrowserSpeechTimer(controller) {
     const elapsed = (now - controller.lastTick) / 1000;
     controller.lastTick = now;
     if (!controller.playing || controller.paused || controller.cancelled) return;
-    controller.index = Math.min(controller.text.length * .98, controller.index + elapsed * controller.charactersPerSecond * controller.rate);
+    controller.index = advanceBrowserSpeechIndex(controller, elapsed);
     renderBrowserSpeech(controller);
   }, 250);
 }
@@ -2843,6 +2843,7 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
   if (speech) speech.voice = browserVoice;
   if (speech) speech.lang = browserVoice.lang;
   if (speech) speech.rate = controller.rate;
+  controller.hasBoundaryEvents = Boolean(speech);
   if (speech) speech.onboundary = event => {
     if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
     controller.index = Math.max(controller.index, controller.offset + event.charIndex);
@@ -2890,12 +2891,14 @@ function setupBrowserArticlePlayer(article, root) {
   const controller = {
     root,
     text: model.text,
+    textLength: model.text.length,
     segments: model.segments,
     index: 0,
     offset: 0,
     duration: Math.max(1, model.text.length / charactersPerSecond),
     charactersPerSecond,
     rate: savedPlaybackRate(),
+    hasBoundaryEvents: false,
     playing: false,
     paused: false,
     started: false,

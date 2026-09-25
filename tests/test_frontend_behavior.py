@@ -9,6 +9,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FrontendBehaviorTests(unittest.TestCase):
+    def test_browser_speech_timer_does_not_outrun_boundary_events(self):
+        script = r'''
+const { advanceBrowserSpeechIndex } = require('./static/browser-speech.js');
+const withBoundary = { index: 10, textLength: 100, charactersPerSecond: 20, rate: 1, hasBoundaryEvents: true };
+const withoutBoundary = { index: 10, textLength: 100, charactersPerSecond: 20, rate: 1, hasBoundaryEvents: false };
+console.log(JSON.stringify([
+  advanceBrowserSpeechIndex(withBoundary, 1),
+  advanceBrowserSpeechIndex(withoutBoundary, 1),
+]));
+'''
+        result = subprocess.run(['node', '-e', script], cwd=ROOT, text=True,
+                                encoding='utf-8', capture_output=True, check=True)
+        self.assertEqual(json.loads(result.stdout), [10, 30])
+
     def test_voice_count_is_beside_the_voice_description(self):
         page = BeautifulSoup((ROOT/'static/index.html').read_text(encoding='utf-8'), 'html.parser')
         meta = page.select_one('.voice-panel .voice-heading-meta')
