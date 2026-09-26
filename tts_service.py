@@ -136,6 +136,25 @@ class VoiceStore:
             return {self._previous_name_id(path.stem): self._id(path.stem)
                     for path in self.root.glob('*.wav') if self._previous_name_id(path.stem) != self._id(path.stem)}
 
+    @staticmethod
+    def _decode_m4a(blob):
+        ffmpeg = shutil.which('ffmpeg')
+        if not ffmpeg:
+            raise ValueError('导入 M4A 参考音频需要本机安装 ffmpeg。')
+        with tempfile.TemporaryDirectory(prefix='fujimi-voice-') as directory:
+            source = Path(directory)/'source.m4a'
+            output = Path(directory)/'decoded.wav'
+            source.write_bytes(blob)
+            try:
+                subprocess.run([ffmpeg, '-nostdin', '-v', 'error', '-protocol_whitelist', 'file',
+                                '-i', str(source), '-map', '0:a:0', '-vn', '-t', '121',
+                                '-ac', '1', '-ar', '48000', '-c:a', 'pcm_s16le', str(output)],
+                               check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=30, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            except (OSError, subprocess.SubprocessError) as error:
+                raise ValueError('无法解码 M4A 参考音频，请确认文件包含有效音轨。') from error
+            return output.read_bytes()
+
     def save(self, name, blob=None, vid=None):
         name = self._name(name)
         audio_blob = None
@@ -145,6 +164,8 @@ class VoiceStore:
             import numpy as np
             import soundfile as sf
             try:
+                if len(blob) >= 12 and blob[4:8] == b'ftyp':
+                    blob = self._decode_m4a(blob)
                 with sf.SoundFile(io.BytesIO(blob)) as source:
                     seconds = len(source)/source.samplerate
                     if not 1 <= seconds <= 120 or source.channels > 2 or source.samplerate > 192000:
@@ -157,7 +178,7 @@ class VoiceStore:
                 sf.write(output, audio, rate, format='WAV', subtype='PCM_16')
                 audio_blob = output.getvalue()
             except (RuntimeError, OSError) as error:
-                raise ValueError('无法解码参考音频，请使用 WAV、MP3、FLAC 或 OGG。') from error
+                raise ValueError('无法解码参考音频，请使用 WAV、MP3、FLAC、OGG 或 M4A。') from error
         with self.lock:
             if vid is None:
                 if audio_blob is None:
@@ -199,8 +220,9 @@ class WorkerLoadExit(RuntimeError):
 
 
 class ProcessBackend:
-    def __init__(self, root, data):
+    def __init__(self, root, data, python_executable=None):
         self.root, self.data = Path(root), Path(data)
+        self.python_executable = str(python_executable or sys.executable)
         self.model = self.root/'Irodori-TTS/model/model.safetensors'
         self.process = None
         self.workspace = None
@@ -250,7 +272,7 @@ class ProcessBackend:
         self.log = (logs/'tts-worker.log').open('a', encoding='utf-8')
         self.state, self.error = 'loading', ''
         update(stage='loading', message='Irodori モデルを読み込んでいます…')
-        self.process = subprocess.Popen([sys.executable, '-u', '-X', 'utf8', str(self.root/'tts_worker.py'),
+        self.process = subprocess.Popen([self.python_executable, '-u', '-X', 'utf8', str(self.root/'tts_worker.py'),
             '--workspace', str(self.workspace), '--model', str(self.model)], cwd=self.root,
             stdout=self.log, stderr=self.log, stdin=subprocess.DEVNULL,
             creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
@@ -339,7 +361,7 @@ class ProcessBackend:
 
 
 class TTSQueue:
-    def __init__(self, data, backend, commit, idle_seconds=300):
+    def __init__(self, data, backend, commit, idle_seconds=3000):
         self.temporary = tempfile.TemporaryDirectory(prefix='fujimi-tts-tasks-')
         self.root = Path(self.temporary.name)
         self.backend, self.commit, self.idle_seconds = backend, commit, idle_seconds

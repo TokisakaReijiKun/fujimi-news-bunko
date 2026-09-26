@@ -24,6 +24,7 @@ env/
 build/
 dist/
 *.egg-info/
+*.spec
 
 # OS/editor metadata
 .DS_Store

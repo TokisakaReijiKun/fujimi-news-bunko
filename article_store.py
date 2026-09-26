@@ -224,12 +224,16 @@ class ArticleStore:
                 article[spec['whole_field']] = portion(spec['whole_span'])
         article['_revision'] = manifest['revision']
         article['_directory'] = directory.relative_to(self.root).as_posix() if directory.is_relative_to(self.root) else ''
-        article['_assets'] = manifest.get('assets', [])
+        article['_assets'] = [asset for asset in manifest.get('assets', [])
+                              if not asset['path'].startswith('audio/')]
         registered = {asset['path'] for asset in article['_assets']}
         references = list(article.get('image_paths',[])) + [p for p in article.get('video_urls',[]) if not p.startswith(('http://','https://'))]
-        if article.get('audio_path'): references.append(article['audio_path'])
         if any(p not in registered for p in references):
             raise StorageError('文章引用了未登记的附件。')
+        if article.get('audio_path'):
+            audio = safe_path(directory, article['audio_path'])
+            if not article['audio_path'].startswith('audio/') or not audio.is_relative_to((directory/'audio').resolve()):
+                raise StorageError('音频必须位于文章 audio 目录。')
         for asset in article['_assets']:
             path = safe_path(directory, asset['path'])
             if asset['path'].split('/')[0] not in ('media', 'audio'):
@@ -351,6 +355,9 @@ class ArticleStore:
                     return self.load(existing)
             folder = safe_path(self.root,source['_directory'])
             files = {item['path']:safe_path(folder,item['path']) for item in source['_assets']}
+            for path in (folder/'audio').rglob('*'):
+                if path.is_file() and path.suffix.lower() in ('.wav', '.mp3') and path.resolve().is_relative_to((folder/'audio').resolve()):
+                    files[path.relative_to(folder).as_posix()] = path
             article = deepcopy(source)
             for key in ('id','storage_key','_directory','_revision'):
                 article.pop(key,None)
@@ -409,7 +416,8 @@ class ArticleStore:
                 for filename,blob in text_files.items():
                     with (stage/filename).open('wb') as stream:
                         stream.write(blob);stream.flush();os.fsync(stream.fileno())
-                assets = deepcopy(a.pop('_assets', []))
+                assets = [item for item in deepcopy(a.pop('_assets', []))
+                          if not item['path'].startswith('audio/')]
                 for item in assets:
                     blob = safe_path(stage,item['path']).read_bytes()
                     item.update(sha256=digest(blob),bytes=len(blob))
@@ -442,21 +450,8 @@ class ArticleStore:
                 raise StorageError('TTS 提交不能修改文章正文或译文。')
             folder = safe_path(self.root, current['_directory'])
             files = files or {}
-            references = set(a.get('image_paths', [])) | set(a.get('video_urls', [])) | {a.get('audio_path')}
-            missing = [item for item in a['_assets']
-                       if item['path'].startswith('audio/') and item['path'] not in references
-                       and item['path'] not in files
-                       and not safe_path(folder, item['path']).exists()]
-            if missing:
-                backup = self.data/'backups'/f"tts-article-{a['id']}-{uuid.uuid4().hex}"
-                backup.mkdir(parents=True)
-                shutil.copytree(folder, backup/'article')
-                with db_connection(self.db_path) as source, db_connection(backup/'fujimi.sqlite3') as target:
-                    source.backup(target)
-                write_json(backup/'repair.json', {'article_id': a['id'], 'missing_assets': missing})
-                a['_assets'] = [item for item in a['_assets'] if item not in missing]
-
-            assets = deepcopy(a.pop('_assets', []))
+            assets = [item for item in deepcopy(a.pop('_assets', []))
+                      if not item['path'].startswith('audio/')]
             for item in assets:
                 relative = item['path']
                 if relative.split('/')[0] not in ('media', 'audio'):
@@ -469,12 +464,17 @@ class ArticleStore:
             registered = {item['path'] for item in assets}
             local_videos = [p for p in a.get('video_urls', []) if not p.startswith(('http://','https://'))]
             referenced = list(a.get('image_paths', [])) + local_videos
-            if a.get('audio_path'):
-                referenced.append(a['audio_path'])
             if any(path not in registered for path in referenced):
                 raise StorageError('文章引用了未登记的附件。')
+            if a.get('audio_path'):
+                audio = safe_path(folder, a['audio_path'])
+                if (not a['audio_path'].startswith('audio/') or not audio.is_relative_to((folder/'audio').resolve())
+                        or (a['audio_path'] not in files and not audio.is_file())):
+                    raise StorageError('文章音频文件不存在。')
             for relative, source in files.items():
                 destination = safe_path(folder, relative)
+                if not relative.startswith('audio/') or not destination.is_relative_to((folder/'audio').resolve()):
+                    raise StorageError('TTS 文件必须位于文章 audio 目录。')
                 source = Path(source)
                 if destination.exists():
                     if digest(destination.read_bytes()) != digest(source.read_bytes()):
@@ -564,9 +564,15 @@ class ArticleStore:
     def asset(self, aid, relative):
         with self.locked():
             a = self.load(aid)
-            if relative not in {v['path'] for v in a['_assets']} or a.get('status') == 'excluded_paid':
+            if a.get('status') == 'excluded_paid':
                 raise LookupError('附件不存在。')
-            path = safe_path(self.root/a['_directory'],relative)
+            folder = self.root/a['_directory']
+            path = safe_path(folder,relative)
+            if relative.startswith('audio/'):
+                if path.suffix.lower() not in ('.wav', '.mp3') or not path.is_relative_to((folder/'audio').resolve()):
+                    raise LookupError('附件不存在。')
+            elif relative not in {v['path'] for v in a['_assets']}:
+                raise LookupError('附件不存在。')
             if not path.is_file(): raise LookupError('附件不存在。')
             return path
 
@@ -580,7 +586,7 @@ class ArticleStore:
     def attach_cached(self, aid, cached, cache_root):
         with self.locked():
             a = self.load(aid)
-            files, assets = {}, [v for v in a['_assets'] if v['path'].startswith('audio/')]
+            files, assets = {}, []
             image_paths, videos = [], []
             for kind, names in [('image',cached['image_paths']),('video',cached['video_urls'])]:
                 for i,name in enumerate(names,1):

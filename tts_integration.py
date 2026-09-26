@@ -1,12 +1,15 @@
 """Connect TTS to existing file stores and Flask without publisher-specific rules."""
 from copy import deepcopy
 import hashlib
+import io
 import json
 from pathlib import Path
 import re
 import secrets
 import shutil
 import sqlite3
+import subprocess
+import tempfile
 import threading
 import uuid
 import wave
@@ -238,12 +241,121 @@ class TTSController:
             result['voice_mode'] = 'model'
         return result
 
+    @staticmethod
+    def _browser_voice_label(name):
+        if str(name).startswith(('kokoro:', 'voicevox:')):
+            from browser_tts import browser_voice
+            return browser_voice(name)['name']
+        if 'Keita' in str(name): return '圭太'
+        if 'Nanami' in str(name): return '七海'
+        return str(name).removeprefix('Microsoft ').split(' - ', 1)[0].split(' Online', 1)[0]
+
+    @staticmethod
+    def _system_browser_wav(text, voice_name):
+        with tempfile.TemporaryDirectory(prefix='fujimi-system-voice-') as directory:
+            text_path, audio_path = Path(directory) / 'text.txt', Path(directory) / 'voice.wav'
+            text_path.write_text(text, encoding='utf-8')
+            command = (
+                "param($textPath,$audioPath,$voiceName); "
+                "Add-Type -AssemblyName System.Speech; "
+                "$s=[System.Speech.Synthesis.SpeechSynthesizer]::new(); "
+                "$v=$s.GetInstalledVoices() | ? {$_.Enabled -and $_.VoiceInfo.Name -eq $voiceName} | select -First 1; "
+                "if (!$v) {$v=$s.GetInstalledVoices() | ? {$_.Enabled -and $_.VoiceInfo.Name -like ('*'+$voiceName.Split(' ')[1]+'*')} | select -First 1}; "
+                "if (!$v) {throw 'voice unavailable'}; $s.SelectVoice($v.VoiceInfo.Name); $s.SetOutputToWaveFile($audioPath); "
+                "$s.Speak([IO.File]::ReadAllText($textPath,[Text.Encoding]::UTF8)); $s.Dispose()"
+            )
+            result = subprocess.run(
+                ['powershell', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+                 '-Command', command, str(text_path), str(audio_path), voice_name],
+                capture_output=True, timeout=120, check=False,
+                creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+            )
+            if result.returncode or not audio_path.is_file():
+                raise ValueError('所选系统声线无法导出音频，请检查 Windows 语音包。')
+            return audio_path.read_bytes()
+
+    def _browser_audio(self, paragraphs, voice_name):
+        voice_name = str(voice_name or '').strip()
+        if not voice_name:
+            raise ValueError('请先选择浏览器声线。')
+        if voice_name in ('Microsoft Keita Online (Natural) - Japanese (Japan)',
+                          'Microsoft Nanami Online (Natural) - Japanese (Japan)'):
+            from desktop_edge_speech import synthesize_with_segments
+            voice = 'ja-JP-KeitaNeural' if 'Keita' in voice_name else 'ja-JP-NanamiNeural'
+            audio, segments = synthesize_with_segments('\n'.join(paragraphs), voice, paragraphs)
+            return audio, segments, '.mp3'
+        if voice_name.startswith(('kokoro:', 'voicevox:')):
+            backend = self.app.extensions['browser_tts']
+            chunks, durations = [], []
+            for paragraph in paragraphs:
+                chunk = backend.synthesize(paragraph, voice_name)
+                with wave.open(io.BytesIO(chunk), 'rb') as source:
+                    params = (source.getnchannels(), source.getsampwidth(), source.getframerate())
+                    if params != (1, 2, 24000): raise ValueError('浏览器声线返回的音频格式不匹配。')
+                    durations.append(source.getnframes() / source.getframerate())
+                    chunks.append(source.readframes(source.getnframes()))
+            output = io.BytesIO()
+            with wave.open(output, 'wb') as merged:
+                merged.setparams((1, 2, 24000, 0, 'NONE', 'not compressed'))
+                for chunk in chunks: merged.writeframes(chunk)
+            return output.getvalue(), [{'duration': value, 'speech_start_offset': 0} for value in durations], '.wav'
+        audio = self._system_browser_wav('\n'.join(paragraphs), voice_name)
+        with wave.open(io.BytesIO(audio), 'rb') as source:
+            duration = source.getnframes() / source.getframerate()
+        weights = [max(1, len(value.strip())) for value in paragraphs]
+        total = sum(weights) or 1
+        return audio, [{'duration': duration * weight / total, 'speech_start_offset': 0} for weight in weights], '.wav'
+
+    def _save_browser_article(self, article, voice_name, suppressed_id=None):
+        label = self._browser_voice_label(voice_name)
+        suffix = '.mp3' if 'Online' in voice_name else '.wav'
+        filename = self._article_audio_filename(label, article['title']).rsplit('.', 1)[0] + suffix
+        relative = f'audio/{filename}'
+        folder = self.articles.root / article['_directory']
+        existing = folder / relative
+        if not existing.is_file():
+            audio, segments, actual_suffix = self._browser_audio(article['paragraphs'], voice_name)
+            relative = f'audio/{Path(filename).stem}{actual_suffix}'
+            with tempfile.NamedTemporaryFile(prefix='fujimi-browser-', suffix=actual_suffix, delete=False) as temporary:
+                temporary.write(audio); source = Path(temporary.name)
+            try:
+                article.update(audio_path=relative, audio_segments=segments, audio_status='ready',
+                               audio_voice_mode='browser', audio_voice_id=None,
+                               audio_voice_name=voice_name, audio_task_suppressed_id=suppressed_id)
+                saved = self.articles.save_tts(article, files={relative: source})
+            finally: source.unlink(missing_ok=True)
+            return {'status': 'ready'}
+        article.update(audio_path=relative, audio_status='ready', audio_voice_mode='browser',
+                       audio_voice_id=None, audio_voice_name=voice_name,
+                       audio_task_suppressed_id=suppressed_id)
+        saved = self.articles.save_tts(article)
+        return {'status': 'ready', 'cached': True}
+
+    def _save_browser_chapter(self, bid, cid, voice_name, suppressed_id=None):
+        book, chapter = self.books.chapter(bid, cid)
+        paragraphs = [block['text_ja'] for block in chapter['blocks'] if block.get('text_ja')]
+        audio, segments, suffix = self._browser_audio(paragraphs, voice_name)
+        occupied = {m.get('path') for c in book['chapters']
+                    for m in [c.get('audio', {})] + c.get('audio_versions', []) if isinstance(m, dict)}
+        stem = self._book_audio_stem(self._browser_voice_label(voice_name), chapter['title'], cid, occupied)
+        filename = f'{stem}{suffix}'
+        with tempfile.NamedTemporaryFile(prefix='fujimi-browser-', suffix=suffix, delete=False) as temporary:
+            temporary.write(audio); source = Path(temporary.name)
+        try:
+            metadata = {'path': filename, 'url': f'/api/books/{bid}/audio/{filename}', 'status': 'ready',
+                        'voice_id': None, 'voice_name': voice_name, 'segments': segments}
+            self.books.save_audio(bid, cid, paragraphs, source, metadata, suppressed_id=suppressed_id)
+        finally: source.unlink(missing_ok=True)
+        return {'status': 'ready'}
+
     def auto_article(self, article, source=None):
         if not self.enabled:
             return article
         try:
             self.submit_article(article['id'], {'mode': (source or {}).get('voice_mode', 'model'),
                                 'voice_id': (source or {}).get('voice_id'),
+                                'browser_voice_name': (source or {}).get('browser_voice_name', ''),
+                                'auto': True,
                                 'example_id': article.get('example_id')})
         except Exception as error:
             # Audio failures never roll back a successfully imported article.
@@ -260,6 +372,19 @@ class TTSController:
                 raise Conflict('正文不可用，不能生成朗读。')
             if mode in ('browser', 'none'):
                 previous = self.cancel_target(f'article:{aid}')
+                browser_name = (payload.get('browser_voice_name') or article.get('example_browser_voice_name')
+                                or self.setting('voice-mode').get('browser_voice_name', '')) if mode == 'browser' else ''
+                if browser_name:
+                    try:
+                        result = self._save_browser_article(article, browser_name, previous.get('id'))
+                        return result
+                    except ValueError as error:
+                        if not payload.get('auto'):
+                            raise
+                        article.update(audio_status='browser', audio_voice_mode='browser',
+                                       audio_task_detail=str(error), audio_task_suppressed_id=previous.get('id'))
+                        self.articles.save_tts(article)
+                        return {'status': 'browser'}
                 article.update(audio_status='browser' if mode == 'browser' else 'disabled',
                     audio_voice_mode=mode, audio_task_suppressed_id=previous.get('id'))
                 self.articles.save_tts(article)
@@ -271,6 +396,11 @@ class TTSController:
     def submit_chapter(self, bid, cid, payload, configure_only=False):
         with self.lock:
             mode, voice = self.resolve(payload)
+            if mode == 'browser' and not configure_only:
+                browser_name = payload.get('browser_voice_name') or self.setting('voice-mode').get('browser_voice_name', '')
+                if browser_name:
+                    previous = self.cancel_target(f'book:{bid}:{cid}')
+                    return self._save_browser_chapter(bid, cid, browser_name, previous.get('id'))
             if configure_only or mode in ('browser', 'none'):
                 previous = self.cancel_target(f'book:{bid}:{cid}')
                 with self.books.locks.locked():
@@ -287,11 +417,6 @@ class TTSController:
             _, chapter = self.books.chapter(bid, cid)
             paragraphs = [b['text_ja'] for b in chapter['blocks'] if b.get('text_ja')]
             return self._submit(f'book:{bid}:{cid}', paragraphs, voice, book_id=bid, chapter_id=cid)
-
-    @staticmethod
-    def _article_audio_metadata(article):
-        return {'voice_id': article.get('audio_voice_id'), 'segments': article.get('audio_segments', []),
-                'cache_key': article.get('audio_cache_key')}
 
     @staticmethod
     def _matches_audio(metadata, paragraphs, voice):
@@ -320,23 +445,19 @@ class TTSController:
                 article = self.articles.load(ids['article_id'])
                 if article['paragraphs'] != paragraphs:
                     raise Conflict('文章原文已变化，请重试。')
-                for asset in article['_assets']:
-                    metadata = asset.get('tts')
-                    if not metadata and asset['path'] == article.get('audio_path'):
-                        metadata = self._article_audio_metadata(article)
-                    if not metadata or not self._matches_audio(metadata, paragraphs, voice):
-                        continue
-                    try:
-                        path = self.articles.asset(article['id'], asset['path'])
-                        if digest(path.read_bytes()) != asset['sha256']:
-                            continue
-                        self._validate_audio(path, metadata)
-                    except (OSError, ValueError, LookupError, EOFError, wave.Error):
-                        continue
-                    metadata = dict(metadata, text_sha256=text_key(paragraphs), voice_sha256=voice['sha256'])
-                    asset['tts'] = metadata
-                    article.update(audio_path=asset['path'], audio_segments=metadata['segments'], audio_status='ready',
-                        audio_voice_id=voice['id'], audio_voice_mode='voice', audio_cache_key=metadata.get('cache_key'))
+                folder = self.articles.root / article['_directory']
+                filename = self._article_audio_filename(voice['name'], article['title'])
+                path = folder/'audio'/filename
+                if not path.is_file():
+                    path = next((item for item in sorted((folder/'audio').iterdir())
+                                 if item.is_file() and item.suffix == path.suffix
+                                 and item.stem.startswith(path.stem + '-')), None)
+                if path:
+                    relative = path.relative_to(folder).as_posix()
+                    segments = article.get('audio_segments', []) if article.get('audio_path') == relative else []
+                    article.update(audio_path=relative, audio_segments=segments,
+                        audio_status='ready', audio_voice_id=voice['id'], audio_voice_mode='voice',
+                        audio_cache_key=None)
                     self.articles.save_tts(article)
                     return True
                 if article.get('example_id') and self.examples:
@@ -349,13 +470,7 @@ class TTSController:
                             self._validate_audio(source, metadata)
                         except (OSError, ValueError, EOFError, wave.Error):
                             return False
-                        relative = f"audio/{self._article_audio_filename(voice['name'], article['title'])}"
-                        destination = self.articles.root / article['_directory'] / relative
-                        audio_hash = digest(source.read_bytes())
-                        if destination.exists() and digest(destination.read_bytes()) != audio_hash:
-                            relative = f"audio/{Path(relative).stem}-{audio_hash[:8]}.wav"
-                        article['_assets'] = [asset for asset in article['_assets'] if asset['path'] != relative]
-                        article['_assets'].append({'path': relative, 'kind': 'audio', 'tts': dict(metadata)})
+                        relative = f"audio/{filename}"
                         article.update(audio_path=relative, audio_segments=metadata['segments'], audio_status='ready',
                             audio_voice_id=voice['id'], audio_voice_mode='voice', audio_cache_key=metadata.get('cache_key'))
                         self.articles.save_tts(article, files={relative: source})
@@ -431,19 +546,14 @@ class TTSController:
                 if article.get('status') != 'ready' or article['paragraphs'] != request['paragraphs']:
                     raise ValueError('文章原文已变化，请重新生成朗读。')
                 relative = f"audio/{self._article_audio_filename(voice['name'], article['title'])}"
-                used = {asset['path'] for asset in article['_assets']}
                 destination = self.articles.root/article['_directory']/relative
-                if relative in used or destination.exists():
+                if destination.exists():
                     base = Path(relative)
                     relative = f"audio/{base.stem}-{task['cache_key'][:8]}{base.suffix}"
                     counter = 2
-                    while relative in used or (self.articles.root/article['_directory']/relative).exists():
+                    while (self.articles.root/article['_directory']/relative).exists():
                         relative = f"audio/{base.stem}-{task['cache_key'][:8]}-{counter}{base.suffix}"
                         counter += 1
-                for asset in article['_assets']:
-                    if asset['path'] == article.get('audio_path') and not asset.get('tts'):
-                        asset['tts'] = self._article_audio_metadata(article)
-                article['_assets'].append({'path': relative, 'kind': 'audio', 'tts': metadata})
                 article.update(audio_path=relative, audio_status='ready', audio_segments=result['segments'],
                     audio_voice_mode='voice', audio_voice_id=voice['id'], audio_cache_key=task['cache_key'])
                 self.articles.save_tts(article, files={relative: path})

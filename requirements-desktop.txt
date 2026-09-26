@@ -1,0 +1,5 @@
+-r requirements.txt
+pywebview>=6.2,<7
+pystray>=0.19.5,<0.20
+edge-tts>=7.2,<8
+pyinstaller>=6,<7

@@ -2,4 +2,5 @@ Flask>=3.1,<4
 requests>=2.32,<3
 beautifulsoup4>=4.13,<5
 pykakasi>=2.3,<3
+jaconv>=0.4,<1
 Pillow>=10,<13

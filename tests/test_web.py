@@ -49,7 +49,7 @@ class WebTests(unittest.TestCase):
     def test_boot_endpoints_and_original_assets(self):
         for url in ('/', '/static/main.js', '/static/static.css', '/static/book-reader.js', '/static/book-reader.css', '/api/health',
                     '/api/days', '/api/daily', '/api/bookmarks', '/api/books', '/api/books/tasks',
-                    '/api/settings/voices', '/api/settings/voice-mode', '/api/settings/news-sources', '/api/examples',
+                    '/api/settings/voices', '/api/settings/voice-mode', '/api/browser-voices', '/api/settings/news-sources', '/api/examples',
                     '/api/settings/daily-schedule', '/api/settings/daily-content', '/api/settings/library'):
             with self.client.get(url) as response:
                 self.assertEqual(response.status_code, 200, url)
@@ -123,6 +123,18 @@ class WebTests(unittest.TestCase):
         self.assertEqual(updated.status_code, 201)
         self.assertEqual(updated.json['text'], '第二版。')
         self.assertEqual(updated.json['voice_mode'], 'browser')
+
+    def test_voice_picker_filters_audio_and_includes_m4a(self):
+        from bs4 import BeautifulSoup
+
+        with self.client.get('/') as response:
+            page = BeautifulSoup(response.data, 'html.parser')
+        picker = page.select_one('#voice-editor-file')
+        self.assertIsNotNone(picker)
+        accepted = picker.get('accept', '').split(',')
+        self.assertIn('audio/*', accepted)
+        for extension in ('.wav', '.mp3', '.flac', '.ogg', '.m4a'):
+            self.assertIn(extension, accepted)
 
     def test_reader_custom_example_save_shows_success_toast(self):
         from bs4 import BeautifulSoup

@@ -2,7 +2,9 @@ import io
 import json
 from copy import deepcopy
 from pathlib import Path
+import shutil
 import sqlite3
+import subprocess
 import tempfile
 import threading
 import time
@@ -138,10 +140,8 @@ class TTSTests(unittest.TestCase):
         self.assertTrue(saved_example['audio_versions'])
         calls_before = len(self.backend.calls)
         copy = self.tts.articles.copy_to_day(article['id'], '2099-01-01')
-        for asset in list(copy['_assets']):
-            if asset['path'].startswith('audio/'):
-                Path(self.data / 'articles' / copy['_directory'] / asset['path']).unlink(missing_ok=True)
-        copy['_assets'] = [asset for asset in copy['_assets'] if not asset['path'].startswith('audio/')]
+        for path in (self.data/'articles'/copy['_directory']/'audio').glob('*.wav'):
+            path.unlink()
         copy.update(audio_path='', audio_status='browser', audio_segments=[], audio_voice_id=None, audio_voice_mode='browser')
         self.tts.articles.save_tts(copy)
         self.tts.submit_article(copy['id'], {'mode': 'voice', 'voice_id': self.voice['id'], 'example_id': example['id']})
@@ -225,8 +225,8 @@ class TTSTests(unittest.TestCase):
         replaced = self.client.put(f"/api/settings/voices/{self.voice['id']}", data={'name': '改名', 'file': (io.BytesIO(wav_bytes(2)), 'clip.wav')})
         self.assertEqual(replaced.status_code, 200)
         new = self.client.post(path, json={'mode': 'model'}).json
-        self.wait(new['task_id'])
-        self.assertEqual(len(self.backend.calls), 3)
+        self.assertEqual(new['status'], 'ready')
+        self.assertEqual(len(self.backend.calls), 2)
 
     def test_browser_selection_then_model_reuses_saved_audio(self):
         article = self.article()
@@ -388,6 +388,23 @@ class TTSTests(unittest.TestCase):
         self.assertTrue(list((self.data/'backups').glob(f'voice-{vid}-*')))
         bad = self.client.post('/api/settings/voices', data={'name': '损坏', 'file': (io.BytesIO(b'not audio'), 'clip.wav')})
         self.assertEqual(bad.status_code, 400)
+
+    @unittest.skipUnless(shutil.which('ffmpeg'), 'ffmpeg required')
+    def test_voice_upload_accepts_m4a_and_normalizes_to_wav(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / 'source.wav'
+            source.write_bytes(wav_bytes())
+            m4a = root / 'source.m4a'
+            subprocess.run(['ffmpeg', '-nostdin', '-v', 'error', '-y', '-i', str(source), str(m4a)],
+                           check=True, capture_output=True,
+                           creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+            response = self.client.post('/api/settings/voices', data={
+                'name': 'M4A声线', 'file': (io.BytesIO(m4a.read_bytes()), 'clip.m4a')})
+        self.assertEqual(response.status_code, 200, response.json)
+        saved = self.data / 'voices' / 'M4A声线.wav'
+        self.assertTrue(saved.is_file())
+        self.assertGreater(response.json['duration'], 0)
 
     def test_voice_files_are_named_directly_without_manifest(self):
         path = self.data/'voices/测试声线.wav'
@@ -578,7 +595,43 @@ class TTSTests(unittest.TestCase):
         self.assertEqual(self.tts.articles.load(article['id'])['audio_voice_id'], self.voice['id'])
         self.assertEqual(self.tts.books.chapter(bid, 1)[1]['audio']['voice_id'], self.voice['id'])
 
-    def test_changed_text_and_corrupt_audio_do_not_reuse(self):
+    def test_switch_from_desktop_online_audio_reuses_older_model_audio(self):
+        from desktop_edge_speech import register_edge_speech
+
+        register_edge_speech(self.app)
+        article = self.article()
+        self.wait(article['audio_task_id'])
+        first = self.tts.articles.load(article['id'])
+        original_path = first['audio_path']
+        with patch('desktop_edge_speech.synthesize_with_segments', return_value=(
+                b'ID3online', [{'duration': .8, 'speech_start_offset': 0}] * len(first['paragraphs']))):
+            changed = self.client.post(f"/api/articles/{article['id']}/edge-tts",
+                                       json={'voice': 'ja-JP-KeitaNeural'})
+        self.assertEqual(changed.status_code, 200, changed.get_json())
+        self.assertNotEqual(self.tts.articles.load(article['id'])['audio_path'], original_path)
+
+        response = self.client.post(f"/api/articles/{article['id']}/reread", json={'mode': 'model'})
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(response.get_json()['status'], 'ready')
+        self.assertEqual(self.tts.articles.load(article['id'])['audio_path'], original_path)
+        self.assertEqual(len(self.backend.calls), 1)
+
+    def test_model_audio_is_reused_from_folder_without_registration(self):
+        article = self.article()
+        self.wait(article['audio_task_id'])
+        store = self.tts.articles
+        saved = store.load(article['id'])
+        original_path = saved['audio_path']
+        saved['_assets'] = [asset for asset in saved['_assets'] if not asset['path'].startswith('audio/')]
+        saved.update(audio_path='', audio_segments=[], audio_status='browser')
+        store.save_tts(saved)
+        response = self.client.post(f"/api/articles/{article['id']}/reread", json={'mode': 'model'})
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(response.get_json()['status'], 'ready')
+        self.assertEqual(store.load(article['id'])['audio_path'], original_path)
+        self.assertEqual(len(self.backend.calls), 1)
+
+    def test_existing_audio_is_reused_even_without_matching_metadata(self):
         article = self.article()
         self.wait(article['audio_task_id'])
         store = self.tts.articles
@@ -586,13 +639,13 @@ class TTSTests(unittest.TestCase):
         a['paragraphs'][0] = '新しい原文です。'
         store.save(a)
         url = f"/api/articles/{article['id']}/tts"
-        self.wait(self.client.post(url, json={'mode': 'model'}).json['task_id'])
+        self.assertEqual(self.client.post(url, json={'mode': 'model'}).json['status'], 'ready')
         a = store.load(article['id'])
         store.asset(a['id'], a['audio_path']).write_bytes(b'corrupt')
-        self.wait(self.client.post(url, json={'mode': 'model'}).json['task_id'])
-        self.assertEqual(len(self.backend.calls), 3)
+        self.assertEqual(self.client.post(url, json={'mode': 'model'}).json['status'], 'ready')
+        self.assertEqual(len(self.backend.calls), 1)
 
-    def test_missing_obsolete_audio_is_backed_up_and_does_not_block_commit(self):
+    def test_missing_unregistered_audio_does_not_block_commit(self):
         self.backend.release.clear()
         article = self.article()
         self.assertTrue(self.backend.entered.wait(2))
@@ -607,11 +660,7 @@ class TTSTests(unittest.TestCase):
         self.wait(article['audio_task_id'])
         saved = store.load(a['id'])
         self.assertNotIn('audio/old.wav', [v['path'] for v in saved['_assets']])
-        backups = list((self.data/'backups').glob(f"tts-article-{a['id']}-*"))
-        self.assertEqual(len(backups), 1)
-        original = json.loads((backups[0]/'article/article.json').read_text(encoding='utf-8'))
-        self.assertIn('audio/old.wav', [v['path'] for v in original['assets']])
-        self.assertTrue((backups[0]/'fujimi.sqlite3').is_file())
+        self.assertFalse(list((self.data/'backups').glob(f"tts-article-{a['id']}-*")))
 
     def test_tts_uses_no_persistent_runtime_folder_after_success_or_failure(self):
         # Create before patching so initial news storage is outside this assertion.

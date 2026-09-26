@@ -197,7 +197,7 @@ class BookStore:
             if digest(target.read_bytes())!=entry['sha256']:raise StorageError('书籍音频校验失败。')
             return target
 
-    def save_audio(self,bid,cid,paragraphs,path,metadata):
+    def save_audio(self,bid,cid,paragraphs,path,metadata,suppressed_id=None):
         """Merge into the latest chapter/state under the same store lock."""
         with self.locks.locked():
             b=self.load(bid)
@@ -211,7 +211,9 @@ class BookStore:
                 versions.append(deepcopy(previous))
             versions[:] = [v for v in versions if v.get('path') != metadata['path']]
             versions.append(deepcopy(metadata))
-            ch.update(audio=metadata,voice_mode='voice',voice_id=metadata['voice_id'],voice_selected=True)
+            ch.update(audio=metadata,voice_mode='browser' if metadata['voice_id'] is None else 'voice',
+                      voice_id=metadata['voice_id'],voice_selected=True)
+            if suppressed_id is not None:ch['audio_task_suppressed_id']=suppressed_id
             if b.get('progress',{}).get('chapter_id')==cid:
                 b['progress']['audio_time']=0
             return self.save(b,audio_files={metadata['path']:path},tts=True)

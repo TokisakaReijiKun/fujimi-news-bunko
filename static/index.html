@@ -8,6 +8,7 @@
   <script>
     (() => {
       const root = document.documentElement;
+      window.FujimiDesktop = new URLSearchParams(window.location.search).has('desktop');
       const isMobileApp = typeof window.FujimiMobile !== "undefined" || window.matchMedia('(max-width: 900px)').matches;
       root.dataset.mobileApp = String(isMobileApp);
       root.dataset.mobileNavOpen = "false";
@@ -191,18 +192,15 @@
 
           <section id="desktop-settings-panel" class="settings-panel desktop-settings-panel" hidden>
             <div class="panel-heading">
-              <div><h3>桌面应用</h3><p>管理 Windows 启动方式与本地运行目录。</p></div>
-              <span class="status-badge">DESKTOP 2.0</span>
+              <div><h3>桌面应用</h3><p>本机数据与运行位置。</p></div>
+              <span class="status-badge">WINDOWS</span>
             </div>
             <p id="desktop-settings-error" class="panel-notice error" role="alert" hidden></p>
             <div class="desktop-settings-grid">
-              <label class="desktop-startup-toggle">
-                <span><strong>开机启动</strong><small>登录 Windows 后静默启动到系统托盘。</small></span>
-                <input id="desktop-startup-enabled" type="checkbox" role="switch">
-              </label>
               <dl class="desktop-paths">
-                <div><dt>项目目录</dt><dd id="desktop-project-root"></dd></div>
-                <div><dt>Python 环境</dt><dd id="desktop-python-path"></dd></div>
+                <div><dt>程序目录</dt><dd id="desktop-project-root"></dd></div>
+                <div><dt>数据目录</dt><dd id="desktop-data-path"></dd></div>
+                <div><dt>运行程序</dt><dd id="desktop-python-path"></dd></div>
               </dl>
               <div class="desktop-folder-actions">
                 <button id="open-desktop-data" class="quiet" type="button">打开数据文件夹</button>
@@ -366,7 +364,7 @@
         <button type="button" data-source-mode="file" class="active">本地文件</button>
         <button type="button" data-source-mode="url">音频网址</button>
       </div>
-      <label id="voice-editor-file-row" class="voice-source-row">音频文件<input id="voice-editor-file" type="file" accept="audio/wav,audio/mpeg,audio/flac,audio/ogg,.wav,.mp3,.flac,.ogg"></label>
+      <label id="voice-editor-file-row" class="voice-source-row">音频文件<input id="voice-editor-file" type="file" accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a"></label>
       <label id="voice-editor-url-row" class="voice-source-row" hidden>音频网址<input id="voice-editor-url" type="url" placeholder="https://example.com/voice.wav"></label>
       <p id="voice-editor-hint" class="muted">请选择用于参考的音频文件。</p>
       <p id="voice-editor-notice" class="panel-notice" role="status"></p>
@@ -442,6 +440,6 @@
   </template>
   <script src="/static/book-reader.js?v=4"></script>
   <script src="/static/browser-speech.js?v=1"></script>
-  <script src="/static/main.js?v=20260925-example-voice-names"></script>
+  <script src="/static/main.js?v=20260926-browser-speech-paragraphs"></script>
 </body>
 </html>

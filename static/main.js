@@ -116,7 +116,7 @@ window.decorateNikkeiPodcast = (video, article, descriptor) => {
 
 ;
 const $ = (selector, root = document) => root.querySelector(selector);
-const state = { article: null, currentView: "daily", voiceMode: "model", browserVoiceName: "", browserVoiceLabel: "ブラウザー", dailyMode: "automatic", editingVoiceId: null, editingBrowserVoice: false, editingSourceId: null, voiceSourceMode: "file", voices: [], newsSources: [], dailyContentTimer: null, dailyTaskTimer: null, dailyRereadTimer: null, rereadTracker: null, importTracker: null, dailyTaskRunning: false, articleAudio: null, browserSpeech: null, hlsPlayers: [], dictionaryReady: false, dictionaryActiveId: "", dictionarySearchTimer: null, dictionaryHistoryTimer: null, dictionarySearchController: null, dictionaryDetailController: null, dictionarySearchSequence: 0, dictionarySpeech: null, dictionarySpeechToken: 0, selectionLookupController: null, selectionLookupToken: 0, selectionLookupQuery: "", selectionLookupRect: null, selectionLookupRange: null, selectionLookupResults: [], selectionLookupActiveId: "", libraryBooks: [], libraryBook: null, libraryChapter: null, librarySort: "recent", libraryLookupChineseTranslations: true, libraryTaskId: null, libraryTaskTimer: null, libraryProgressTimer: null, libraryScrollHandler: null, librarySettingsKeydown: null, libraryTocOutsideClick: null, editingBookId: null };
+const state = { article: null, currentView: "daily", voiceMode: "model", browserVoiceName: "", browserVoiceLabel: "ブラウザー", browserVoices: null, dailyMode: "automatic", editingVoiceId: null, editingBrowserVoice: false, editingSourceId: null, voiceSourceMode: "file", voices: [], newsSources: [], dailyContentTimer: null, dailyTaskTimer: null, dailyRereadTimer: null, rereadTracker: null, importTracker: null, dailyTaskRunning: false, articleAudio: null, browserSpeech: null, hlsPlayers: [], dictionaryReady: false, dictionaryActiveId: "", dictionarySearchTimer: null, dictionaryHistoryTimer: null, dictionarySearchController: null, dictionaryDetailController: null, dictionarySearchSequence: 0, dictionarySpeech: null, dictionarySpeechToken: 0, selectionLookupController: null, selectionLookupToken: 0, selectionLookupQuery: "", selectionLookupRect: null, selectionLookupRange: null, selectionLookupResults: [], selectionLookupActiveId: "", libraryBooks: [], libraryBook: null, libraryChapter: null, librarySort: "recent", libraryLookupChineseTranslations: true, libraryTaskId: null, libraryTaskTimer: null, libraryProgressTimer: null, libraryScrollHandler: null, librarySettingsKeydown: null, libraryTocOutsideClick: null, editingBookId: null };
 const BOOK_X_ICON = '<svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m14.5 7-5 5"></path><path d="m9.5 7 5 5"></path><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19v15H6.5a2.5 2.5 0 0 0 0 5H19"></path></svg>';
 const BOOK_EDIT_ICON = '<svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z"></path></svg>';
 const BOOK_TOC_ICON = '<svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M5 12h14M5 18h14"></path><path d="M3 6h.01M3 12h.01M3 18h.01"></path></svg>';
@@ -1100,15 +1100,46 @@ function resetDictionarySpeechButton(button) {
 
 function stopDictionarySpeech() {
   state.dictionarySpeechToken += 1;
+  const active = state.dictionarySpeech;
+  active?.abort?.abort();
+  active?.audio?.pause();
+  if (active?.url) URL.revokeObjectURL(active.url);
   stopSpeechEngine();
-  resetDictionarySpeechButton(state.dictionarySpeech?.button);
+  resetDictionarySpeechButton(active?.button);
   state.dictionarySpeech = null;
+}
+
+async function synthesizeDesktopOnlineSpeech(text, voice, signal) {
+  const response = await fetch('/api/desktop/edge-speech', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice: voice.id }),
+    signal,
+  });
+  if (!response.ok) throw new Error('在线声线暂不可用，请检查网络后重试。');
+  return response.blob();
+}
+
+async function synthesizeLocalBrowserSpeech(text, voice, signal) {
+  const response = await fetch('/api/browser-speech', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice: voice.id }),
+    signal,
+  });
+  if (!response.ok) {
+    let detail = '本地声线暂不可用，请检查模型文件和 Tokyo 运行环境。';
+    try { detail = (await response.json()).detail || detail; } catch (_) { /* keep generic detail */ }
+    throw new Error(detail);
+  }
+  return response.blob();
 }
 
 async function speakDictionaryText(text, button) {
   const spokenText = String(text || "").trim();
   if (!spokenText) return;
-  if (!window.FujimiMobile?.speak && !("speechSynthesis" in window)) return toast("当前设备不支持语音朗读。", true);
+  if (!window.FujimiMobile?.speak && !("speechSynthesis" in window)
+      && !(typeof localBrowserVoice === "function" && localBrowserVoice(state.browserVoiceName))) return toast("当前设备不支持语音朗读。", true);
   if (state.dictionarySpeech?.button === button) {
     stopDictionarySpeech();
     return;
@@ -1118,8 +1149,7 @@ async function speakDictionaryText(text, button) {
   try {
     const mode = await api("/api/settings/voice-mode");
     if (token !== state.dictionarySpeechToken) return;
-    state.browserVoiceName = mode.browser_voice_name || "";
-    state.browserVoiceLabel = mode.browser_voice_label || "ブラウザー";
+    applyBrowserVoiceSettings(mode);
   } catch (_error) {
     if (token !== state.dictionarySpeechToken) return;
   }
@@ -1142,6 +1172,70 @@ async function speakDictionaryText(text, button) {
   if (token !== state.dictionarySpeechToken) return;
   if (!voice) {
     toast("未检测到日语系统声线，已阻止中文声线朗读日文。请安装 Windows 日语（日本）语音包后重试。", true);
+    return;
+  }
+  if (voice.local) {
+    if (spokenText.length > 4000) {
+      toast('词典朗读文本过长，请缩短后重试。', true);
+      return;
+    }
+    const abort = new AbortController();
+    state.dictionarySpeech = { button, token, abort, audio: null, url: null };
+    button.classList.add('is-speaking');
+    button.setAttribute('aria-label', '停止朗读');
+    button.title = '停止朗读';
+    try {
+      const blob = await synthesizeLocalBrowserSpeech(spokenText, voice, abort.signal);
+      if (token !== state.dictionarySpeechToken) return;
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      state.dictionarySpeech.audio = audio;
+      state.dictionarySpeech.url = url;
+      audio.onended = () => { if (token === state.dictionarySpeechToken) stopDictionarySpeech(); };
+      audio.onerror = () => {
+        if (token !== state.dictionarySpeechToken) return;
+        stopDictionarySpeech();
+        toast('本地声线音频播放失败。', true);
+      };
+      await audio.play();
+    } catch (error) {
+      if (token !== state.dictionarySpeechToken && abort.signal.aborted) return;
+      stopDictionarySpeech();
+      toast(error.message || '本地声线合成失败。', true);
+    }
+    return;
+  }
+  if (voice.id) {
+    if (spokenText.length > 4000) {
+      toast('词典朗读文本过长，请缩短后重试。', true);
+      return;
+    }
+    const abort = new AbortController();
+    state.dictionarySpeech = { button, token, abort, audio: null, url: null };
+    button.classList.add('is-speaking');
+    button.setAttribute('aria-label', '停止朗读');
+    button.title = '停止朗读';
+    try {
+      const blob = await synthesizeDesktopOnlineSpeech(spokenText, voice, abort.signal);
+      if (token !== state.dictionarySpeechToken) return;
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      state.dictionarySpeech.audio = audio;
+      state.dictionarySpeech.url = url;
+      audio.onended = () => { if (token === state.dictionarySpeechToken) stopDictionarySpeech(); };
+      audio.onerror = () => {
+        if (token === state.dictionarySpeechToken) {
+          stopDictionarySpeech();
+          toast('在线朗读音频播放失败。', true);
+        }
+      };
+      await audio.play();
+    } catch (error) {
+      if (token === state.dictionarySpeechToken) {
+        stopDictionarySpeech();
+        toast(error.message || '在线朗读失败。', true);
+      }
+    }
     return;
   }
   const utterance = new SpeechSynthesisUtterance(spokenText);
@@ -1637,15 +1731,61 @@ function processingArticle(article) {
   return panel;
 }
 
+const LOCAL_BROWSER_VOICES = [
+  { id: "kokoro:jf_alpha", provider: "kokoro", name: "アルファ", lang: "ja-JP", local: true },
+  { id: "voicevox:8", provider: "voicevox", name: "春日部つむぎ", lang: "ja-JP", local: true },
+  { id: "voicevox:109", provider: "voicevox", name: "東北イタコ", lang: "ja-JP", local: true },
+  { id: "voicevox:107", provider: "voicevox", name: "東北ずん子", lang: "ja-JP", local: true },
+  { id: "voicevox:16", provider: "voicevox", name: "九州そら", lang: "ja-JP", local: true },
+  { id: "voicevox:69", provider: "voicevox", name: "満別花丸", lang: "ja-JP", local: true },
+  { id: "voicevox:74", provider: "voicevox", name: "琴詠ニア", lang: "ja-JP", local: true },
+  { id: "voicevox:89", provider: "voicevox", name: "Voidoll", lang: "ja-JP", local: true },
+  { id: "voicevox:47", provider: "voicevox", name: "ナースロボ＿タイプＴ", lang: "ja-JP", local: true },
+];
+
+function localBrowserVoices() {
+  return typeof state !== "undefined" && state.browserVoices !== null && state.browserVoices !== undefined
+    ? state.browserVoices : LOCAL_BROWSER_VOICES;
+}
+
+function localBrowserVoice(voiceId = "") {
+  return localBrowserVoices().find(voice => voice.id === voiceId) || null;
+}
+
 function japaneseBrowserVoices() {
   if (!("speechSynthesis" in window)) return [];
   const seen = new Set();
   return speechSynthesis.getVoices().filter(voice => /^ja(?:-|_|$)/i.test(voice.lang)).filter(voice => {
+    if (isHiddenBrowserVoiceName(voice.name)) return false;
     const key = `${voice.name}\u0000${voice.lang}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+const HIDDEN_BROWSER_VOICE_NAMES = new Set(["haruka", "ichiro", "sayaka", "ayumi"]);
+
+function isHiddenBrowserVoiceName(voiceName = "") {
+  const match = String(voiceName).match(/^Microsoft\s+(.+?)(?:\s+Online|\s+Desktop|\s+-\s+Japanese|\s*\()/i);
+  const shortName = (match?.[1] || String(voiceName)).trim().toLowerCase();
+  return HIDDEN_BROWSER_VOICE_NAMES.has(shortName);
+}
+
+function desktopOnlineVoices() {
+  return window.FujimiDesktop ? [
+    { name: "Microsoft Keita Online (Natural) - Japanese (Japan)", id: "ja-JP-KeitaNeural" },
+    { name: "Microsoft Nanami Online (Natural) - Japanese (Japan)", id: "ja-JP-NanamiNeural" },
+  ] : [];
+}
+
+function desktopOnlineVoice(name) {
+  return desktopOnlineVoices().find(voice => voice.name === name) || null;
+}
+
+function applyBrowserVoiceSettings(mode) {
+  state.browserVoiceName = mode.browser_voice_name || "";
+  state.browserVoiceLabel = mode.browser_voice_label || "ブラウザー";
 }
 
 function configuredBrowserVoice() {
@@ -1663,7 +1803,8 @@ function preferredJapaneseBrowserVoice(voices = japaneseBrowserVoices(), preferr
 }
 
 function waitForJapaneseBrowserVoice(timeout = 3000, preferredName = '') {
-  const selectedName = preferredName || state.browserVoiceName;
+  const requestedName = preferredName || state.browserVoiceName;
+  const selectedName = isHiddenBrowserVoiceName(requestedName) ? '' : requestedName;
   const choose = () => selectedName
     ? japaneseBrowserVoices().find(voice => voice.name === selectedName) || null
     : preferredJapaneseBrowserVoice(japaneseBrowserVoices());
@@ -1693,8 +1834,14 @@ function waitForJapaneseBrowserVoice(timeout = 3000, preferredName = '') {
 }
 
 async function resolveJapaneseBrowserVoice({ persistDefault = false, preferredName = '' } = {}) {
-  const selectedName = preferredName || state.browserVoiceName;
-  const voice = await waitForJapaneseBrowserVoice(3000, selectedName);
+  const requestedName = preferredName || state.browserVoiceName;
+  const local = typeof localBrowserVoice === "function" ? localBrowserVoice(requestedName) : null;
+  if (local) return local;
+  const selectedName = isHiddenBrowserVoiceName(requestedName) ? '' : requestedName;
+  const online = desktopOnlineVoice(selectedName)
+    || (isHiddenBrowserVoiceName(requestedName) ? desktopOnlineVoices()[0] : null);
+  if (online && selectedName) return online;
+  const voice = online || await waitForJapaneseBrowserVoice(3000, selectedName);
   if (!voice) return null;
   if (selectedName) return voice;
   state.browserVoiceName = voice.name;
@@ -1712,11 +1859,14 @@ async function resolveJapaneseBrowserVoice({ persistDefault = false, preferredNa
 }
 
 async function initializeBrowserVoice() {
-  if (window.FujimiMobile?.speak || !("speechSynthesis" in window)) return;
+  if (window.FujimiMobile?.speak) return;
   try {
     const mode = await api("/api/settings/voice-mode");
-    state.browserVoiceName = mode.browser_voice_name || "";
-    state.browserVoiceLabel = mode.browser_voice_label || "ブラウザー";
+    applyBrowserVoiceSettings(mode);
+    try {
+      const catalog = await api("/api/browser-voices");
+      if (Array.isArray(catalog)) state.browserVoices = catalog;
+    } catch (_error) { state.browserVoices = []; }
     await resolveJapaneseBrowserVoice({ persistDefault: true });
   } catch (_error) {
     // A later dictionary action retries the same safe voice resolution.
@@ -1724,6 +1874,8 @@ async function initializeBrowserVoice() {
 }
 
 function browserVoiceShortName(voiceName = "") {
+  const local = typeof localBrowserVoice === "function" ? localBrowserVoice(voiceName) : null;
+  if (local) return local.name;
   const match = voiceName.match(/^Microsoft\s+(.+?)(?:\s+Online|\s+Desktop|\s+-\s+Japanese|\s*\()/i);
   const shortName = (match?.[1] || voiceName).trim();
   return ({ Nanami: "七海", Keita: "圭太" })[shortName] || shortName;
@@ -1731,13 +1883,21 @@ function browserVoiceShortName(voiceName = "") {
 
 function exampleVoiceChoices(voices, modeSettings, browserName, currentChoice) {
   const browserChoice = browserName ? `browser:${encodeURIComponent(browserName)}` : '';
+  const localChoices = typeof localBrowserVoices === 'function'
+    ? localBrowserVoices().filter(voice => voice.available !== false).map(voice => ({ label: voice.name, value: `browser:${encodeURIComponent(voice.id)}` }))
+    : [];
   const options = [
-    ...(browserChoice ? [{ label: browserVoiceShortName(browserName), value: browserChoice }] : []),
+    ...localChoices,
+    ...(browserChoice && !localChoices.some(option => option.value === browserChoice)
+      ? [{ label: browserVoiceShortName(browserName), value: browserChoice }] : []),
     ...voices.map(voice => ({ label: voice.name, value: `voice:${voice.id}` })),
   ];
   const activeVoice = voices.find(voice => voice.active);
+  const savedBrowserChoice = modeSettings.browser_voice_name
+    ? `browser:${encodeURIComponent(modeSettings.browser_voice_name)}` : '';
   const activeChoice = modeSettings.mode === 'voice' && activeVoice
-    ? `voice:${activeVoice.id}` : browserChoice || (activeVoice ? `voice:${activeVoice.id}` : options[0]?.value || '');
+    ? `voice:${activeVoice.id}` : savedBrowserChoice && options.some(option => option.value === savedBrowserChoice)
+      ? savedBrowserChoice : browserChoice || (activeVoice ? `voice:${activeVoice.id}` : options[0]?.value || '');
   const choice = currentChoice === 'browser' ? browserChoice || activeChoice
     : currentChoice && currentChoice !== 'inherit' ? currentChoice : activeChoice;
   if (choice.startsWith('browser:') && !options.some(option => option.value === choice)) {
@@ -1748,19 +1908,17 @@ function exampleVoiceChoices(voices, modeSettings, browserName, currentChoice) {
 
 async function populateRereadVoices(select, article) {
   const [voices, modeSettings] = await Promise.all([api("/api/settings/voices"), api("/api/settings/voice-mode")]);
-  state.browserVoiceName = modeSettings.browser_voice_name || "";
-  state.browserVoiceLabel = modeSettings.browser_voice_label || "ブラウザー";
+  applyBrowserVoiceSettings(modeSettings);
   const selectedBrowserName = browserVoiceShortName(state.browserVoiceName);
-  const browserLabel = selectedBrowserName ? `${state.browserVoiceLabel}音声（${selectedBrowserName}）` : `${state.browserVoiceLabel}音声`;
+  const browserLabel = selectedBrowserName ? `ブラウザー音声（${selectedBrowserName}）` : "ブラウザー音声";
   select.replaceChildren(
-    new Option("默认声线", "model"),
     new Option(browserLabel, "browser"),
     ...voices.map(voice => new Option(voice.name, `voice:${voice.id}`)),
   );
   const mode = article.audio_voice_mode || "model";
   const value = mode === "voice" && article.audio_voice_id
     ? `voice:${article.audio_voice_id}`
-    : mode === "browser" ? "browser" : "model";
+    : "browser" === mode ? "browser" : "model";
   if ([...select.options].some(option => option.value === value)) select.value = value;
 }
 
@@ -2196,14 +2354,35 @@ function setRereadTask(root, status, label, count = "", detail = "", current = 0
 
 async function rereadArticle(article, voiceValue, target, root) {
   try {
+    let browserName = voiceValue === "browser" ? state.browserVoiceName : "";
+    if (voiceValue === "browser" && !browserName) {
+      const selected = await resolveJapaneseBrowserVoice({ persistDefault: true });
+      browserName = selected?.id || selected?.name || "";
+      if (!browserName) throw new Error("利用できる日本語のブラウザー音声がありません。");
+    }
+    const sharedOnlineVoice = window.FujimiDesktop && voiceValue === "browser" ? desktopOnlineVoice(browserName) : null;
+    if (sharedOnlineVoice) {
+      setRereadTask(root, "running", "オンライン音声を生成して保存しています…", "", "", 0, 1, { cancellable: false });
+      const result = await api(`/api/articles/${article.id}/edge-tts`, {
+        method: "POST", body: JSON.stringify({ voice: sharedOnlineVoice.id }),
+      });
+      openArticle(result.article, target);
+      toast(result.cached ? "保存済みの朗読を読み込みました。" : "オンライン音声を保存しました。");
+      return;
+    }
     const mode = voiceValue.startsWith("voice:") ? "voice" : voiceValue;
     const voiceId = mode === "voice" ? Number(voiceValue.split(":", 2)[1]) : null;
     setRereadTask(root, "running", "音声生成を準備しています…", "", "", 0, 1, { cancellable: true });
-    const result = await api(articleApiPath(article, "/reread"), { method: "POST", body: JSON.stringify({ mode, voice_id: voiceId }) });
+    const result = await api(articleApiPath(article, "/reread"), { method: "POST", body: JSON.stringify({ mode, voice_id: voiceId, browser_voice_name: browserName }) });
     if (result.status === "ready") {
       stopRereadTracking();
       openArticle(result.article, target);
-      toast("保存済みの朗読を読み込みました。");
+      toast(mode === "browser" && !result.cached ? "ブラウザー音声を保存しました。" : "保存済みの朗読を読み込みました。");
+      return;
+    }
+    if (result.status === "browser") {
+      openArticle(result.article, target);
+      toast("ブラウザー音声の保存には声線の選択が必要です。", true);
       return;
     }
     startRereadTracking(article, target, root, "reread");
@@ -2352,9 +2531,7 @@ async function loadDaily(date = null) {
     select.value = chosen;
     rememberDailyDate(chosen);
     const snapshot = await api(`/api/daily?date=${encodeURIComponent(chosen)}`);
-    $("#snapshot-meta").textContent = snapshot.missing_sources?.length
-      ? `本轮未找到可公开收录的候选：${snapshot.missing_sources.join("、")}。`
-      : "いま起きていることを、ひとつずつ。";
+    $("#snapshot-meta").textContent = "いま起きていることを、ひとつずつ。";
     const list = $("#daily-list");
     if (!snapshot.articles.length) { list.innerHTML = '<p class="empty">本日のニュースを準備しています。まもなくここに並びます。</p>'; }
     else {
@@ -2748,7 +2925,7 @@ function renderBrowserSpeech(controller) {
     progress,
     maximum: totalLength,
   });
-  const active = controller.started && progress < totalLength
+  const active = controller.started && controller.speechReady !== false && progress < totalLength
     ? controller.segments.findIndex(segment => progress >= segment.start && progress <= segment.end)
     : -1;
   setActiveAudioParagraph(root, active);
@@ -2759,6 +2936,8 @@ function stopBrowserSpeech(hidePlayer = true) {
   if (!controller) return;
   controller.cancelled = true;
   clearInterval(controller.timer);
+  stopDesktopOnlineAudio(controller);
+  stopLocalBrowserAudio(controller);
   stopSpeechEngine();
   controller.index = 0;
   controller.playing = false;
@@ -2797,6 +2976,8 @@ function suspendArticlePlayback() {
   const browserController = state.browserSpeech;
   if (browserController) {
     clearInterval(browserController.timer);
+    stopDesktopOnlineAudio(browserController);
+    stopLocalBrowserAudio(browserController);
     stopSpeechEngine();
     browserController.playing = false;
     browserController.paused = false;
@@ -2834,7 +3015,129 @@ function startBrowserSpeechTimer(controller) {
   }, 250);
 }
 
+function stopDesktopOnlineAudio(controller) {
+  controller.onlineAbort?.abort();
+  controller.onlineAbort = null;
+  controller.onlineAudio?.pause();
+  controller.onlineAudio = null;
+  if (controller.onlineUrl) URL.revokeObjectURL(controller.onlineUrl);
+  controller.onlineUrl = null;
+}
+
+function stopLocalBrowserAudio(controller) {
+  controller.localAbort?.abort();
+  controller.localAbort = null;
+  controller.localAudio?.pause();
+  controller.localAudio = null;
+  if (controller.localUrl) URL.revokeObjectURL(controller.localUrl);
+  controller.localUrl = null;
+}
+
+async function speakLocalBrowserChunk(controller, voice, token) {
+  if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
+  const start = Math.round(controller.index);
+  if (start >= controller.text.length) {
+    controller.playing = false;
+    controller.started = false;
+    renderBrowserSpeech(controller);
+    return;
+  }
+  const text = controller.text.slice(start, start + 1200);
+  const abort = new AbortController();
+  controller.localAbort = abort;
+  try {
+    const blob = await synthesizeLocalBrowserSpeech(text, voice, abort.signal);
+    if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    controller.localUrl = url;
+    controller.localAudio = audio;
+    audio.playbackRate = controller.rate;
+    audio.ontimeupdate = () => {
+      if (controller.token !== token || !Number.isFinite(audio.duration) || !audio.duration) return;
+      controller.index = start + text.length * audio.currentTime / audio.duration;
+      renderBrowserSpeech(controller);
+    };
+    audio.onended = () => {
+      if (controller.token !== token) return;
+      stopLocalBrowserAudio(controller);
+      controller.index = start + text.length;
+      renderBrowserSpeech(controller);
+      void speakLocalBrowserChunk(controller, voice, token);
+    };
+    audio.onerror = () => {
+      if (controller.token !== token) return;
+      stopLocalBrowserAudio(controller);
+      controller.playing = false;
+      controller.needsRestart = true;
+      renderBrowserSpeech(controller);
+      notice('本地声线音频播放失败。', true);
+    };
+    await audio.play();
+  } catch (error) {
+    if (controller.token !== token || abort.signal.aborted) return;
+    stopLocalBrowserAudio(controller);
+    controller.playing = false;
+    controller.needsRestart = true;
+    renderBrowserSpeech(controller);
+    notice(error.message || '本地声线合成失败。', true);
+  }
+}
+
+async function speakDesktopOnlineChunk(controller, voice, token) {
+  if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
+  const start = Math.round(controller.index);
+  if (start >= controller.text.length) {
+    controller.playing = false;
+    controller.started = false;
+    renderBrowserSpeech(controller);
+    return;
+  }
+  const text = controller.text.slice(start, start + 1200);
+  const abort = new AbortController();
+  controller.onlineAbort = abort;
+  try {
+    const blob = await synthesizeDesktopOnlineSpeech(text, voice, abort.signal);
+    if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    controller.onlineUrl = url;
+    controller.onlineAudio = audio;
+    audio.playbackRate = controller.rate;
+    audio.ontimeupdate = () => {
+      if (controller.token !== token || !Number.isFinite(audio.duration) || !audio.duration) return;
+      controller.index = start + text.length * audio.currentTime / audio.duration;
+      renderBrowserSpeech(controller);
+    };
+    audio.onended = () => {
+      if (controller.token !== token) return;
+      stopDesktopOnlineAudio(controller);
+      controller.index = start + text.length;
+      renderBrowserSpeech(controller);
+      void speakDesktopOnlineChunk(controller, voice, token);
+    };
+    audio.onerror = () => {
+      if (controller.token !== token) return;
+      stopDesktopOnlineAudio(controller);
+      controller.playing = false;
+      controller.needsRestart = true;
+      renderBrowserSpeech(controller);
+      notice('在线朗读音频播放失败。', true);
+    };
+    await audio.play();
+  } catch (error) {
+    if (controller.token !== token || abort.signal.aborted) return;
+    stopDesktopOnlineAudio(controller);
+    controller.playing = false;
+    controller.needsRestart = true;
+    renderBrowserSpeech(controller);
+    notice(error.message || '在线朗读失败。', true);
+  }
+}
+
 async function speakBrowserSpeech(controller, startIndex = 0) {
+  stopDesktopOnlineAudio(controller);
+  stopLocalBrowserAudio(controller);
   stopSpeechEngine();
   controller.cancelled = false;
   controller.index = Math.max(0, Math.min(controller.text.length, Math.round(startIndex)));
@@ -2842,6 +3145,7 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
   controller.paused = false;
   controller.playing = true;
   controller.started = true;
+  controller.speechReady = true;
   controller.needsRestart = false;
   controller.token += 1;
   const token = controller.token;
@@ -2855,22 +3159,25 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
     notice(controller.browserVoiceName ? "此示例选择的浏览器声线不可用，请重新选择声线。" : "未检测到日语系统声线，请安装 Windows 日语（日本）语音包后重试。", true);
     return;
   }
-  const speech = window.FujimiMobile?.speak ? null : new SpeechSynthesisUtterance(controller.text.slice(controller.offset));
-  if (speech) speech.voice = browserVoice;
-  if (speech) speech.lang = browserVoice.lang;
-  if (speech) speech.rate = controller.rate;
-  controller.hasBoundaryEvents = Boolean(speech);
-  if (speech) speech.onboundary = event => {
-    if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
-    controller.index = Math.max(controller.index, controller.offset + event.charIndex);
+  if (browserVoice?.local) {
+    controller.hasBoundaryEvents = true;
     renderBrowserSpeech(controller);
-  };
+    void speakLocalBrowserChunk(controller, browserVoice, token);
+    return;
+  }
+  if (browserVoice?.id) {
+    controller.hasBoundaryEvents = true;
+    renderBrowserSpeech(controller);
+    void speakDesktopOnlineChunk(controller, browserVoice, token);
+    return;
+  }
   const finish = () => {
     if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
     controller.index = controller.text.length;
     controller.playing = false;
     controller.paused = false;
     controller.started = false;
+    controller.speechReady = false;
     clearInterval(controller.timer);
     renderBrowserSpeech(controller);
   };
@@ -2883,13 +3190,51 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
     renderBrowserSpeech(controller);
     notice("浏览器朗读失败，请检查系统语音设置。", true);
   };
-  if (speech) speech.onend = finish;
-  if (speech) speech.onerror = fail;
-  controller.utterance = speech;
+  if (!window.FujimiMobile?.speak) {
+    controller.hasBoundaryEvents = true;
+    controller.speechReady = false;
+    // A boundary can announce the next paragraph before its audio starts.
+    const speakParagraph = (paragraphIndex, position) => {
+      const segment = controller.segments[paragraphIndex];
+      if (!segment) return finish();
+      const start = Math.max(segment.start, position);
+      if (start >= segment.end) return speakParagraph(paragraphIndex + 1, controller.segments[paragraphIndex + 1]?.start || controller.text.length);
+      const speech = new SpeechSynthesisUtterance(controller.text.slice(start, segment.end));
+      speech.voice = browserVoice;
+      speech.lang = browserVoice.lang;
+      speech.rate = controller.rate;
+      speech.onstart = () => {
+        if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
+        controller.index = start;
+        controller.speechReady = true;
+        renderBrowserSpeech(controller);
+      };
+      speech.onboundary = event => {
+        if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
+        controller.index = Math.min(segment.end, Math.max(controller.index, start + event.charIndex));
+        renderBrowserSpeech(controller);
+      };
+      speech.onend = () => {
+        if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
+        controller.index = segment.end;
+        controller.speechReady = false;
+        renderBrowserSpeech(controller);
+        speakParagraph(paragraphIndex + 1, controller.segments[paragraphIndex + 1]?.start || controller.text.length);
+      };
+      speech.onerror = fail;
+      controller.utterance = speech;
+      speechSynthesis.speak(speech);
+    };
+    renderBrowserSpeech(controller);
+    const first = controller.segments.findIndex(segment => segment.end > controller.index);
+    speakParagraph(first < 0 ? controller.segments.length : first, controller.index);
+    return;
+  }
+  controller.hasBoundaryEvents = false;
+  controller.utterance = null;
   startBrowserSpeechTimer(controller);
   renderBrowserSpeech(controller);
-  if (speech) speechSynthesis.speak(speech);
-  else controller.nativeTtsId = mobileSpeak(controller.text.slice(controller.offset), controller.rate, event => {
+  controller.nativeTtsId = mobileSpeak(controller.text.slice(controller.offset), controller.rate, event => {
     if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
     if (event === "done") finish();
     else if (event === "error") fail("error");
@@ -2897,7 +3242,7 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
 }
 
 function setupBrowserArticlePlayer(article, root) {
-  if (!window.FujimiMobile?.speak && !window.speechSynthesis) return notice("当前设备不支持语音朗读", true);
+  if (!window.FujimiMobile?.speak && !window.speechSynthesis && !(typeof localBrowserVoice === "function" && localBrowserVoice(state.browserVoiceName))) return notice("当前设备不支持语音朗读", true);
   const model = browserSpeechModel(article.paragraphs || []);
   if (!model.text) return notice("没有可朗读的正文", true);
   const player = $(".article-audio-player", root);
@@ -2914,7 +3259,7 @@ function setupBrowserArticlePlayer(article, root) {
     duration: Math.max(1, model.text.length / charactersPerSecond),
     charactersPerSecond,
     rate: savedPlaybackRate(),
-    browserVoiceName: article.example_browser_voice_name || '',
+    browserVoiceName: article.example_browser_voice_name || state.browserVoiceName || '',
     hasBoundaryEvents: false,
     playing: false,
     paused: false,
@@ -2943,6 +3288,18 @@ function setupBrowserArticlePlayer(article, root) {
       speakBrowserSpeech(controller, controller.index);
     } else if (controller.paused) {
       if (window.FujimiMobile?.speak) speakBrowserSpeech(controller, controller.index);
+      else if (controller.localAudio) {
+        controller.localAudio.play().catch(() => notice('本地声线音频播放失败。', true));
+        controller.paused = false;
+        controller.playing = true;
+        renderBrowserSpeech(controller);
+      }
+      else if (controller.onlineAudio) {
+        controller.onlineAudio.play().catch(() => notice('在线朗读音频播放失败。', true));
+        controller.paused = false;
+        controller.playing = true;
+        renderBrowserSpeech(controller);
+      }
       else {
         speechSynthesis.resume();
         controller.paused = false;
@@ -2954,7 +3311,9 @@ function setupBrowserArticlePlayer(article, root) {
       if (window.FujimiMobile?.speak) {
         window.FujimiMobile.stopSpeaking();
         controller.needsRestart = true;
-      } else speechSynthesis.pause();
+      } else if (controller.localAudio) controller.localAudio.pause();
+      else if (controller.onlineAudio) controller.onlineAudio.pause();
+      else speechSynthesis.pause();
       controller.paused = true;
       controller.playing = false;
       renderBrowserSpeech(controller);
@@ -2964,6 +3323,8 @@ function setupBrowserArticlePlayer(article, root) {
   progress.oninput = () => {
     if (controller.playing) {
       if (window.FujimiMobile?.speak) window.FujimiMobile.stopSpeaking();
+      else if (controller.localAudio) stopLocalBrowserAudio(controller);
+      else if (controller.onlineAudio) stopDesktopOnlineAudio(controller);
       else speechSynthesis.pause();
     }
     controller.paused = true;
@@ -3230,13 +3591,16 @@ async function refreshStorage() {
 async function loadVoices() {
   try {
     const [voices, mode] = await Promise.all([api("/api/settings/voices"), api("/api/settings/voice-mode")]);
+    try {
+      const catalog = await api("/api/browser-voices");
+      if (Array.isArray(catalog)) state.browserVoices = catalog;
+    } catch (_error) { state.browserVoices = []; }
     const list = $("#voice-list");
     list.replaceChildren();
     const activeVoice = voices.find(voice => voice.active);
     state.voices = voices;
     state.voiceMode = mode.mode;
-    state.browserVoiceName = mode.browser_voice_name || "";
-    state.browserVoiceLabel = mode.browser_voice_label || "ブラウザー";
+    applyBrowserVoiceSettings(mode);
     const fallbackBrowserVoice = configuredBrowserVoice();
     const selectedBrowserName = browserVoiceShortName(state.browserVoiceName || fallbackBrowserVoice?.name || "");
     const browserTitle = `${state.browserVoiceLabel}音声${selectedBrowserName ? `（${selectedBrowserName}）` : ""}`;
@@ -3487,25 +3851,51 @@ async function populateBrowserVoiceSelect() {
   $("#submit-voice").disabled = true;
   select.replaceChildren(new Option("正在检测日语声线…", ""));
   panelNotice("#voice-editor-notice", "");
-  await waitForJapaneseBrowserVoice();
+  let local = typeof localBrowserVoices === "function" ? localBrowserVoices() : [];
+  if (typeof api === "function") {
+    try {
+      const catalog = await api("/api/browser-voices");
+      if (Array.isArray(catalog)) {
+        state.browserVoices = catalog;
+        local = catalog;
+      }
+    } catch (_error) {
+      state.browserVoices = [];
+      local = [];
+    }
+  }
+  if (!(typeof localBrowserVoice === "function" && localBrowserVoice(state.browserVoiceName))
+      && !desktopOnlineVoice(state.browserVoiceName)) await waitForJapaneseBrowserVoice();
   if (!state.editingBrowserVoice) return;
   const voices = japaneseBrowserVoices();
   const selected = voices.find(voice => voice.name === state.browserVoiceName)
-    || (!state.browserVoiceName ? preferredJapaneseBrowserVoice(voices) : null);
-  const options = voices.map(voice => new Option(browserVoiceShortName(voice.name), voice.name));
-  if (state.browserVoiceName && !selected) {
-    const unavailable = new Option(`${browserVoiceShortName(state.browserVoiceName)}（当前设备不可用）`, state.browserVoiceName);
-    unavailable.disabled = true;
-    options.unshift(unavailable);
+    || (!state.browserVoiceName || isHiddenBrowserVoiceName(state.browserVoiceName) ? preferredJapaneseBrowserVoice(voices) : null);
+  const online = desktopOnlineVoices();
+  const localOptions = local.map(voice => {
+    const option = new Option(`${voice.name}${voice.available === false ? "（资源不可用）" : ""}`, voice.id);
+    option.disabled = voice.available === false;
+    return option;
+  });
+  const options = [...localOptions, ...online, ...voices].map(voice => voice instanceof Option ? voice : new Option(browserVoiceShortName(voice.name), voice.name));
+  if (state.browserVoiceName && !selected && !isHiddenBrowserVoiceName(state.browserVoiceName)) {
+    if (!online.some(voice => voice.name === state.browserVoiceName)
+        && !local.some(voice => voice.id === state.browserVoiceName)) {
+      const unavailable = new Option(`${browserVoiceShortName(state.browserVoiceName)}（当前设备不可用）`, state.browserVoiceName);
+      unavailable.disabled = true;
+      options.unshift(unavailable);
+    }
   }
   select.replaceChildren(...options);
   if (selected) select.value = selected.name;
-  else if (state.browserVoiceName) select.value = state.browserVoiceName;
-  select.disabled = voices.length === 0;
-  const updateSubmit = () => { $("#submit-voice").disabled = !voices.some(voice => voice.name === select.value); };
+  else if (state.browserVoiceName && !isHiddenBrowserVoiceName(state.browserVoiceName)) select.value = state.browserVoiceName;
+  select.disabled = options.length === 0;
+  const updateSubmit = () => {
+    const localAvailable = local.some(voice => voice.id === select.value && voice.available !== false);
+    $("#submit-voice").disabled = !(localAvailable || [...online, ...voices].some(voice => voice.name === select.value));
+  };
   select.onchange = updateSubmit;
   updateSubmit();
-  panelNotice("#voice-editor-notice", voices.length ? "" : "未检测到日语系统声线。请先在 Windows 设置中安装日语（日本）语音包。", voices.length === 0);
+  panelNotice("#voice-editor-notice", options.length ? "" : "未检测到日语声线。请检查网络或安装 Windows 日语语音包。", options.length === 0);
 }
 
 function openVoiceDialog(voice = null) {
@@ -3548,6 +3938,14 @@ async function submitVoiceEditor(event) {
     if (!name) return panelNotice("#voice-editor-notice", "请选择浏览器声线。", true);
     if (!label) return panelNotice("#voice-editor-notice", "请输入声线名称。", true);
     try {
+      const local = typeof localBrowserVoice === "function" ? localBrowserVoice(name) : null;
+      const localAvailable = local && local.available !== false;
+      if (!localAvailable && window.FujimiDesktop && ![...desktopOnlineVoices(), ...japaneseBrowserVoices()].some(voice => voice.name === name)) {
+        throw new Error("当前设备没有此声线，请选择可用的日语声线。");
+      }
+      if (!localAvailable && !window.FujimiDesktop && !japaneseBrowserVoices().some(voice => voice.name === name)) {
+        throw new Error("当前设备没有此声线，请选择可用的日语声线。");
+      }
       await api("/api/settings/browser-voice", { method: "PUT", body: JSON.stringify({ name, label }) });
       state.browserVoiceName = name;
       state.browserVoiceLabel = label;
@@ -3819,8 +4217,8 @@ async function loadDesktopSettings() {
       qr.hidden = !primaryUrl;
       if (primaryUrl) $("img", qr).src = `/api/desktop/mobile-qr?url=${encodeURIComponent(primaryUrl)}`;
     }
-    $("#desktop-startup-enabled").checked = Boolean(settings.startup_enabled);
     $("#desktop-project-root").textContent = settings.project_root || "未设置";
+    $("#desktop-data-path").textContent = settings.data_dir || "未设置";
     $("#desktop-python-path").textContent = settings.python_executable || "未设置";
     panelError("#desktop-settings-error");
   } catch (error) {
@@ -3983,21 +4381,15 @@ function requestMobileExactAlarm() {
   window.FujimiMobile?.requestExactAlarmPermission();
 }
 
-async function updateDesktopStartup() {
-  const toggle = $("#desktop-startup-enabled");
-  const requested = toggle.checked;
-  toggle.disabled = true;
+async function openDesktopFolder(kind) {
   try {
-    const result = await window.pywebview.api.set_startup_enabled(requested);
-    toggle.checked = Boolean(result.startup_enabled);
-    if (!result.ok) throw new Error("Windows 开机启动设置未能保存");
+    const result = kind === "data"
+      ? await window.pywebview.api.open_data_dir()
+      : await window.pywebview.api.open_log_dir();
+    if (!result.ok) throw new Error("无法打开文件夹");
     panelError("#desktop-settings-error");
-    toast(requested ? "已启用开机启动" : "已关闭开机启动");
   } catch (error) {
-    toggle.checked = !requested;
-    panelError("#desktop-settings-error", error.message || "无法修改开机启动设置");
-  } finally {
-    toggle.disabled = false;
+    panelError("#desktop-settings-error", error.message || "无法打开文件夹");
   }
 }
 
@@ -4324,17 +4716,18 @@ function renderBookBlocks(payload, root) {
 function setupBookAudio(payload, root) {
   const paragraphs = payload.chapter.blocks.filter(block => block.text_ja).map(block => block.text_ja);
   const audio = $(".book-audio", root);
-  if (payload.chapter.voice_mode === "browser") {
+  if (payload.chapter.audio?.url && payload.chapter.voice_mode !== "none"
+      && (payload.chapter.voice_mode !== "browser" || payload.chapter.audio.voice_id == null && payload.chapter.audio.voice_name)) {
+    audio.src = mobileMediaUrl(payload.chapter.audio.url);
+    setupNativeArticlePlayer({ paragraphs, audio_segments: payload.chapter.audio.segments || [] }, root, audio);
+    if (Number(payload.book.progress?.chapter_id) === Number(payload.chapter.id) && payload.book.progress?.audio_time) audio.currentTime = Number(payload.book.progress.audio_time);
+    audio.addEventListener("timeupdate", () => scheduleBookProgress(root));
+  } else if (payload.chapter.voice_mode === "browser") {
     setupBrowserArticlePlayer({ paragraphs }, root);
     if (state.browserSpeech?.root === root && Number(payload.book.progress?.chapter_id) === Number(payload.chapter.id)) {
       state.browserSpeech.index = Math.max(0, Math.min(state.browserSpeech.text.length, Number(payload.book.progress?.audio_time || 0)));
       renderBrowserSpeech(state.browserSpeech);
     }
-  } else if (payload.chapter.voice_mode !== "none" && payload.chapter.audio?.url) {
-    audio.src = mobileMediaUrl(payload.chapter.audio.url);
-    setupNativeArticlePlayer({ paragraphs, audio_segments: payload.chapter.audio.segments || [] }, root, audio);
-    if (Number(payload.book.progress?.chapter_id) === Number(payload.chapter.id) && payload.book.progress?.audio_time) audio.currentTime = Number(payload.book.progress.audio_time);
-    audio.addEventListener("timeupdate", () => scheduleBookProgress(root));
   }
 }
 
@@ -4382,6 +4775,12 @@ async function generateBookChapterAudio(root) {
   const value = $(".book-voice", root).value;
   const [mode, rawId] = value.split(":");
   try {
+    let browserName = mode === "browser" ? state.browserVoiceName : "";
+    if (mode === "browser" && !browserName) {
+      const selected = await resolveJapaneseBrowserVoice({ persistDefault: true });
+      browserName = selected?.id || selected?.name || "";
+      if (!browserName) throw new Error("利用できる日本語のブラウザー音声がありません。");
+    }
     const taskBox = $(".book-task", root);
     taskBox.hidden = false;
     $(".reread-task-label", taskBox).textContent = "音声生成を準備しています…";
@@ -4389,13 +4788,13 @@ async function generateBookChapterAudio(root) {
     progress.max = 1;
     progress.value = 0;
     $(".cancel-book-task", taskBox).hidden = false;
-    const result = await api(`/api/books/${payload.book.id}/chapters/${payload.chapter.id}/reread`, { method: "POST", body: JSON.stringify({ mode, voice_id: rawId ? Number(rawId) : null }) });
+    const result = await api(`/api/books/${payload.book.id}/chapters/${payload.chapter.id}/reread`, { method: "POST", body: JSON.stringify({ mode, voice_id: rawId ? Number(rawId) : null, browser_voice_name: browserName }) });
     if (result.status === "browser") {
       await navigateBookChapter(payload.book.id, payload.chapter.id, { historyMode: "replace" });
       toast("ブラウザー音声を設定しました。");
     } else if (result.status === "ready") {
       await navigateBookChapter(payload.book.id, payload.chapter.id, { historyMode: "replace" });
-      toast("キャッシュ済みの朗読を読み込みました。");
+      toast(mode === "browser" && !result.cached ? "ブラウザー音声を保存しました。" : "キャッシュ済みの朗読を読み込みました。");
     } else if (result.task_id) startBookTaskTracking(result.task_id, root);
   } catch (error) {
     $(".book-task", root).hidden = true;
@@ -4868,9 +5267,8 @@ $("#back-to-library").onclick = async () => {
 };
 $("#book-files").onchange = event => { uploadBooks(event.target.files); event.target.value = ""; };
 $("#library-sort-setting").onchange = updateLibrarySettings;
-$("#desktop-startup-enabled").onchange = updateDesktopStartup;
-$("#open-desktop-data").onclick = () => window.pywebview?.api.open_data_dir();
-$("#open-desktop-logs").onclick = () => window.pywebview?.api.open_log_dir();
+$("#open-desktop-data").onclick = () => openDesktopFolder("data");
+$("#open-desktop-logs").onclick = () => openDesktopFolder("logs");
 $("#mobile-allow-cellular").onchange = updateMobileCellularSetting;
 $("#mobile-sync-now").onclick = startMobileSync;
 $("#mobile-save-deepseek").onclick = saveMobileDeepSeekKey;
@@ -5075,11 +5473,15 @@ showView(initialView, { historyMode: "replace", resetReader: false });
     const sequence = ++voiceLoadSequence;
     try {
       const [voices, modeSettings] = await Promise.all([api('/api/settings/voices'), api('/api/settings/voice-mode')]);
-      state.browserVoiceName = modeSettings.browser_voice_name || '';
-      state.browserVoiceLabel = modeSettings.browser_voice_label || 'ブラウザー';
-      await waitForJapaneseBrowserVoice();
+      applyBrowserVoiceSettings(modeSettings);
+      try {
+        const catalog = await api('/api/browser-voices');
+        state.browserVoices = Array.isArray(catalog) ? catalog : [];
+      } catch (_error) { state.browserVoices = []; }
+      if (!localBrowserVoice(state.browserVoiceName)) await waitForJapaneseBrowserVoice();
       if (sequence !== voiceLoadSequence) return;
-      const browserName = preferredJapaneseBrowserVoice()?.name || state.browserVoiceName || '';
+      const browserName = localBrowserVoice(state.browserVoiceName)?.id
+        || preferredJapaneseBrowserVoice()?.name || state.browserVoiceName || '';
       const defaults = exampleVoiceChoices(voices, modeSettings, browserName, 'inherit');
       defaultVoiceChoice = defaults.choice;
       browserVoiceChoice = browserName ? `browser:${encodeURIComponent(browserName)}` : '';
@@ -5199,10 +5601,6 @@ showView(initialView, { historyMode: "replace", resetReader: false });
       button.textContent = '保存并阅读';
     }
   };
-  const note = document.createElement('p');
-  note.className = 'web-runtime-note';
-  note.textContent = 'Web 本地版 · 词典与阅读可离线使用。日刊自动更新仅在本地服务运行期间执行。';
-  document.querySelector('#settings-view .section-head').after(note);
   const addVoice = document.querySelector('#add-voice');
   addVoice.disabled = true;
   addVoice.title = '正在检查 Irodori 服务…';
@@ -5211,7 +5609,6 @@ showView(initialView, { historyMode: "replace", resetReader: false });
   api('/api/health').then(health => {
     addVoice.disabled = !health.tts_details?.enabled;
     addVoice.title = health.tts_details?.enabled ? '添加参考音频声线' : 'Irodori 尚未启用。';
-    note.textContent += health.translation_configured ? ' 翻译已配置，处理时会发送正文到 DeepSeek。' : ' 翻译未配置，章节处理仅生成假名。';
   }).catch(() => {});
 
   // Trap keyboard focus in the mobile navigation drawer and restore it on close.

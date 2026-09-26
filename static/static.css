@@ -3836,33 +3836,6 @@ nav {
   gap: 16px;
 }
 
-.desktop-startup-toggle {
-  min-height: 54px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  color: var(--ink);
-}
-
-.desktop-startup-toggle span {
-  display: grid;
-  gap: 4px;
-}
-
-.desktop-startup-toggle small {
-  color: var(--muted);
-  font-weight: 400;
-  line-height: 1.45;
-}
-
-.desktop-startup-toggle input {
-  width: 46px;
-  height: 25px;
-  flex: 0 0 auto;
-  accent-color: var(--moss);
-}
-
 .desktop-paths {
   display: grid;
   gap: 8px;
@@ -4006,10 +3979,6 @@ nav {
 
   .section-head h2 {
     font-size: 1.65rem;
-  }
-
-  .desktop-startup-toggle {
-    align-items: flex-start;
   }
 
   .desktop-paths div {
@@ -6940,11 +6909,6 @@ html:not([data-mobile-app="true"]) .mobile-app-bar {
 
   [data-mobile-app="true"] #settings-view .desktop-folder-actions {
     gap: 8px;
-  }
-
-  [data-mobile-app="true"] #settings-view .desktop-startup-toggle {
-    min-height: 58px;
-    gap: 14px;
   }
 
   [data-mobile-app="true"] #settings-view .desktop-paths div {

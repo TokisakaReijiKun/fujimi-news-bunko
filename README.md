@@ -14,6 +14,8 @@ python -X utf8 server.py
 
 浏览器打开 **http://127.0.0.1:8427**。也可以运行 `./start.ps1`；该脚本使用 `conda run -n Tokyo`。修改端口：`./start.ps1 -Port 8428`。
 
+Windows 桌面窗口默认使用 8428 端口，可用 `./start-desktop.ps1` 启动；先运行 `conda run -n Tokyo python -m pip install -r requirements-desktop.txt`。要制作独立程序，运行 `./build-desktop.ps1`。项目内的桌面程序可使用现有 Tokyo 环境与 Irodori 模型，显示并使用 `data/voices/` 中的声线；详见 [Windows 桌面客户端](docs/desktop-client.md)。
+
 当前实现无需 Node 构建步骤。服务器默认只监听本机，运行终端中按 Ctrl+C 停止。自动日刊仅在服务运行时检查 CST 时间；关机期间错过的任务不会补跑。后台启动的进程号记录在 `logs/server.pid`，日志位于 `logs/`。
 
 ## 已实现
@@ -51,7 +53,7 @@ Irodori 使用本地 `Irodori-TTS/model/model.safetensors`，由 Tokyo 启动受
 
 新新闻保存后自动生成朗读，正文可立即阅读；书籍从“読書設定”按章节生成。音频保存为 48kHz 单声道 WAV，支持暂停、拖动、倍速和段落定位。中止后当前分段返回即退出；重新生成失败保留旧音频。任务跨页面可查询，服务重启后未完成任务标记中断，需要手动重试；历史文章不会批量补生成。默认声线可以切换回浏览器或关闭，不会在模型失败时自动改用其他声线。
 
-首次启用会先将 SQLite 和相关设置备份到 `data/backups/tts-settings-*/`，再注册冬子并让六家默认来源沿用全局声线。参考音频支持 1–120 秒、20 MB 以内的 WAV、MP3、FLAC、OGG，保存为 `data/voices/<声线名称>.wav`；替换会覆盖同名声线文件，改名会同步改名，删除前会归档。新闻音频保存为每篇文章 `audio/<声线名称>_<新闻名称>.wav`。详见 [TTS 接口与验证](docs/tts.md)。
+首次启用会先将 SQLite 和相关设置备份到 `data/backups/tts-settings-*/`，再注册冬子并让六家默认来源沿用全局声线。参考音频支持 1–120 秒、20 MB 以内的 WAV、MP3、FLAC、OGG、M4A；M4A 解码需要本机 `ffmpeg`。声线保存为 `data/voices/<声线名称>.wav`；替换会覆盖同名声线文件，改名会同步改名，删除前会归档。新闻音频保存为每篇文章 `audio/<声线名称>_<新闻名称>.wav`。详见 [TTS 接口与验证](docs/tts.md)。
 
 浏览器朗读依赖系统／浏览器安装的日语语音；部分在线语音需要网络。假名由 pykakasi 离线生成，多音字和人名读法可能需要校对。
 

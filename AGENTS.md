@@ -19,14 +19,14 @@ conda run --no-capture-output -n Tokyo python -X utf8 server.py
 conda run -n Tokyo python -m pip install -r requirements.txt
 ```
 
-也可运行 `./start.ps1`。默认地址为 `http://127.0.0.1:8427`，健康检查为 `/api/health`。
+也可运行 `./start.ps1`。Web 默认地址为 `http://127.0.0.1:8427`，桌面端通过 `./start-desktop.ps1` 或打包的 EXE 启动，默认使用 `127.0.0.1:8428`；健康检查为 `/api/health`。
 
 - 当前机器的 Tokyo Python 通常位于 `D:/Anaconda/envs/Tokyo/python.exe`；路径失效时先执行 `conda env list`。
 - 前端是原生 HTML/CSS/JavaScript，没有 npm 构建步骤。Node 只用于 JavaScript 语法检查。
 - Windows 路径包含中文、日文和特殊字符；PowerShell 使用 `-LiteralPath`，Python 使用 `pathlib.Path`。
 - 服务默认只监听 `127.0.0.1`。不得擅自改为公网监听。
-- 重启前检查 `logs/server.pid` 对应的可执行文件和命令行，确认属于本项目；不得批量结束 Python 进程。
-- 重启前确认日刊、导入、翻译和书籍任务没有运行。后台进程使用隐藏窗口，日志写入 `logs/`。
+- 重启 Web 前检查 `logs/server.pid`，重启桌面端前检查 `logs/desktop.pid` 或实际 EXE 进程；核对可执行文件和命令行确属本项目，不得批量结束 Python 进程。
+- 重启前确认日刊、导入、翻译、书籍和朗读任务没有运行。后台进程使用隐藏窗口，日志写入 `logs/` 或所选数据目录的 `logs/`。
 - 日刊定时器按 CST（UTC+8）运行，只在服务进程存活时有效；关机期间不会补跑。
 
 ## 代码地图
@@ -41,6 +41,9 @@ conda run -n Tokyo python -m pip install -r requirements.txt
 | `article_extraction.py` | 旧解析入口和异常类型的兼容分发层 |
 | `article_store.py` | 文件为主的新闻存储、事务恢复、附件授权和索引重建 |
 | `article_media.py` | 新闻媒体格式校验与临时缓存 |
+| `tts_integration.py` | 新闻与书籍朗读任务、声线选择和已有音频复用 |
+| `browser_tts.py` | 浏览器即时朗读的 Kokoro／VOICEVOX 声线目录、资源检查和本地合成 |
+| `desktop.py`、`desktop_edge_speech.py` | Windows 窗口、托盘和桌面在线日语声线 |
 | `book_store.py` | 文件为主的书籍存储、状态写入、资源访问和索引重建 |
 | `epub_parser.py` | EPUB spine、nav/NCX、双语段落、锚点和安全 HTML 解析 |
 | `storage_migration.py` | 新闻旧存储迁移、数据库路径迁移和回滚 |
@@ -113,13 +116,13 @@ data/articles/YYYY-MM-DD/创建时标题/
 
 - `YYYY-MM-DD` 是该文章副本的日刊日期（CST）；同一 URL 同日重复导入复用当天副本，跨日导入创建独立 ID 和完整副本。标题修改不移动目录。
 - 收藏文章时完整复制到 `data/bookmarks/创建时标题/`；取消收藏删除该收藏副本，不删除 `data/articles/` 中的日刊文章。
-- `article.json` 保存稳定 ID、元数据、文本区间、SHA-256、收藏、日刊归属和附件登记，不重复保存正文。
+- `article.json` 保存稳定 ID、元数据、文本区间、SHA-256、收藏、日刊归属和图片／视频附件登记，不重复保存正文，也不登记新闻音频。
 - 原文、译文和假名分别存入三个文件。外部修改导致哈希或区间不匹配时报告错误，不能猜测段落对应关系。
-- 图片和视频统一放在本篇文章的 `media/`；TTS 文件使用 `audio/`。不同文章各自持有媒体副本。
-- 附件 API 只能读取 `article.json` 登记的 `media/` 或 `audio/` 文件，必须阻止路径穿越。
+- 图片和视频统一放在本篇文章的 `media/`；TTS 文件使用 `audio/`。不同文章各自持有媒体副本。新闻音频是否已生成只看该文章 `audio/` 中对应声线名称的完整音频文件，兼容同名摘要后缀；不要另建音频登记或复用索引。
+- 附件 API 对 `media/` 只读取 `article.json` 登记的文件；对文章 `audio/` 可读取目录内现有的 WAV／MP3，无需登记。两者都必须限制在对应文章目录并阻止路径穿越。
 - `data/fujimi.sqlite3` 的新闻表仅是可重建索引，不得重新加入正文 `payload`。
 - 数据库直接放在 `data/` 根目录，不创建 `data/databases/`。
-- 所有文章创建、更新、收藏和媒体登记通过 `ArticleStore` 完成；不得直接覆盖活动文章文件或手工拼接内部路径。
+- 所有文章创建、更新、收藏、媒体登记及 TTS 提交通过 `ArticleStore` 完成；不得直接覆盖活动文章文件或手工拼接内部路径。
 - 更新采用临时目录、恢复日志和修订号。文件提交后索引失败时从文件恢复索引，不能读取数据库中的旧正文作为备用。
 - 备份放入 `data/backups/`，诊断及事务日志放入 `data/diagnostics/`。
 
@@ -155,9 +158,17 @@ data/books/书名/
 - 一切非正式测试页面和样式 demo 统一放在 `tests/`，不得放入 `static/`；`static/` 只保留正式应用需要提供的前端资源。
 - 保持 API 字段和值类型兼容。任务状态变更时同步检查轮询、取消、按钮状态和页面刷新。
 - 桌面侧栏和手机抽屉都要可用；`data-mobile-app` 也承担移动布局标记，不代表 Android 原生接口存在。
+- Windows 桌面端复用 Web 页面和所选 `data/`，与 Web 端共用声线设置；窗口关闭时隐藏到托盘，只有托盘“退出”才停止进程。两端共用文库时避免同时写入同一文章或运行自动日刊。
 - 用户内容使用 `textContent` 或经过清洗的 HTML。不要使用不可信文本拼接 `innerHTML`。
 - 保留键盘操作、可访问名称、可见焦点、移动导航焦点管理和 `prefers-reduced-motion`。
 - 界面修改至少检查桌面和 375/390px 手机尺寸，确认无横向溢出、遮挡或不可达操作。
+
+### 浏览器音声
+
+- 现有浏览器声线设置仍通过 `voice-mode` 的 `browser_voice_name` 保存。系统日语声线、桌面端圭太／七海在线声线和本地模型声线共用选择流程；文章、书籍与词典的即时朗读必须使用实际选中的声线。
+- 9 条本地声线的稳定 ID 为 Kokoro `kokoro:jf_alpha`，以及 VOICEVOX `voicevox:8`、`voicevox:109`、`voicevox:107`、`voicevox:16`、`voicevox:69`、`voicevox:74`、`voicevox:89`、`voicevox:47`。显示名称依次为「アルファ」「春日部つむぎ」「東北イタコ」「東北ずん子」「九州そら」「満別花丸」「琴詠ニア」「Voidoll」「ナースロボ＿タイプＴ」。VOICEVOX 在界面不附加「ノーマル」，但合成仍使用各自的 `ノーマル` style ID；改显示名不能改声线 ID、style ID 或已保存的选择值。
+- 后端目录和资源可用性以 `browser_tts.py`、`GET /api/browser-voices` 为准；前端 `static/main.js` 的本地目录须与其 ID、名称一致。Kokoro 模型位于 `Irodori-TTS/model/Kokoro`，VOICEVOX 模型、词典和运行库位于 `Irodori-TTS/model/VOICEVOX`；不得将模型复制到 `static/` 或修改原文件来适配界面。
+- `POST /api/browser-speech` 只接受目录中的声线和受限长度文本，成功返回真实 WAV。浏览器按段播放、可停止和跳转；即时朗读不等于已保存文章音频。模型、依赖或播放不可用时显示错误，不得静默回退或宣称成功。
 
 ## 密钥、网络与外部服务
 
@@ -166,7 +177,7 @@ data/books/书名/
 - 本地 `.env` 已被 Git 忽略；`DEEPSEEK_API_KEY` 和 `DEEPSEEK_MODEL` 只通过 `local_config.py` 加载，进程环境变量优先。
 - `create_app()` 不自动加载个人 `.env`，确保测试不会调用真实付费 API；命令行入口负责加载本地配置。
 - 翻译段落数和顺序必须与原文一致。翻译失败保留原文和先前有效译文，并明确记录错误。
-- 浏览器朗读是当前可用方案。Irodori 合成、Android 后台服务和设备同步未接入时，不得宣称已完成。
+- 浏览器朗读、本机 Irodori 合成和桌面端圭太／七海在线声线按当前运行环境提供；依赖、模型或网络不可用时必须明确报错，不得返回假成功。Android 后台服务和设备同步未接入，不得宣称已完成。
 - URL 下载保持 TLS 验证、公开地址检查、重定向限制、体积限制和超时。不得通过关闭安全校验解决网络问题。
 
 ## 数据保护与迁移
@@ -197,10 +208,14 @@ node --check static/book-reader.js
 | 来源采集、解析、后处理 | `tests/test_news_providers.py`、`test_sources.py`、`test_article_extraction.py` |
 | 日刊状态、轮询、中止 | `tests/test_daily_collection.py`、`test_recovery.py` |
 | 新闻存储或迁移 | `tests/test_article_store.py` |
+| 新闻朗读、音频复用或桌面在线声线 | `tests/test_tts.py`、`test_desktop_edge_speech.py` |
+| 浏览器本地声线目录、名称、合成或播放 | `tests/test_browser_tts.py`、`test_frontend_browser_tts.py`、`test_frontend_behavior.py`，并检查 `node --check static/main.js` |
+| Windows 桌面窗口、托盘或启动 | `tests/test_desktop.py` |
 | EPUB、目录或阅读器数据 | `tests/test_epub_reader.py`、`test_book_refresh.py` |
 | API 或跨子系统 | `tests/test_web.py` 加完整测试集 |
 
 - 外部网站和翻译测试默认使用 mock；真实联网检查只用于任务必要的核验，并区分“首页可达”“发现候选”“正文有效”“后处理完成”。
 - 测试通过后不要无理由重复运行。用户数据修复另做哈希、数量和浏览器可见结果核对。
 - 需要交付运行效果时，用 Tokyo 重启服务并检查 `/api/health`、相关 API 和真实页面。不能用旧进程、缓存页面或历史检查报告作为证据。
+- 浏览器声线验收除目录和接口外，还要在真实页面确认选项可选、点击朗读实际请求 `/api/browser-speech` 并播放；只看到声线名称或 HTTP 200 不足以证明朗读可用。
 - 最终说明应包含实际变化、测试结果、数据迁移或备份位置，以及仍存在的限制；不得复述密钥。

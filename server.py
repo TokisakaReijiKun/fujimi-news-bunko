@@ -26,7 +26,7 @@ from xml.etree import ElementTree as ET
 
 import requests
 import jaconv
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_file, send_from_directory
 from pykakasi import kakasi
 from werkzeug.exceptions import HTTPException
 from news_sources import default_sources, upgrade_sources, collect_source_links
@@ -39,6 +39,7 @@ from book_store import BookStore
 from example_store import ExampleStore
 from news_providers import provider_for
 from news_providers.services import ArticleServices
+from browser_tts import MAX_TEXT as BROWSER_TTS_MAX_TEXT, BrowserTTS, browser_voice
 
 ROOT = Path(__file__).resolve().parent
 CST = timezone(timedelta(hours=8))
@@ -203,7 +204,7 @@ def translate(paragraphs):
     return result
 
 
-def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
+def create_app(data_dir=None, *, enable_tts=False, tts_backend=None, tts_root=None, browser_tts_backend=None):
     app = Flask(__name__, static_folder=str(ROOT / 'static'))
     app.json.ensure_ascii = False
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
@@ -270,12 +271,42 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
     def fail(message, status=400):
         return jsonify(detail=message), status
 
+    browser_tts = browser_tts_backend or BrowserTTS(tts_root or ROOT)
+    app.extensions['browser_tts'] = browser_tts
+
+    @app.get('/api/browser-voices')
+    def browser_voices():
+        return jsonify(browser_tts.voices())
+
+    @app.post('/api/browser-speech')
+    def browser_speech():
+        payload = request.get_json(silent=True) or {}
+        text = payload.get('text')
+        voice_id = payload.get('voice')
+        if not isinstance(text, str) or not text.strip() or len(text) > BROWSER_TTS_MAX_TEXT:
+            return fail('正文须为 1–4000 字。')
+        try:
+            voice = browser_voice(voice_id)
+        except ValueError as error:
+            return fail(str(error))
+        available = next((item for item in browser_tts.voices() if item['id'] == voice['id']), None)
+        if available is not None and not available.get('available', True):
+            return fail(f"本地声线资源不可用：{voice['name']}", 503)
+        try:
+            audio = browser_tts.synthesize(text, voice['id'])
+        except ValueError as error:
+            return fail(str(error))
+        except Exception:
+            app.logger.exception('Local browser speech failed for %s', voice['id'])
+            return fail('本地声线合成失败，请检查模型文件和 Tokyo 运行环境。', 502)
+        return send_file(io.BytesIO(audio), mimetype='audio/wav', download_name='browser-speech.wav')
+
     store = ArticleStore(data)
     book_store = BookStore(data)
     example_store = ExampleStore(data, article_store=store)
     example_import_lock = threading.RLock()
     from tts_integration import TTSController
-    tts = TTSController(app, ROOT, data, store, book_store, setting, download,
+    tts = TTSController(app, tts_root or ROOT, data, store, book_store, setting, download,
                         enabled=enable_tts, backend=tts_backend, examples=example_store)
     app.extensions['tts'] = tts
     app.extensions['examples'] = example_store
@@ -784,7 +815,8 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
             elif changed_metadata:
                 saved = store.save_tts(saved)
         if not tts.enabled and voice['voice_mode'] in ('browser', 'none'):
-            tts.submit_article(saved['id'], {'mode': voice['voice_mode']})
+            tts.submit_article(saved['id'], {'mode': voice['voice_mode'],
+                                             'browser_voice_name': voice['browser_voice_name'], 'auto': True})
             saved = store.load(saved['id'])
         else:
             saved = tts.auto_article(saved, {**voice, 'example_id': example['id'] if example else ''})
@@ -858,8 +890,11 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
             return jsonify(tts.voice_list()) if request.method == 'GET' else tts.edit_voice()
         if key == 'browser-voice':
             payload = request.get_json()
+            browser_name = payload.get('name', '')
+            if str(browser_name).startswith(('kokoro:', 'voicevox:')):
+                browser_voice(browser_name)
             value = setting('voice-mode')
-            value.update(browser_voice_name=payload.get('name', ''), browser_voice_label=payload.get('label', 'ブラウザー'))
+            value.update(browser_voice_name=browser_name, browser_voice_label=payload.get('label', 'ブラウザー'))
             return jsonify(setting('voice-mode', value))
         if key == 'refresh-storage':
             report = store.rebuild()
@@ -1039,8 +1074,9 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
                 return jsonify(task_id=start_task('enhance', work, book_id=bid, chapter_id=cid)['id'])
         return fail('接口不存在。', 404)
 
-    def scheduler():
-        while True:
+    def scheduler(stop_event=None):
+        stop_event = stop_event or threading.Event()
+        while not stop_event.is_set():
             try:
                 config = setting('daily-schedule')
                 stamp = datetime.now(CST)
@@ -1049,7 +1085,7 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None):
                     setting('last-scheduled-day', stamp.date().isoformat())
             except Exception:
                 app.logger.exception('Scheduler failed')
-            time.sleep(20)
+            stop_event.wait(20)
     app.book_store = book_store
     app.article_store = store
     app.fujimi_scheduler = scheduler
@@ -1098,6 +1134,7 @@ if __name__ == '__main__':
         http_server.serve_forever()
     finally:
         app.extensions['tts'].close()
+        app.extensions['browser_tts'].close()
         http_server.server_close()
         if pid_file.exists() and pid_file.read_text(encoding='utf-8').strip() == str(os.getpid()):
             pid_file.unlink()

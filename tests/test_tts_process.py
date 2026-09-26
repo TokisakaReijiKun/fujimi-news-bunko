@@ -1,6 +1,7 @@
 """Exercise the worker protocol with real, lightweight Tokyo subprocesses."""
 from pathlib import Path
 import json
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -41,6 +42,19 @@ while True:
 
 
 class ProcessTests(unittest.TestCase):
+    def test_worker_can_use_an_explicit_python_executable(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'tts_worker.py').write_text(WORKER, encoding='utf-8')
+            (root / 'mode').write_text('recover', encoding='utf-8')
+            backend = ProcessBackend(root, root, python_executable=sys.executable)
+            try:
+                backend._start(lambda **kw: None, lambda: False)
+                self.assertEqual(backend.process.args[0], sys.executable)
+                self.assertEqual(backend.state, 'ready')
+            finally:
+                backend.close()
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

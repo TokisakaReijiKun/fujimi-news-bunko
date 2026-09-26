@@ -62,6 +62,22 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.store.asset(copied['id'],'media/image-001.jpg').read_bytes(),b'image bytes')
         self.assertEqual(self.store.load(article['id'])['edition_dates'],['2026-09-07'])
 
+    def test_audio_folder_is_authority_without_attachment_registration(self):
+        article=self.store.create(sample(),'2026-09-07')
+        relative='audio/声线_記事の見出し.wav'
+        folder=self.store.root/article['_directory']
+        (folder/relative).write_bytes(b'RIFFsaved')
+        article.update(audio_path=relative,audio_status='ready')
+        saved=self.store.save_tts(article)
+        self.assertEqual(self.store.asset(saved['id'],relative).read_bytes(),b'RIFFsaved')
+        manifest=json.loads((folder/'article.json').read_text(encoding='utf-8'))
+        self.assertNotIn(relative,[asset['path'] for asset in manifest['assets']])
+        copied=self.store.copy_to_day(saved['id'],'2026-09-18')
+        self.assertEqual(self.store.asset(copied['id'],relative).read_bytes(),b'RIFFsaved')
+        for unsafe in ('audio/../article.json','audio/missing.wav','media/unregistered.jpg'):
+            with self.assertRaises((LookupError,StorageError)):
+                self.store.asset(saved['id'],unsafe)
+
     def test_names_conflicts_and_manual_change_detection(self):
         a=self.store.create(sample('CON.','https://example.com/1'),'2026-09-07')
         b=self.store.create(sample('CON.','https://example.com/2'),'2026-09-07')
@@ -186,7 +202,7 @@ class StoreTests(unittest.TestCase):
         with db_connection(self.store.db_path) as db:
             self.assertEqual(db.execute('SELECT title FROM articles').fetchone()[0],'Committed despite index failure')
 
-    def test_each_article_has_own_copy_and_audio_registration(self):
+    def test_each_article_has_own_copy_and_audio_file(self):
         first=self.store.create(sample(),'2026-09-07')
         second=self.store.create(sample(url='https://example.com/b'),'2026-09-07')
         source=self.data/'fixture.jpg';source.write_bytes(b'same image')
