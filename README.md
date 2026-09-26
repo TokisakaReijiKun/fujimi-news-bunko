@@ -1,6 +1,6 @@
-# 富士見新聞文庫 · Web 还原版
+# 富士見新聞文庫
 
-基于用户提供的 `富士見新聞文庫.apk.1` 提取原始 WebView 前端，并补写本地 Python 后端。HTML、CSS、JavaScript、六个播放器图标和日中词典均来自 APK；不是根据名称重新设计的演示页面。
+富士見新聞文庫是一款正在开发和交付的本地新闻与日语阅读产品，提供 Web 应用和 Windows 桌面端。项目以新闻来源、阅读体验和用户提供的参考素材为输入，在本地实现采集、翻译、书架、词典和朗读能力；参考素材不是产品边界，也不代表所有功能都必须复制其行为。
 
 ## 启动（conda Tokyo）
 
@@ -16,6 +16,10 @@ python -X utf8 server.py
 
 Windows 桌面窗口默认使用 8428 端口，可用 `./start-desktop.ps1` 启动；先运行 `conda run -n Tokyo python -m pip install -r requirements-desktop.txt`。要制作独立程序，运行 `./build-desktop.ps1`。项目内的桌面程序可使用现有 Tokyo 环境与 Irodori 模型，显示并使用 `data/voices/` 中的声线；详见 [Windows 桌面客户端](docs/desktop-client.md)。
 
+## 下载与发布
+
+正式版本发布在 [GitHub Releases](https://github.com/TokisakaReijiKun/fujimi-news-bunko/releases)。Windows 用户下载带有 `windows-x64.zip` 的附件，解压后运行其中的 `FujimiShinbunBunko.exe`；该包是便携式桌面程序，不包含用户的 `data/`、`.env`、日志或 Irodori 模型。运行需要安装 Microsoft Edge WebView2 Runtime。桌面程序移出项目目录后，会把用户数据保存到 `%LOCALAPPDATA%/FujimiShinbunBunko/data/`。
+
 当前实现无需 Node 构建步骤。服务器默认只监听本机，运行终端中按 Ctrl+C 停止。自动日刊仅在服务运行时检查 CST 时间；关机期间错过的任务不会补跑。后台启动的进程号记录在 `logs/server.pid`，日志位于 `logs/`。
 
 ## 已实现
@@ -26,7 +30,7 @@ Windows 桌面窗口默认使用 8428 端口，可用 `./start-desktop.ps1` 启�
 - 阅读室：网址导入、粘贴日文正文、离线假名、Irodori 本地音频与浏览器日语朗读、翻译显示切换、选词查词、复制。
 - 收藏：文章收藏与取消，文件持久化、SQLite 索引。
 - 书架：多 EPUB 导入、重复检测、封面、系列、元数据编辑、章节目录、横排／竖排、进度恢复、段落书签、章节假名处理、删除书籍记录。
-- 词典：APK 原始 **159,396** 个词条，日语／假名／常见罗马字／中文释义搜索，释义与例句、查询历史。Tokyo 的 SQLite 不支持 APK 所用 FTS4，因此首次启动会建立独立的搜索索引，原词库不修改。原始词库文件约 304 MiB，因 Git 托管平台的单文件限制未纳入本仓库；运行前请将 `dictionary.sqlite3` 放回 `apk-original/dictionary/`。
+- 词典：内置 **159,396** 个词条，支持日语／假名／常见罗马字／中文释义搜索、释义与例句、查询历史。Tokyo 的 SQLite 不支持原词库所用 FTS4，因此首次启动会建立独立的搜索索引，词库文件不被修改。词典文件约 304 MiB，因 Git 托管平台的单文件限制未纳入本仓库；从源码运行前请将 `dictionary.sqlite3` 放回 `apk-original/dictionary/`。
 - 设置：参考声线上传／网址导入／管理、浏览器声线、新闻来源与最低数量、日刊数量与时间、书架排序、SQLite 整理。
 - 桌面侧栏、手机抽屉导航、键盘焦点、减少动画偏好。
 
@@ -34,7 +38,7 @@ Windows 桌面窗口默认使用 8428 端口，可用 `./start-desktop.ps1` 启�
 
 阅读室示例保存到 `data/articles/examples/<标题>/`，标题、正文和声线偏好由本地服务共享。“阅读声线”可选择默认、浏览器日语声线或现有模型声线；同名保存先备份再更新。旧浏览器示例会在打开服务页面时备份并迁移，详见 [示例存储与迁移](docs/reading-examples.md)。
 
-默认新闻来源恢复为 APK 中的六家媒体，设置页显示官网地址：
+默认新闻来源包含六家媒体，设置页显示官网地址：
 
 | 来源 | 官网 |
 | --- | --- |
@@ -45,7 +49,7 @@ Windows 桌面窗口默认使用 8428 端口，可用 `./start-desktop.ps1` 启�
 | 産経新聞 | https://www.sankei.com/ |
 | Yahoo!ニュース | https://news.yahoo.co.jp/ |
 
-APK 的 NHK 旧官网 `https://www3.nhk.or.jp/news/` 现跳转到上表地址。升级会一次性修正上一版的 NHK RSS 网址并补齐五家来源，保留已有来源 ID、最低数量、声线与自定义来源；旧配置保存在 SQLite 设置项 `news-sources-before-homepages-v1`。之后的自主编辑与删除不会在重启时被覆盖。官网链接发现通过验证不代表每一篇付费／登录文章都能导入。
+旧版 NHK 官网 `https://www3.nhk.or.jp/news/` 现跳转到上表地址。升级会一次性修正旧 RSS 网址并补齐五家来源，保留已有来源 ID、最低数量、声线与自定义来源；旧配置保存在 SQLite 设置项 `news-sources-before-homepages-v1`。之后的自主编辑与删除不会在重启时被覆盖。官网链接发现通过验证不代表每一篇付费／登录文章都能导入。
 
 ## 翻译与朗读
 
@@ -65,7 +69,7 @@ Irodori 使用本地 `Irodori-TTS/model/model.safetensors`，由 Tokyo 启动受
 
 若已配置 HTTPS 代理而本地 DNS 返回非公网地址，采集器通过 Google DNS-over-HTTPS 独立验证该域名的公网记录，再由代理连接官网；无代理时不使用此回退。localhost、私网 IP 和解析到私网的目标仍被拒绝，TLS 校验保持开启。
 
-APK 没有包含原 Python 服务源码、DeepSeek 密钥或 Irodori 权重。Irodori 已通过本地推理代码接入；**Android/Windows 双向同步和 Android 后台服务仍未接入**。模型权重和上游 `Irodori-TTS/` 代码保持原样。
+产品源码、DeepSeek 密钥和 Irodori 权重分别按源码、用户配置和本地运行时管理。Irodori 已通过本地推理代码接入；**Android/Windows 双向同步和 Android 后台服务仍未接入**。模型权重和上游 `Irodori-TTS/` 代码保持原样。
 
 新闻解析支持公开的静态 HTML 正文与 RSS/Atom，跳过推荐链接、分享提示和署名；有付费／会员限定标记的文章不会收录。Yahoo 按正文段落与同一文章分页提取，遇到缓存页、错误重定向或未知正文结构时停止，不保存不完整正文。需要登录、订阅或客户端渲染的文章可在原站阅读。
 
@@ -87,20 +91,20 @@ static/index.html            桌面 Web 页面入口
 static/main.js               主交互、浏览器适配、播客播放器与进度恢复
 static/static.css            主样式、布局与浏览器适配
 static/book-reader.js / book-reader.css  EPUB 阅读器适配
-static/player_assets/        APK 播放器图标
-apk-original/               未修改的提取资源、Android 设置页（词典文件需另行放置）
+static/player_assets/        播放器图标资源
+apk-original/               参考素材、只读词典和 Android 设置页（词典文件需另行放置）
 data/fujimi.sqlite3          新闻、书架索引与设置（运行时创建）
 data/dictionary-search.sqlite3  可重建的词典查询索引
 data/books/                 书名目录：原文件名.epub、book.json、state.json、chapters/、resources/、audio/
 data/articles/              每篇新闻的正文、译文、元数据、media/ 与 audio/
 data/backups/               迁移及修复备份
 data/diagnostics/           检查文件、重建报告、事务恢复日志
-docs/apk-manifest.json       原 APK 与提取资源 SHA-256
+docs/apk-manifest.json       参考包与提取资源 SHA-256
 tests/test_web.py            功能、持久化、导入及边界测试
 start.ps1                   Tokyo 启动脚本
 ```
 
-备份个人数据时先停止服务，再复制整个 `data/`。应用内删除书籍会先将完整书籍目录归档到 backups，再移除书架索引。原 APK、`apk-original/` 与现有 `Irodori-TTS/` 均保留。
+备份个人数据时先停止服务，再复制整个 `data/`。应用内删除书籍会先将完整书籍目录归档到 backups，再移除书架索引。参考包、`apk-original/` 与现有 `Irodori-TTS/` 均保留。
 
 如果在文件管理器中删除 `data/books/书名/`，点击设置中的“存储を反映”会清理失效索引并更新书架。书籍正文、进度与书签现在保存在目录中；删除整个目录后，数据库只能恢复残留的索引信息，不能恢复已删除的文件。无插图 EPUB 同样保留原文件和完整书籍目录。
 
