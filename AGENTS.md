@@ -41,7 +41,10 @@ conda run -n Tokyo python -m pip install -r requirements.txt
 | `article_extraction.py` | 旧解析入口和异常类型的兼容分发层 |
 | `article_store.py` | 文件为主的新闻存储、事务恢复、附件授权和索引重建 |
 | `article_media.py` | 新闻媒体格式校验与临时缓存 |
-| `tts_integration.py` | 新闻与书籍朗读任务、声线选择和已有音频复用 |
+| `database_layout.py` | 运行时与迁移工具共用的旧数据库布局检查 |
+| `example_store.py` | 阅读室示例的文件存储、备份、事务恢复和旧数据迁移 |
+| `tts_integration.py` | 新闻、书籍与阅读室示例的朗读接口及文件存储装配 |
+| `tts_service.py`、`tts_protocol.py`、`tts_worker.py` | Irodori 声线与任务队列、进程间协议和独立推理进程 |
 | `browser_tts.py` | 浏览器即时朗读的 Kokoro／VOICEVOX 声线目录、资源检查和本地合成 |
 | `desktop.py`、`desktop_edge_speech.py` | Windows 窗口、托盘和桌面在线日语声线 |
 | `book_store.py` | 文件为主的书籍存储、状态写入、资源访问和索引重建 |
@@ -49,6 +52,7 @@ conda run -n Tokyo python -m pip install -r requirements.txt
 | `storage_migration.py` | 新闻旧存储迁移、数据库路径迁移和回滚 |
 | `scripts/` | 存储迁移、书籍迁移和文章修复命令 |
 | `static/main.js` | 主交互、浏览器适配与播客播放器 |
+| `static/browser-speech.js` | 浏览器朗读无边界事件时的播放位置计算 |
 | `static/static.css` | 主样式、布局与浏览器适配 |
 | `static/book-reader.*` | EPUB 阅读器的局部修复 |
 | `apk-original/` | 未修改的 APK 提取资源和原始词典 |
@@ -81,10 +85,10 @@ conda run -n Tokyo python -m pip install -r requirements.txt
 
 ### 来源规则
 
-- NHK：排除推荐区，正文媒体按新闻内容处理。
+- NHK：排除推荐区，正文媒体按新闻内容处理；受限的已结束 HLS 视频可在取得原站公开授权后本地保存，授权失败、地域限制或 DRM 不得冒充成功。
 - 朝日：在入库前识别会员门槛，只使用明确正文容器。
 - 読売：只采集文章正文段落，排除“記事をシェアする”“完了しました”等界面文本，保留正文 figure。
-- 日经：JSON-LD、正文会员提示或 paywall 任一命中即拒绝；不得保存或翻译付费摘要。
+- 日经：JSON-LD 付费声明、当前文章的锁定状态或真实正文门槛命中即拒绝；已验证为匿名公开的文章末尾普通付费推广框不等于正文门槛。不得保存或翻译付费摘要。
 - 産経：只使用 `article-text` 正文和 `article-image`，保留图注并排除推荐卡片。
 - Yahoo：先从 pickup 进入正文，验证同一文章的全部分页后才能入库；缓存页、错误重定向或未知正文结构都必须拒绝。动态视频只能标为预览，不能冒充已下载视频。
 - 付费、分页和来源归属验证必须发生在入库、翻译及媒体下载之前。
@@ -92,11 +96,11 @@ conda run -n Tokyo python -m pip install -r requirements.txt
 ### 日刊任务
 
 - 来源配额按成功保存的有效文章计算，不按候选数或请求次数计算。
-- 日刊必须按三阶段执行：各来源独立验证公开候选（每来源最多 10 个）→ 内存中按最低配额和目标数选择 → 仅后处理最终入选的新文章。不得在候选验证时写入文章、翻译或下载媒体。
+- 日刊必须按三阶段执行：各来源独立验证公开候选（每来源最多 5 个）→ 内存中按最低配额和目标数选择 → 仅后处理最终入选的新文章。不得在候选验证时写入文章、翻译或下载媒体。
 - 会员、无效和分页失败候选在候选阶段排除，只进入 `candidate_stats`，不进入 `errors`，不显示为“未收录”。来源列表读取失败和最终后处理失败才进入 `errors`。
 - 已有当日有效文章参与选择和来源配额，但不得被重新后处理或删除。候选阶段完成前，不得开始任何来源的 `postprocess`。
 - 重试生成复用当日有效文章并优先补齐缺失来源。不得为凑数量删除已有文章或用其他日期文章冒充当日日刊。
-- 数量或最低来源配额未满足时状态必须为 `partial`，返回 `missing_sources`、`source_counts` 和错误信息，进度不得显示 100%。
+- 数量或最低来源配额未满足时，有有效文章则状态为 `partial`，没有有效文章则为 `failed`；返回 `missing_sources`、`source_counts` 和错误信息，进度不得显示 100%。
 - 状态区区分正文请求、翻译和媒体保存，并显示最近跳过原因。
 - 中止与重试必须使用独立任务对象。旧网络请求返回后立即退出，不能向新任务写入状态或文章。
 
@@ -151,11 +155,17 @@ data/books/书名/
 - 目录无法访问或仅缺少某个附件时保留书籍并报告错误，不得删除整本。
 - 阅读器只修复用户报告的问题。不要重新加入已撤销的目录搜索、字号／行距控件或纵排左右按钮。
 
+## 阅读室示例
+
+- `ExampleStore` 管理 `data/articles/examples/创建时标题/` 下的 `example.json`、`original.txt`、可选的 `translation.txt` 和 `audio/`；示例不是日刊文章，只有用户执行“保存并阅读”时才经 `ArticleStore` 创建文章副本。
+- 示例同名更新前备份旧目录，写入使用事务日志并校验正文哈希；不得直接覆盖活动示例。旧 `data/examples/` 和浏览器本地示例迁移前先备份，保留用户修改。
+- 导入示例时，只有标题和正文与示例匹配，才复用其译文和声线对应的有效音频；修改表单内容要解除示例关联。详见 `docs/reading-examples.md`。
+
 ## 前端约定
 
 - 六个主视图为 `daily`、`reader`、`bookmarks`、`library`、`dictionary`、`settings`，使用 hash 路由。
 - 主交互、浏览器适配和播客播放器统一维护在 `static/main.js`，主样式统一维护在 `static/static.css`；EPUB 阅读器局部适配保留在 `static/book-reader.*`。不要修改 `apk-original/`。
-- 一切非正式测试页面和样式 demo 统一放在 `tests/`，不得放入 `static/`；`static/` 只保留正式应用需要提供的前端资源。
+- 新增的非正式测试页面和样式 demo 统一放在 `tests/`，不得放入 `static/`。现有 `static/library-layout-preview.html` 是 APK 提取的历史布局预览，不是正式入口或界面验收依据；正式页面入口是 `static/index.html`。
 - 保持 API 字段和值类型兼容。任务状态变更时同步检查轮询、取消、按钮状态和页面刷新。
 - 桌面侧栏和手机抽屉都要可用；`data-mobile-app` 也承担移动布局标记，不代表 Android 原生接口存在。
 - Windows 桌面端复用 Web 页面和所选 `data/`，与 Web 端共用声线设置；窗口关闭时隐藏到托盘，只有托盘“退出”才停止进程。两端共用文库时避免同时写入同一文章或运行自动日刊。
@@ -169,6 +179,12 @@ data/books/书名/
 - 9 条本地声线的稳定 ID 为 Kokoro `kokoro:jf_alpha`，以及 VOICEVOX `voicevox:8`、`voicevox:109`、`voicevox:107`、`voicevox:16`、`voicevox:69`、`voicevox:74`、`voicevox:89`、`voicevox:47`。显示名称依次为「アルファ」「春日部つむぎ」「東北イタコ」「東北ずん子」「九州そら」「満別花丸」「琴詠ニア」「Voidoll」「ナースロボ＿タイプＴ」。VOICEVOX 在界面不附加「ノーマル」，但合成仍使用各自的 `ノーマル` style ID；改显示名不能改声线 ID、style ID 或已保存的选择值。
 - 后端目录和资源可用性以 `browser_tts.py`、`GET /api/browser-voices` 为准；前端 `static/main.js` 的本地目录须与其 ID、名称一致。Kokoro 模型位于 `Irodori-TTS/model/Kokoro`，VOICEVOX 模型、词典和运行库位于 `Irodori-TTS/model/VOICEVOX`；不得将模型复制到 `static/` 或修改原文件来适配界面。
 - `POST /api/browser-speech` 只接受目录中的声线和受限长度文本，成功返回真实 WAV。浏览器按段播放、可停止和跳转；即时朗读不等于已保存文章音频。模型、依赖或播放不可用时显示错误，不得静默回退或宣称成功。
+
+### Irodori 本地朗读
+
+- `tts_service.py` 管理声线文件、单队列与模型子进程；`tts_worker.py` 在 Tokyo 中执行推理，`tts_protocol.py` 处理临时 JSON 通信。普通 `create_app()` 默认不启用模型，测试通过注入后端替代真实推理。
+- `data/voices/<声线名称>.wav` 是参考声线的事实来源。朗读任务状态只在当前服务内存中；服务重启后旧任务不可查询，但文章和书籍 `audio/` 中有效的编号分段可供重试续跑。完整音频提交后清理对应分段；不要增加音频登记、`data/tts` 或独立复用索引。
+- 模型、codec 或 CUDA 不可用时明确报错，不自动下载权重，也不把未完成的分段当成完整音频。详见 `docs/tts.md`。
 
 ## 密钥、网络与外部服务
 
@@ -199,6 +215,7 @@ data/books/书名/
 conda run -n Tokyo python -X utf8 -m unittest discover -s tests -v
 node --check static/main.js
 node --check static/book-reader.js
+node --check static/browser-speech.js
 ```
 
 重点测试对应关系：
@@ -206,11 +223,14 @@ node --check static/book-reader.js
 | 改动 | 必跑测试 |
 | --- | --- |
 | 来源采集、解析、后处理 | `tests/test_news_providers.py`、`test_sources.py`、`test_article_extraction.py` |
+| 来源列表近期结构或视频缓存 | `tests/test_source_regressions.py`、`test_article_video.py`，并运行来源采集相关测试 |
 | 日刊状态、轮询、中止 | `tests/test_daily_collection.py`、`test_recovery.py` |
 | 新闻存储或迁移 | `tests/test_article_store.py` |
-| 新闻朗读、音频复用或桌面在线声线 | `tests/test_tts.py`、`test_desktop_edge_speech.py` |
+| 阅读室示例存储、导入或迁移 | `tests/test_examples.py`、`test_web.py` |
+| 新闻朗读、音频复用或桌面在线声线 | `tests/test_tts.py`、`test_tts_process.py`、`test_tts_runtime.py`、`test_desktop_edge_speech.py` |
 | 浏览器本地声线目录、名称、合成或播放 | `tests/test_browser_tts.py`、`test_frontend_browser_tts.py`、`test_frontend_behavior.py`，并检查 `node --check static/main.js` |
 | Windows 桌面窗口、托盘或启动 | `tests/test_desktop.py` |
+| Web 服务监听或重复启动 | `tests/test_server_binding.py` |
 | EPUB、目录或阅读器数据 | `tests/test_epub_reader.py`、`test_book_refresh.py` |
 | API 或跨子系统 | `tests/test_web.py` 加完整测试集 |
 
