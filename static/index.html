@@ -15,7 +15,7 @@
       if (isMobileApp) root.classList.add("mobile-app-booting");
     })();
   </script>
-  <link rel="stylesheet" href="/static/static.css?v=20260925-remove-voice-count">
+  <link rel="stylesheet" href="/static/static.css?v=20261001-settings-a-release2">
   <link rel="stylesheet" href="/static/book-reader.css?v=3">
 </head>
 <body>
@@ -128,28 +128,30 @@
         </div>
       </section>
 
-      <section id="settings-view" class="view" hidden>
+      <section id="settings-view" class="view settings-design-a" hidden>
         <div class="section-head"><div><p class="section-kicker">PREFERENCES</p><h2>設置</h2><p>読む時間を、自分らしく整える。</p></div></div>
         <div class="settings-stack">
           <section class="settings-panel voice-panel">
             <div class="panel-heading">
-              <div class="voice-heading-copy"><h3>声の形</h3></div>
-              <div class="panel-actions"><span id="active-voice-badge" class="status-badge">未选择声线</span><button id="add-voice" type="button">添加声线</button></div>
+              <div class="voice-heading-copy"><span class="settings-section-number">01 / VOICE</span><h3>声の形</h3><p>选择文章、书籍与词典的即时朗读声线。</p></div>
+              <span id="active-voice-badge" class="status-badge">未选择声线</span>
             </div>
             <p id="voice-error" class="panel-notice error" role="alert" hidden></p>
             <div id="voice-list" class="voice-list"></div>
+            <div class="voice-settings-actions"><button id="add-voice" type="button">添加声线</button><button id="settings-system-speech" class="quiet" type="button" hidden>系统朗读设置</button></div>
           </section>
 
           <section class="settings-panel daily-settings-panel schedule-panel">
             <div class="panel-heading">
-              <div><h3>日刊設定</h3><p>统一管理新闻来源、每日构成与 CST 更新方式。</p></div>
+              <div><span class="settings-section-number">02 / DAILY</span><h3>日刊設定</h3><p>统一管理新闻来源、每日构成与 CST 更新方式。</p></div>
               <span id="schedule-state" class="status-badge">读取中</span>
             </div>
             <p id="source-error" class="panel-notice error" role="alert" hidden></p>
             <div class="daily-content-settings">
               <label>每日新闻目标数<input id="daily-target-count" type="number" min="1" max="500" value="10"></label>
-              <p id="daily-content-summary" class="muted">正在读取日刊构成…</p>
+              <div class="daily-source-stat"><span>有效来源</span><strong id="daily-source-total">—</strong></div>
             </div>
+            <p id="daily-content-summary" class="muted">正在读取日刊构成…</p>
             <div class="settings-subheading">
               <div><h4>ニュースソース</h4><p>每个来源可以分别设置每日最低收录数。</p></div>
               <div class="panel-actions"><span id="source-count" class="status-badge">读取中</span><button id="add-source" type="button">添加来源</button></div>
@@ -185,9 +187,10 @@
           </section>
 
           <section class="settings-panel library-settings-panel">
-            <div class="panel-heading"><div><h3>書架表示</h3><p>書架首页的书籍排列方式。</p></div></div>
+            <div class="panel-heading"><div><span class="settings-section-number">03 / LIBRARY</span><h3>書架表示</h3><p>書架首页的书籍排列方式。</p></div></div>
             <p id="library-settings-error" class="panel-notice error" role="alert" hidden></p>
             <label class="library-sort-setting">並び順<select id="library-sort-setting"><option value="recent">最近読んだ順</option><option value="series">シリーズ・巻順</option><option value="imported">最近追加した順</option></select></label>
+            <p class="settings-reading-note">打开书籍时，有书签优先定位书签，否则恢复本机自动进度。</p>
           </section>
 
           <section id="desktop-settings-panel" class="settings-panel desktop-settings-panel" hidden>
@@ -210,29 +213,31 @@
           </section>
 
           <section id="mobile-settings-panel" class="settings-panel mobile-settings-panel" hidden>
-            <div class="panel-heading"><div><h3>Android 本地节点</h3><p id="mobile-runtime-summary">本地数据就绪</p></div><span id="mobile-service-status" class="status-badge">读取中</span></div>
+            <div class="panel-heading"><div><span class="settings-section-number">04 / ANDROID</span><h3>Android 本地节点</h3><p id="mobile-runtime-summary">本地数据就绪</p></div><span id="mobile-service-status" class="status-badge">读取中</span></div>
             <div id="android-local-settings" class="android-local-settings" hidden>
               <section class="mobile-node-group" aria-labelledby="mobile-deepseek-title">
                 <div class="mobile-node-group-heading">
-                  <div><h4 id="mobile-deepseek-title">DeepSeek</h4><p>用于翻译与假名增强</p></div>
+                  <div><h4 id="mobile-deepseek-title">DeepSeek</h4><p>翻译密钥</p></div>
                   <span id="mobile-deepseek-status" class="mobile-node-state">未配置</span>
                 </div>
                 <label class="mobile-compact-field" for="mobile-deepseek-key">API 密钥</label>
                 <div class="mobile-control-row">
-                  <input id="mobile-deepseek-key" type="password" autocomplete="off" placeholder="输入新密钥">
+                  <input id="mobile-deepseek-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="mobile-deepseek-result" placeholder="输入新密钥">
                   <button id="mobile-save-deepseek" type="button">保存</button>
+                  <button id="mobile-clear-deepseek" class="quiet" type="button" hidden>清除</button>
                 </div>
+                <p id="mobile-deepseek-result" class="mobile-field-result" role="status" aria-live="polite"></p>
                 <p class="mobile-field-help">密钥仅加密保存在此手机，不参与同步。</p>
               </section>
               <section class="mobile-node-group" aria-labelledby="mobile-windows-title">
                 <div class="mobile-node-group-heading">
-                  <div><h4 id="mobile-windows-title">Windows 同步</h4><p>可选节点</p></div>
+                  <div><h4 id="mobile-windows-title">PC 协同</h4><p>可选节点</p></div>
                   <span id="mobile-windows-state" class="mobile-node-state">未配置</span>
                 </div>
-                <p class="mobile-node-purpose">填写后可与电脑双向同步，并请求 Irodori 最终音频；新闻、书架、辞书和系统朗读不需要电脑。</p>
+                <p class="mobile-node-purpose" id="mobile-windows-purpose">连接状态与同步进度分别显示。</p>
                 <label class="mobile-compact-field" for="mobile-windows-address">私有局域网或 VPN 地址</label>
                 <div class="mobile-control-row mobile-address-row">
-                  <input id="mobile-windows-address" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.20:8427">
+                  <input id="mobile-windows-address" type="url" inputmode="url" autocapitalize="off" spellcheck="false" aria-describedby="mobile-windows-result" placeholder="https://192.168.1.20:8429">
                   <button id="mobile-save-windows" class="quiet" type="button">检测</button>
                 </div>
                 <div class="mobile-address-feedback">
@@ -264,10 +269,11 @@
                   <div><dt>本地缓存</dt><dd id="mobile-sync-cache">0 B</dd></div>
                 </dl>
                 <button id="mobile-sync-now" type="button" disabled>立即同步</button>
-                <details class="mobile-sync-options">
-                  <summary>后台同步设置</summary>
+              </section>
+                <details class="mobile-sync-options" open>
+                  <summary>网络与定时</summary>
                   <label class="mobile-setting-row">
-                    <span><strong>允许蜂窝网络</strong><small>关闭时仅使用 Wi-Fi、VPN 或有线网络</small></span>
+                    <span><strong>允许蜂窝网络</strong><small>关闭时仅使用不按流量计费的网络</small></span>
                     <input id="mobile-allow-cellular" type="checkbox" role="switch">
                   </label>
                   <div class="mobile-setting-row">
@@ -275,12 +281,20 @@
                     <button id="mobile-exact-alarm" class="quiet" type="button">精确定时</button>
                   </div>
                 </details>
-              </section>
             </div>
           </section>
+          <section id="mobile-app-settings-panel" class="settings-panel" hidden>
+            <div class="panel-heading"><div><span class="settings-section-number">05 / APP</span><h3>应用信息</h3><p>版本与本机文庫位置。</p></div><span id="mobile-app-version-badge" class="status-badge"></span></div>
+            <dl id="mobile-app-info" class="desktop-paths" hidden>
+              <div><dt>APP 版本</dt><dd id="mobile-app-version"></dd></div>
+              <div><dt>包名</dt><dd>jp.fujimi.newsbunko.next</dd></div>
+            </dl>
+            <details class="settings-path-disclosure"><summary>本机文庫路径</summary><code id="mobile-data-path"></code></details>
+          </section>
           <section class="settings-panel refresh-panel">
-            <div class="panel-heading"><div><h3>文庫刷新</h3><p>以本地文章与收藏文件夹为准，重新整理 SQLite 索引。</p></div><span class="status-badge">FILES → SQLITE</span></div>
+            <div class="panel-heading"><div><span class="settings-section-number">06 / STORAGE</span><h3>文庫刷新</h3><p>以本地文章与收藏文件夹为准，重新整理 SQLite 索引。</p></div><span class="status-badge">FILES → INDEX</span></div>
             <p id="refresh-error" class="panel-notice error" role="alert" hidden></p>
+            <div class="settings-storage-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3M4 5v4h4M4 13a8 8 0 0 0 14.8 3M20 19v-4h-4"/></svg><span>检查文章、收藏与书架文件，备份后刷新索引。</span></div>
             <div class="refresh-workspace">
               <button id="refresh-storage" type="button">存储を反映</button>
               <p id="refresh-result" class="refresh-result">尚未刷新</p>
@@ -368,7 +382,7 @@
       <label id="voice-editor-url-row" class="voice-source-row" hidden>音频网址<input id="voice-editor-url" type="url" placeholder="https://example.com/voice.wav"></label>
       <p id="voice-editor-hint" class="muted">请选择用于参考的音频文件。</p>
       <p id="voice-editor-notice" class="panel-notice" role="status"></p>
-      <footer class="dialog-actions"><button id="cancel-voice-dialog" type="button" class="quiet">取消</button><button id="submit-voice" type="submit">添加</button></footer>
+      <footer class="dialog-actions"><button id="native-speech-settings" type="button" class="quiet" hidden>系统语音设置</button><button id="cancel-voice-dialog" type="button" class="quiet">取消</button><button id="submit-voice" type="submit">添加</button></footer>
     </form>
   </dialog>
 

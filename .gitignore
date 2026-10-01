@@ -43,3 +43,12 @@ Irodori-TTS/*.mp3
 
 # Large extracted APK dictionary; provide this local asset separately when needed
 apk-original/dictionary/dictionary.sqlite3
+
+# Android local build outputs and signing material
+android/.gradle/
+android/**/build/
+android/local.properties
+*.apk
+*.aab
+*.keystore
+*.jks
