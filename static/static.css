@@ -9980,6 +9980,15 @@ html[data-android-app="true"] select.android-native-select {
 #settings-view.settings-design-a .settings-storage-note svg { width: 26px; height: 26px; flex: 0 0 auto; fill: none; stroke: var(--moss); stroke-width: 1.7; }
 
 @media (max-width: 900px) {
+  html[data-mobile-app="true"] .toast-region {
+    top: auto;
+    bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    max-width: calc(100vw - 32px);
+  }
+}
+
+@media (max-width: 900px) {
   [data-mobile-app="true"] #settings-view.settings-design-a .settings-panel,
   [data-mobile-app="true"] #settings-view.settings-design-a .settings-panel:first-child,
   [data-mobile-app="true"] #settings-view.settings-design-a .settings-panel:last-child { padding: 16px; border-radius: 14px; }

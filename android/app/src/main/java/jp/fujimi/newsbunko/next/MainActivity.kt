@@ -77,6 +77,8 @@ class MainActivity : Activity() {
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
+            // A requested read may start after synthesis or metadata finishes.
+            mediaPlaybackRequiresUserGesture = false
             allowFileAccess = false
             allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
@@ -112,7 +114,7 @@ class MainActivity : Activity() {
                 val response = loader.shouldInterceptRequest(request.url)
                 if (response?.mimeType == "text/html") {
                     response.responseHeaders = mapOf("Content-Security-Policy" to
-                        "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https: blob:; connect-src 'self' https:; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'none'")
+                        "default-src 'self'; script-src 'self' 'unsafe-inline' https://news.web.nhk; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' https: blob:; connect-src 'self' https:; font-src 'self' data:; frame-src 'none'; object-src 'none'; base-uri 'none'")
                 }
                 return response
             }

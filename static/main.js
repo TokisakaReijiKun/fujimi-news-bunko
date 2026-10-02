@@ -683,6 +683,7 @@ function toast(message, isError = false) {
     item.classList.add("is-leaving");
     setTimeout(() => item.remove(), 220);
   }, 2600);
+  return item;
 }
 
 function panelNotice(selector, message, isError = false) {
@@ -2588,6 +2589,13 @@ function setRereadTask(root, status, label, count = "", detail = "", current = 0
   if (voiceSelect) voiceSelect.disabled = isRunning;
 }
 
+function reportArticleAudioError(controller, error) {
+  if (state.articleAudio !== controller || !controller.root.isConnected) return;
+  if (error?.name === "AbortError" && controller.audio.paused) return;
+  if (controller.errorToast?.isConnected) return;
+  controller.errorToast = toast("音频播放失败，请重试。", true);
+}
+
 async function rereadArticle(article, voiceValue, target, root) {
   try {
     let browserName = voiceValue === "browser" ? state.browserVoiceName : "";
@@ -2603,7 +2611,7 @@ async function rereadArticle(article, voiceValue, target, root) {
         method: "POST", body: JSON.stringify({ voice: sharedOnlineVoice.id }),
       });
       openArticle(result.article, target);
-      toast(result.cached ? "保存済みの朗読を読み込みました。" : "オンライン音声を保存しました。");
+      if (!window.FujimiMobile?.request) toast(result.cached ? "保存済みの朗読を読み込みました。" : "オンライン音声を保存しました。");
       return;
     }
     const mode = voiceValue.startsWith("voice:") ? "voice" : voiceValue;
@@ -2968,7 +2976,10 @@ function audioTimeline(paragraphs, storedSegments, duration) {
     })
     : paragraphs.map(paragraph => ({ duration: Math.max(1, String(paragraph || "").replace(/\s+/g, "").length), speechStartOffset: 0 }));
   const sum = values.reduce((total, value) => total + value.duration, 0) || 1;
-  const scale = Number.isFinite(duration) && duration > 0 ? duration / sum : 1;
+  // Edge's sentence offsets already address the saved MP3. Decoder estimates
+  // and trailing silence must not move its paragraph starts.
+  const edgeTimings = exact && storedSegments.every(segment => segment?.timing_source === "edge_sentence");
+  const scale = !edgeTimings && Number.isFinite(duration) && duration > 0 ? duration / sum : 1;
   let cursor = 0;
   return values.map(value => {
     const start = cursor;
@@ -3017,7 +3028,7 @@ function setupMobileMediaPlayer(article, root, audio) {
     controller.mobileStatus = JSON.parse(window.FujimiMobile.mediaStatus());
     if (controller.mobileStatus.error && controller.mobileStatus.error !== controller.mobileError) {
       controller.mobileError = controller.mobileStatus.error;
-      toast(`音频播放失败：${controller.mobileStatus.error}`, true);
+      reportArticleAudioError(controller);
     }
     controller.started = controller.started || controller.mobileStatus.playing || controller.mobileStatus.position > 0;
     rebuildTimeline();
@@ -3039,7 +3050,7 @@ function setupMobileMediaPlayer(article, root, audio) {
       const position = controller.mobileStatus.ended ? 0 : Number(controller.mobileStatus.position || 0);
       const accepted = window.FujimiMobile.playMedia(controller.mediaSource, position, controller.rate);
       if (!accepted) {
-        toast("音频文件未同步到手机，请先执行一次同步。", true);
+        reportArticleAudioError(controller);
       } else {
         controller.mobileError = "";
         controller.mobileStatus.playing = true;
@@ -3063,7 +3074,7 @@ function setupMobileMediaPlayer(article, root, audio) {
     const position = controller.timeline[bounded]?.speechStart || 0;
     const accepted = window.FujimiMobile.playMedia(controller.mediaSource, position, controller.rate);
     if (!accepted) {
-      toast("音频文件未同步到手机，请先执行一次同步。", true);
+      reportArticleAudioError(controller);
       return;
     }
     controller.mobileStatus.position = position;
@@ -3074,11 +3085,11 @@ function setupMobileMediaPlayer(article, root, audio) {
   };
   bindParagraphSeeking(root, seekParagraph);
   controller.seekParagraph = seekParagraph;
-  renderNativeArticleAudio(controller);
+  rebuildTimeline();
 }
 
 function setupNativeArticlePlayer(article, root, audio) {
-  if (window.FujimiMobile?.playMedia) return setupMobileMediaPlayer(article, root, audio);
+  if (window.FujimiMobile?.playMedia && /\/api\/articles\/\d+\/assets\/audio\//.test(audio.src)) return setupMobileMediaPlayer(article, root, audio);
   const player = $(".article-audio-player", root);
   const controller = { root, player, audio, timeline: [], started: false, pendingParagraph: null, rate: savedPlaybackRate() };
   state.articleAudio = controller;
@@ -3091,17 +3102,18 @@ function setupNativeArticlePlayer(article, root, audio) {
   });
   const enforcePlaybackRate = () => applyNativePlaybackRate(audio, controller.rate);
   const rebuildTimeline = () => {
+    if (audio.readyState < 1) return;
     controller.timeline = audioTimeline(article.paragraphs || [], article.audio_segments || [], audio.duration);
     if (controller.pendingParagraph !== null) {
       const index = controller.pendingParagraph;
       controller.pendingParagraph = null;
       audio.currentTime = controller.timeline[index]?.speechStart || 0;
       controller.started = true;
-      audio.play().catch(() => toast("音频播放失败", true));
     }
     renderNativeArticleAudio(controller);
   };
   audio.addEventListener("loadedmetadata", () => { enforcePlaybackRate(); rebuildTimeline(); });
+  audio.addEventListener("error", () => reportArticleAudioError(controller));
   audio.addEventListener("canplay", enforcePlaybackRate);
   audio.addEventListener("durationchange", rebuildTimeline);
   audio.addEventListener("timeupdate", () => renderNativeArticleAudio(controller));
@@ -3110,7 +3122,9 @@ function setupNativeArticlePlayer(article, root, audio) {
   audio.addEventListener("ended", () => { controller.started = false; setActiveAudioParagraph(root); renderNativeArticleAudio(controller); });
   $(".audio-player-toggle", player).onclick = () => {
     if (audio.ended) audio.currentTime = 0;
-    if (audio.paused) audio.play().catch(() => toast("音频播放失败", true));
+    if (audio.paused) {
+      audio.play().catch(error => reportArticleAudioError(controller, error));
+    }
     else audio.pause();
   };
   const progress = $(".audio-player-progress", player);
@@ -3121,14 +3135,13 @@ function setupNativeArticlePlayer(article, root, audio) {
   };
   const seekParagraph = index => {
     const bounded = Math.max(0, Math.min((article.paragraphs || []).length - 1, index));
-    if (!controller.timeline.length) {
+    if (audio.readyState < 1) {
       controller.pendingParagraph = bounded;
-      audio.load();
-      return;
+    } else {
+      audio.currentTime = controller.timeline[bounded]?.speechStart || 0;
+      controller.started = true;
     }
-    audio.currentTime = controller.timeline[bounded]?.speechStart || 0;
-    controller.started = true;
-    audio.play().catch(() => toast("音频播放失败", true));
+    audio.play().catch(error => reportArticleAudioError(controller, error));
   };
   bindParagraphSeeking(root, seekParagraph);
   controller.seekParagraph = seekParagraph;
@@ -3381,7 +3394,7 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
     const button = $(".audio-player-toggle", controller.root);
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
-    notice("正在生成并保存完整音频…");
+    setRereadTask(controller.root, "running", "音声生成を準備しています…", "", "", 0, 1, { cancellable: false });
     const target = controller.root.parentElement;
     const paragraph = Math.max(0, controller.segments.findIndex(segment => startIndex >= segment.start && startIndex < segment.end));
     try {
@@ -3390,11 +3403,10 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
       });
       if (state.browserSpeech !== controller || !controller.root.isConnected) return;
       openArticle(result.article, target);
-      notice(result.cached ? "已读取保存的完整音频。" : "完整音频已保存到文章的 audio/。");
       const player = state.articleAudio;
       if (player?.root.isConnected) player.seekParagraph(paragraph);
     } catch (error) {
-      if (controller.root.isConnected) notice(error.message || "完整音频未能保存，请重试。", true);
+      if (controller.root.isConnected) setRereadTask(controller.root, "failed", "音声生成に失敗しました。", "", error.message);
     } finally {
       controller.savingAudio = false;
       if (button.isConnected) {

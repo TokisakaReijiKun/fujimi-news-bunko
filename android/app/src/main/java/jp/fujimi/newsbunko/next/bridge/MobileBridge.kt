@@ -22,6 +22,7 @@ import jp.fujimi.newsbunko.next.settings.SecretStore
 import jp.fujimi.newsbunko.next.settings.SettingsBackend
 import jp.fujimi.newsbunko.next.speech.EdgeSpeechPlayer
 import jp.fujimi.newsbunko.next.speech.ArticleEdgeAudio
+import jp.fujimi.newsbunko.next.speech.ArticleMediaPlayer
 import jp.fujimi.newsbunko.next.store.ApiResponse
 import jp.fujimi.newsbunko.next.store.LocalLibraryApi
 import jp.fujimi.newsbunko.next.storage.DataDirectory
@@ -44,6 +45,7 @@ class MobileBridge(private val activity: Activity, private val webView: WebView)
     private val secrets = SecretStore(context)
     private val speech = EdgeSpeechPlayer(context) { id, event -> deliverTts(id, event) }
     private val articleAudio = ArticleEdgeAudio(dataRoot.toPath(), speech::completeArticle, speech::validateFile)
+    private val media = ArticleMediaPlayer(context, dataRoot.toPath())
     private val settings = LocalSettingsApi(object : SettingsBackend {
         override fun read(key: String) = preferences.getString("setting:$key", null)
         override fun write(key: String, value: String) {
@@ -125,6 +127,15 @@ class MobileBridge(private val activity: Activity, private val webView: WebView)
     @JavascriptInterface fun clearDeepSeekKey(): Boolean = secrets.clearDeepSeekKey()
     @JavascriptInterface fun syncNow(): Boolean = false
     @JavascriptInterface fun resolveMediaUrl(value: String): String = if (value.startsWith("/api/")) "https://appassets.androidplatform.net$value" else ""
+    @JavascriptInterface fun playMedia(url: String, position: Double, rate: Double): Boolean {
+        speech.stop()
+        return media.play(url, position, rate)
+    }
+    @JavascriptInterface fun mediaStatus(): String = media.status()
+    @JavascriptInterface fun pauseMedia() { media.pause() }
+    @JavascriptInterface fun seekMedia(position: Double) { media.seek(position) }
+    @JavascriptInterface fun setMediaRate(rate: Double) { media.rate(rate) }
+    @JavascriptInterface fun stopMedia() { media.stop() }
     @JavascriptInterface fun queueChange(entity: String, action: String, payload: String): String = ""
 
     @JavascriptInterface
@@ -208,6 +219,7 @@ class MobileBridge(private val activity: Activity, private val webView: WebView)
     }
     @JavascriptInterface fun speakWithVoice(text: String, rate: Float, utteranceId: String, voiceName: String) {
         if (closed) return
+        media.stop()
         if (text.length > 200000) return deliverTts(utteranceId, "error")
         val generation = speechGeneration.incrementAndGet()
         executor.execute {
@@ -230,6 +242,7 @@ class MobileBridge(private val activity: Activity, private val webView: WebView)
         connection?.disconnect()
         executor.shutdownNow()
         speech.close()
+        media.close()
         dictionary.close()
     }
 }

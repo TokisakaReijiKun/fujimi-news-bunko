@@ -13,7 +13,7 @@ Android 工程位于 `android/`，包名为 `jp.fujimi.newsbunko.next`，最低�
 
 Debug APK 和 SHA-256 位于 `dist/FujimiShinbunBunkoAndroid/`。Release 构建使用 `%LOCALAPPDATA%/FujimiShinbunBunko/signing/` 下的本机密钥与 DPAPI 保护的凭据文件；密钥不在仓库内，也不会写入文库。正式分发前需把该密钥安全备份到发布密钥库。
 
-当前 release APK（1.0.5）：`dist/FujimiShinbunBunkoAndroid/FujimiShinbunBunkoAndroid-1.0.5-release.apk`，SHA-256：`a28bf186b93df3ee3c1257683042c6c51fd6a1d77cd80f9cccc798109dedf31f`；沿用原发布签名，APK Signature Scheme v2 验证通过。1.0.5 按 PC `/edge-tts` 实现文章完整音频保存、复用和逐段跳转。2026-10-02 在 Android 15（API 35）模拟器实际生成并播放圭太／七海 MP3，共 14 项设备测试通过；正式 WebView 的首次朗读保存及再次打开无合成播放通过。本次未在 vivo X200s 真机安装验证。详情见 [android-1.0.5-acceptance.md](android-1.0.5-acceptance.md)；此前界面与功能记录见 [android-1.0.3-acceptance.md](android-1.0.3-acceptance.md)。
+当前 release APK（1.0.7）：`dist/FujimiShinbunBunkoAndroid/FujimiShinbunBunkoAndroid-1.0.7-release.apk`；沿用原发布签名。文章完整音频继续按 PC `/edge-tts` 实现保存和复用；本版把 PC 的 NHK 海外匿名授权与短期 `hdnts` 播放令牌流程接入 APP，并允许 HLS 播放器加载授权后的 NHK 视频。1.0.6 的异步朗读播放修复、PC 任务条和底部错误 Toast继续保留。NHK HLS 在 Android 端按授权 URL 在线播放，不能宣称已转换为 PC 的本地 MP4；授权失败时仍显示明确提示。本次未在 vivo X200s 真机安装验证。详情见 [android-1.0.7-nhk-video.md](android-1.0.7-nhk-video.md)；此前音频记录见 [android-1.0.6-audio-fix.md](android-1.0.6-audio-fix.md)。
 
 ## 设置页与本机能力
 
@@ -23,6 +23,7 @@ Debug APK 和 SHA-256 位于 `dist/FujimiShinbunBunkoAndroid/`。Release 构建�
 
 - Android 不再枚举或自动选择系统 `ja` 声线。设置页固定提供 PC 客户端同源的 Edge 在线声线「圭太」（`ja-JP-KeitaNeural`）和「七海」（`ja-JP-NanamiNeural`），显示名称为「システム音声（圭太／七海）」。选择值按 Edge 声线 ID 保存，不会把中文系统声线当成日语声线。
 - Android 直接使用与 PC edge-tts 相同的 Edge TTS 服务获取真实 MP3，不依赖 PC 地址。文章首次点击朗读或“読み返し”时生成整篇音频，校验后通过 ArticleStore 保存到该文章的 `audio/圭太_标题.mp3` 或 `audio/七海_标题.mp3`，命名和逐句时间映射沿用 PC `/edge-tts` 规则。之后直接播放保存的文件，支持离线播放与段落跳转。失败保留已有音频；正文版本改变时拒绝提交旧音频。词典及未入库文本的即时朗读仍仅暂存在 `data/diagnostics/`，播放结束删除。Edge TTS 不可用时明确报错，不静默替换声线；首次合成需要联网，PC 地址只用于文库协同。
+- 1.0.8 接入原 APK 既有的 Media3 播放桥接，直接定位本地文章音频；Edge 逐句起点保持原始时间，跨请求使用 PC edge-tts 的累计 MP3 字节时钟。[段落定位验证记录](android-1.0.8-paragraph-seek.md) 包含实际解码 PCM、正式页面触摸、签名和真机限制。
 - DeepSeek 密钥使用 Android Keystore 的 AES-GCM 加密，密文只放在应用私有偏好中；清除操作会删除密文和初始化向量，密钥不会同步。
 - 书架排序、新闻目标数、来源名称/HTTPS 网址/最低配额和日刊模式经过校验后保存。六家新闻来源分别验证公开正文、付费门槛和分页；三阶段日刊先验证候选，再按配额选择，仅后处理入选新文章。离线假名使用 Kuromoji IPADIC，已存在 ruby 保留；配置密钥后使用 DeepSeek 翻译，严格检查段落数量和顺序。网络、媒体或翻译失败如实显示，不保存伪造结果。
 - 自动更新使用 CST 一次性 AlarmManager 闹钟触发 WorkManager 任务，不依赖设置页存活；无精确权限时使用系统时间窗口并显示可能延迟。开机只安排未来更新，不补跑关机期间任务；跨日或延后超过两小时的任务跳过。进程中断保留已保存文章，显示中断状态，需手动重试。
@@ -46,4 +47,4 @@ Debug APK 和 SHA-256 位于 `dist/FujimiShinbunBunkoAndroid/`。Release 构建�
 - Edge 无头布局：1440px、375px、390px 和横屏 812px 均无横向溢出；截图与 JSON 证据在 `build/qa/android-settings/`。
 - Python Tokyo 全量回归：237 项通过；三个前端文件 `node --check` 和 `git diff --check` 通过。
 
-上述为旧版本记录。1.0.5 已在模拟器实际访问 Edge TTS 并生成有效 MP3；本次证据以 1.0.5 验收记录为准。
+上述为旧版本记录。1.0.6 已在模拟器实际访问 Edge TTS 并生成有效 MP3；本次证据以 1.0.6 验收记录为准。

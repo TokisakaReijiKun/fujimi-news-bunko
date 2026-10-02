@@ -13,6 +13,7 @@ import org.json.JSONObject
 import org.jsoup.Jsoup
 import org.jsoup.nodes.TextNode
 import java.net.URI
+import java.net.URLEncoder
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
 
@@ -23,6 +24,7 @@ class ArticlePostprocessor(
     private val report: (String, String) -> Unit,
 ) {
     fun process(article: NewsArticle, checkpoint: () -> Unit): PostprocessedArticle {
+        var processedArticle = article
         var translations = emptyList<String>()
         var ruby = emptyList<String>()
         val media = mutableListOf<StoredMedia>()
@@ -43,8 +45,20 @@ class ArticlePostprocessor(
                             translations = translate(article.paragraphs, key, checkpoint)
                         }
                     }
-                    "media" -> article.media.forEachIndexed { index, item ->
+                    "media" -> {
+                        if (processedArticle.publisher == "NHKニュース") {
+                            val result = resolveNhkMedia(processedArticle, checkpoint)
+                            processedArticle = result.article
+                            errors.removeAll { it == NHK_AUTH_WARNING }
+                            result.warning?.let { errors += it }
+                        }
+                        processedArticle.media.forEachIndexed { index, item ->
                         checkpoint()
+                        if (item.kind == "video" && URI(item.url).path.orEmpty().lowercase().endsWith(".m3u8")) {
+                            // The signed HLS playlist is played by hls.js in the WebView;
+                            // its segments stay on NHK and are not copied into the library.
+                            return@forEachIndexed
+                        }
                         if (item.kind == "image" || item.kind == "video") {
                             try {
                                 report("media", "${article.publisher}：保存媒体 ${index + 1}/${article.media.size}")
@@ -60,13 +74,68 @@ class ArticlePostprocessor(
                             } catch (cancelled: CancellationException) { throw cancelled }
                             catch (failure: Exception) { checkpoint(); errors += "媒体未保存：${failure.message ?: "下载失败"}" }
                         } else errors += "视频仅可预览；原站未提供可验证的公开完整文件。"
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { checkpoint(); errors += "${mapOf("translation" to "翻译", "kana" to "假名", "media" to "媒体")[step] ?: step}未完成：${failure.message ?: "处理失败"}" }
         }
-        return PostprocessedArticle(article, translations, ruby, media, errors.distinct())
+        return PostprocessedArticle(processedArticle, translations, ruby, media, errors.distinct())
     }
+
+    private data class NhkMediaResult(val article: NewsArticle, val warning: String? = null)
+
+    private fun resolveNhkMedia(article: NewsArticle, checkpoint: () -> Unit): NhkMediaResult {
+        val protected = article.media.filter {
+            it.kind == "preview_video" && URI(it.url).host == "media.vd.st.nhk"
+        }
+        if (protected.isEmpty()) return NhkMediaResult(article)
+        return try {
+            PublicHttpClient.requireNetwork(context)
+            checkpoint()
+            val geo = http.download("https://location.tools.nhk/geoip/area.json", 1024 * 1024)
+            val country = JSONObject(String(geo.bytes, Charsets.UTF_8)).optString("country_name")
+            require(country.isNotBlank() && country != "Japan") { "NHK 原站授权未通过当前地区检查。" }
+            val query = listOf(
+                "idp" to "a-alaz", "profileType" to "abroad", "redirect_uri" to article.url,
+                "entity" to "none", "area" to "130", "pref" to "13", "jisx0402" to "13101", "postal" to "1000001",
+            ).joinToString("&") { (key, value) -> "$key=${URLEncoder.encode(value, "UTF-8")}" }
+            val authorize = http.download("https://news.web.nhk/tix/build_authorize?$query", 1024 * 1024)
+            require(canonical(authorize.url) == canonical(article.url)) { "NHK 原站授权回跳未完成。" }
+            val session = http.cookieHeader("https://news.web.nhk/")
+            val bearer = session.split(';').map { it.trim() }.firstOrNull { it.startsWith("z_at=") }?.substringAfter('=')
+            require(!bearer.isNullOrBlank()) { "NHK 未返回匿名播放会话。" }
+            checkpoint()
+            val request = Request.Builder().url("https://mediatoken.web.nhk/v1/token")
+                .header("Authorization", "Bearer $bearer").build()
+            val token = http.client.newCall(request).execute().use { response ->
+                require(response.isSuccessful) { "NHK 播放令牌请求失败（HTTP ${response.code}）。" }
+                val body = response.body?.string().orEmpty()
+                require(body.length <= 1024 * 1024) { "NHK 播放令牌响应过大。" }
+                JSONObject(body).optString("token")
+            }
+            require(token.startsWith("exp=")) { "NHK 播放令牌无效。" }
+            val resolved = article.media.map { item ->
+                if (item in protected) item.copy(
+                    url = item.url + (if ('?' in item.url) '&' else '?') + "hdnts=${URLEncoder.encode(token, "UTF-8")}",
+                    kind = "video",
+                ) else item
+            }
+            NhkMediaResult(article.copy(
+                media = resolved,
+                mediaWarnings = article.mediaWarnings.filterNot { it == NHK_AUTH_WARNING },
+            ))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            NhkMediaResult(article, "NHK 视频未下载：原站播放授权失败。")
+        }
+    }
+
+    private fun canonical(url: String): String = try {
+        val uri = URI(url)
+        URI(uri.scheme, uri.authority, uri.path, null, null).toString().trimEnd('/')
+    } catch (_: Exception) { url.substringBefore('?').trimEnd('/') }
 
     private fun annotate(text: String, markup: String?): String {
         if (markup.isNullOrBlank()) return rubyText(text)
@@ -138,6 +207,7 @@ class ArticlePostprocessor(
     }
 
     companion object {
+        private const val NHK_AUTH_WARNING = "NHK 视频需要原站播放授权或 HLS 处理，当前未下载；请在原站观看。"
         private val tokenizer by lazy { Tokenizer() }
         fun validMedia(bytes: ByteArray, kind: String): Boolean = if (kind == "video") bytes.size >= 12 && String(bytes.copyOfRange(4, 8), Charsets.US_ASCII) == "ftyp"
         else (bytes.size >= 3 && bytes[0] == 0xff.toByte() && bytes[1] == 0xd8.toByte() && bytes[2] == 0xff.toByte()) ||

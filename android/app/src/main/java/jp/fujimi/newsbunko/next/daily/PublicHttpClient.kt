@@ -84,6 +84,13 @@ class PublicHttpClient(private val context: Context, private val checkpoint: () 
         error("来源重定向次数过多。")
     }
 
+    /** Cookie header for a follow-up request in the same source session. */
+    fun cookieHeader(url: String): String = synchronized(cookies) {
+        val target = url.toHttpUrl()
+        cookies.removeAll { it.expiresAt <= System.currentTimeMillis() }
+        cookies.filter { it.matches(target) }.joinToString("; ") { "${it.name}=${it.value}" }
+    }
+
     companion object {
         fun checkedUrl(value: String): HttpUrl = value.toHttpUrl().also {
             require(it.isHttps && it.username.isEmpty() && it.password.isEmpty() && it.port == 443) { "新闻下载仅接受公开 HTTPS 地址。" }

@@ -193,7 +193,9 @@ async function verify(browser, width, native) {
   return { width, native, layout, requests: calls.length };
 }
 
-(async () => {
+module.exports = { fixture };
+
+if (require.main === module) (async () => {
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {

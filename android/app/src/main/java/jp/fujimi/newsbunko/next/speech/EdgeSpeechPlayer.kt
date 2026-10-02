@@ -113,14 +113,13 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
         require(voice in setOf(EdgeVoiceCatalog.KEITA, EdgeVoiceCatalog.NANAMI)) { "请选择圭太或七海。" }
         val output = ByteArrayOutputStream()
         val boundaries = mutableListOf<SpeechBoundary>()
-        var offset = 0L
         for (text in splitText(paragraphs.joinToString("\n"))) {
             check(!closed && !Thread.currentThread().isInterrupted) { "音频生成已中止。" }
+            // PC edge-tts __compensate_offset: this format is exactly 48 kbps
+            // CBR. Use the bytes already appended, not a decoder's estimate.
+            val offset = output.size().toLong() * 8 * 10_000_000 / 48_000
             val bytes = requestAudio(text, voice) { boundary -> boundaries += boundary.copy(offset = boundary.offset + offset) }
             require(output.size().toLong() + bytes.size <= 8 * 1024 * 1024) { "完整音频超过体积限制。" }
-            val temporary = File.createTempFile("edge-duration-", ".mp3", diagnostics)
-            try { temporary.writeBytes(bytes); offset += durationMillis(temporary.toPath()) * 10_000 }
-            finally { temporary.delete() }
             output.write(bytes)
         }
         return CompleteSpeech(output.toByteArray(), EdgeSentenceTimings.segments(paragraphs, boundaries))

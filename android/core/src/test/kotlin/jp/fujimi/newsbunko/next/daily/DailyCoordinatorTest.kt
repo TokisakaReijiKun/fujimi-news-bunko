@@ -139,6 +139,21 @@ class DailyCoordinatorTest {
         }
     }
 
+    @Test fun authorizedRemoteNhkVideoIsKeptInArticleMetadataWhenNoLocalCopyExists() {
+        val video = "https://media.vd.st.nhk/example/clip.m3u8"
+        val source = object : NewsProvider {
+            override val name = "NHKニュース"
+            override fun collect(homepage: String, transport: NewsTransport, checkpoint: () -> Unit) = listOf("https://example.test/nhk/1")
+            override fun fetchArticle(url: String, transport: NewsTransport, checkpoint: () -> Unit) =
+                NewsArticle(url, "NHK", name, listOf("公開正文です。"), media = listOf(NewsMedia(video, "video")))
+        }
+        coordinator(listOf(source)).run(request(1, "NHKニュース"), transport,
+            { article, _ -> PostprocessedArticle(article) })
+        val metadata = ArticleCatalog(data).onDay(day).single().metadata
+        assertEquals(video, metadata.getJSONArray("video_urls").getString(0))
+        assertEquals("preview", metadata.getString("video_status"))
+    }
+
     private fun request(target: Int, vararg names: String) = DailyRequest(day, target,
         names.mapIndexed { index, name -> DailySource(index + 1, name, "https://example.test/$name", 1) })
 
