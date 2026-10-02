@@ -1,6 +1,6 @@
 # Android 客户端
 
-Android 工程位于 `android/`，包名为 `jp.fujimi.newsbunko.next`，最低支持 Android 10。它使用 WebView 加载正式 `static/` 页面，并通过 `FujimiMobile` 原生桥接访问应用私有文库；原 APK 的包名和私有数据不会被覆盖。
+Android 工程位于 `android/`，包名为 `jp.fujimi.newsbunko.next`，最低支持 Android 10。它使用 WebView 加载正式 `static/` 页面，并通过 `FujimiMobile` 原生桥接访问手机公共文库；原 APK 的包名和私有数据不会被覆盖。
 
 ## 构建与签名
 
@@ -13,26 +13,29 @@ Android 工程位于 `android/`，包名为 `jp.fujimi.newsbunko.next`，最低�
 
 Debug APK 和 SHA-256 位于 `dist/FujimiShinbunBunkoAndroid/`。Release 构建使用 `%LOCALAPPDATA%/FujimiShinbunBunko/signing/` 下的本机密钥与 DPAPI 保护的凭据文件；密钥不在仓库内，也不会写入文库。正式分发前需把该密钥安全备份到发布密钥库。
 
-当前 release APK（1.0.2）：`dist/FujimiShinbunBunkoAndroid/FujimiShinbunBunkoAndroid-1.0.2-release.apk`，SHA-256：`d6b8d859932ac7dc3f7be70a5e8e79d1d54ec6454905fdc4ca5cf4de4d560cf9`；APK Signature Scheme v2 验证通过。方案 A 设置页的本次验证记录见 [android-settings-a-acceptance.md](android-settings-a-acceptance.md)。
+当前 release APK（1.0.5）：`dist/FujimiShinbunBunkoAndroid/FujimiShinbunBunkoAndroid-1.0.5-release.apk`，SHA-256：`a28bf186b93df3ee3c1257683042c6c51fd6a1d77cd80f9cccc798109dedf31f`；沿用原发布签名，APK Signature Scheme v2 验证通过。1.0.5 按 PC `/edge-tts` 实现文章完整音频保存、复用和逐段跳转。2026-10-02 在 Android 15（API 35）模拟器实际生成并播放圭太／七海 MP3，共 14 项设备测试通过；正式 WebView 的首次朗读保存及再次打开无合成播放通过。本次未在 vivo X200s 真机安装验证。详情见 [android-1.0.5-acceptance.md](android-1.0.5-acceptance.md)；此前界面与功能记录见 [android-1.0.3-acceptance.md](android-1.0.3-acceptance.md)。
 
 ## 设置页与本机能力
 
-1.0.2 采用方案 A：保持原有竖向页面和操作流程，使用浅绿底色、白色分组卡片、统一按钮及状态标签；应用信息与文库路径单独显示，来源配额和文库路径仍可展开。页面直接显示原生接口返回的真实状态，演示数据与 Demo 控件不进入 APK。
+1.0.3 保留方案 A 的竖向页面、浅绿底色和六组卡片。APK 单选字段改为贴近字段展开的下拉列表，包括排序、浏览器声线和来源朗读模式；顶部恢复原页面标题栏结构，不新增蓝色应用身份栏。按原版 APK 对照，Android WebView 使用 edge-to-edge，抽屉覆盖系统状态栏和底部手势区，避免上下白栏。Web/PC 继续使用原控件与布局，演示数据与 Demo 控件不进入 APK。
 
 设置页现在保存并显示真实的本机状态：
 
 - Android 不再枚举或自动选择系统 `ja` 声线。设置页固定提供 PC 客户端同源的 Edge 在线声线「圭太」（`ja-JP-KeitaNeural`）和「七海」（`ja-JP-NanamiNeural`），显示名称为「システム音声（圭太／七海）」。选择值按 Edge 声线 ID 保存，不会把中文系统声线当成日语声线。
-- Android 即时朗读直接使用 Edge TTS WebSocket 服务获取真实 MP3，不依赖 PC 地址；请求音频只暂存在 `data/diagnostics/`，播放结束即删除。Edge TTS 不可用或网络失败时明确返回错误，不静默切换到 Android 系统声线。PC 地址只用于文库协同。
+- Android 直接使用与 PC edge-tts 相同的 Edge TTS 服务获取真实 MP3，不依赖 PC 地址。文章首次点击朗读或“読み返し”时生成整篇音频，校验后通过 ArticleStore 保存到该文章的 `audio/圭太_标题.mp3` 或 `audio/七海_标题.mp3`，命名和逐句时间映射沿用 PC `/edge-tts` 规则。之后直接播放保存的文件，支持离线播放与段落跳转。失败保留已有音频；正文版本改变时拒绝提交旧音频。词典及未入库文本的即时朗读仍仅暂存在 `data/diagnostics/`，播放结束删除。Edge TTS 不可用时明确报错，不静默替换声线；首次合成需要联网，PC 地址只用于文库协同。
 - DeepSeek 密钥使用 Android Keystore 的 AES-GCM 加密，密文只放在应用私有偏好中；清除操作会删除密文和初始化向量，密钥不会同步。
-- 书架排序、新闻目标数、来源名称/HTTPS 网址/最低配额和手动日刊模式会经过字段校验后保存。Android 日刊采集、自动调度、PC Irodori 声线仍显示为未接入，按钮不会假装成功。
+- 书架排序、新闻目标数、来源名称/HTTPS 网址/最低配额和日刊模式经过校验后保存。六家新闻来源分别验证公开正文、付费门槛和分页；三阶段日刊先验证候选，再按配额选择，仅后处理入选新文章。离线假名使用 Kuromoji IPADIC，已存在 ruby 保留；配置密钥后使用 DeepSeek 翻译，严格检查段落数量和顺序。网络、媒体或翻译失败如实显示，不保存伪造结果。
+- 自动更新使用 CST 一次性 AlarmManager 闹钟触发 WorkManager 任务，不依赖设置页存活；无精确权限时使用系统时间窗口并显示可能延迟。开机只安排未来更新，不补跑关机期间任务；跨日或延后超过两小时的任务跳过。进程中断保留已保存文章，显示中断状态，需手动重试。
 - PC 地址只接受 HTTPS 私网 IPv4，不接受公网、账号、查询参数或路径。检测有 8 秒网络超时和 20 秒界面超时；失败保留地址并显示原因。`立即同步` 在配对和双向合并未完成前保持禁用，不会偷偷传输文库。
 - 返回键先关闭对话框、抽屉和词典详情，再返回 WebView；文件导入使用系统选择器。系统栏、刘海、键盘和横屏区域使用安全区内边距。
 
 ## 文库位置
 
-APP 使用私有目录 `files/data/`，并沿用 PC 的 `articles/`、`bookmarks/`、`books/`、`voices/`、`backups/` 和 `diagnostics/` 结构。同步文件按源端相对路径写入，保留目录名、文件名和扩展名；SHA-256 仅用于校验。词典原库只读复制到应用私有 `dictionary/dictionary.sqlite3`，搜索投影位于 `data/dictionary-search.sqlite3`，不修改原库。
+1.0.4 起，APP 文库位于 `/storage/emulated/0/富士見新聞文庫/data/`，可通过手机文件管理器或电脑连接后的“内部存储设备/富士見新聞文庫/data”查看。目录内沿用 PC 的 `articles/`、`bookmarks/`、`books/`、`voices/`、`backups/` 和 `diagnostics/` 结构，保留目录名、文件名和扩展名。首次打开通过系统页面授予存储权限后再初始化文库，不迁移旧私有文库，也不回退到私有路径。词典原库仍只读保存到私有 `dictionary/dictionary.sqlite3`，搜索投影在公共 `data/dictionary-search.sqlite3`；密钥与设置保持私有。卸载不删除公共文库，备份时复制整个 `富士見新聞文庫/data/`。
 
-当前已接入本地文件格式读取、日刊文章查询、正式前端资源、Edge 在线即时朗读桥接、词典和路径保留的同步文件安装核心。PC 配对、双向同步、完整新闻采集、EPUB 导入和媒体后台播放仍需继续接入；未完成能力会返回明确错误，不显示假成功。
+当前已接入本地文件格式读写、独立日刊采集及 CST 调度、日刊文章查询、正式前端资源、Edge 在线朗读及文章完整音频保存、词典和路径保留的同步文件安装核心。文章原文、译文、假名分别存为 PC 格式文件，附件使用原站文件名；`data/fujimi.sqlite3` 只保存可重建索引，不缓存正文。PC 配对、双向同步、PC Irodori 声线、EPUB 导入和媒体后台播放仍需继续接入；未完成能力会返回明确错误。
+
+实际安装时选择“自动更新”，设置 CST 时间，并检查“网络与定时”中的权限和下一次安排。使用计费网络需主动开启“允许蜂窝网络”。首次使用可点击“今すぐ生成”查看真实任务进度。Android 强制停止、厂商省电限制和网络不可达会影响后台执行；重新打开后仅安排未来闹钟。
 
 ## 此前功能验证记录（非 1.0.2 本次回归）
 
@@ -43,4 +46,4 @@ APP 使用私有目录 `files/data/`，并沿用 PC 的 `articles/`、`bookmarks
 - Edge 无头布局：1440px、375px、390px 和横屏 812px 均无横向溢出；截图与 JSON 证据在 `build/qa/android-settings/`。
 - Python Tokyo 全量回归：237 项通过；三个前端文件 `node --check` 和 `git diff --check` 通过。
 
-模拟器未连接可用的 Edge TTS 网络，因此朗读运行结果为明确的 `error`；在实际设备上需允许网络访问 Edge TTS 服务。
+上述为旧版本记录。1.0.5 已在模拟器实际访问 Edge TTS 并生成有效 MP3；本次证据以 1.0.5 验收记录为准。

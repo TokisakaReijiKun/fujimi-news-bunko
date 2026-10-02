@@ -45,7 +45,7 @@ async function verify(browser, width, native) {
     return route.fulfill({ path: file });
   });
   if (native) await context.addInitScript(() => {
-    const status = { app_version: '1.0.2', data_path: '/data/user/0/jp.fujimi.newsbunko.next/files/data', windows_status: 'unconfigured', sync_available: false, sync_state: 'unavailable', sync_stage: '协同同步尚未接入', sync_detail: '配对与文库合并尚未完成；连接检测不会传输文库。', reference_voices_available: false, daily_generation_available: false, scheduler_available: false, exact_alarm: false };
+    const status = { app_version: '1.0.3', data_path: '/data/user/0/jp.fujimi.newsbunko.next/files/data', windows_status: 'unconfigured', sync_available: false, sync_state: 'unavailable', sync_stage: '协同同步尚未接入', sync_detail: '配对与文库合并尚未完成；连接检测不会传输文库。', reference_voices_available: false, daily_generation_available: false, scheduler_available: false, exact_alarm: false };
     window.FujimiMobile = {
       request: (raw, callback) => {
         const item = JSON.parse(raw);
@@ -78,14 +78,16 @@ async function verify(browser, width, native) {
   assert.deepEqual(errors, []);
   await page.screenshot({ path: path.join(output, `settings-${native ? 'android' : 'web'}-${width}.png`), fullPage: true });
   if (native) {
-    assert.equal(await page.locator('#mobile-app-version').textContent(), '1.0.2');
+    assert.equal(await page.locator('#mobile-app-version').textContent(), '1.0.3');
     assert.equal(await page.locator('#mobile-sync-now').isDisabled(), true);
     await page.click('#add-voice');
     await page.waitForFunction(() => !document.querySelector('#browser-voice-select').disabled);
-    await page.selectOption('#browser-voice-select', 'ja-JP-NanamiNeural');
+    await page.locator('[data-android-select="browser-voice-select"]').click();
+    await page.locator('.android-select-list:visible').getByRole('option', { name: /七海/ }).click();
     await page.click('#submit-voice');
     await page.waitForFunction(() => document.querySelector('#voice-list').textContent.includes('七海'));
-    await page.selectOption('#library-sort-setting', 'series');
+    await page.locator('[data-android-select="library-sort-setting"]').click();
+    await page.locator('.android-select-list:visible').getByRole('option', { name: 'シリーズ・巻順', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('#library-sort-setting').value === 'series');
     await page.fill('#daily-target-count', '12');
     await page.waitForFunction(() => document.querySelector('#daily-content-summary').textContent.includes('其余 6'));

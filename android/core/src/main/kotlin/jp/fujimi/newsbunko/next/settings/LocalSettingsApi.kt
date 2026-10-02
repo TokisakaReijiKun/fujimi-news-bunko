@@ -12,6 +12,7 @@ interface SettingsBackend {
 
 class LocalSettingsApi(
     private val backend: SettingsBackend,
+    private val dailySchedule: DailyScheduleService? = null,
     private val voices: () -> JSONArray,
 ) {
     private val defaults = mapOf(
@@ -30,6 +31,16 @@ class LocalSettingsApi(
         return try {
             val payload = if (body.isNullOrBlank()) JSONObject() else JSONObject(body)
             when {
+                path == "/api/settings/daily-schedule" && dailySchedule != null -> {
+                    if (method == "GET") ok(dailySchedule.status())
+                    else if (method == "PUT") {
+                        val mode = payload.getString("mode")
+                        val time = payload.getString("time")
+                        require(mode in setOf("manual", "automatic")) { "更新模式不正确。" }
+                        require(Regex("(?:[01]\\d|2[0-3]):[0-5]\\d").matches(time)) { "更新时间不正确。" }
+                        ok(dailySchedule.configure(mode, time))
+                    } else error(405, "不支持此请求方式。")
+                }
                 path == "/api/browser-voices" && method == "GET" -> ok(voices())
                 path == "/api/settings/voices" && method == "GET" -> ok(JSONArray())
                 path == "/api/settings/browser-voice" && method == "PUT" -> {

@@ -3,18 +3,23 @@ package jp.fujimi.newsbunko.next.speech
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.MediaMetadataRetriever
 import android.os.Handler
 import android.os.Looper
 import jp.fujimi.newsbunko.next.settings.EdgeVoiceCatalog
+import jp.fujimi.newsbunko.next.storage.DataDirectory
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString
+import org.json.JSONObject
+import org.jsoup.parser.Parser
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.nio.file.Path
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.ArrayDeque
@@ -30,7 +35,7 @@ import java.util.concurrent.atomic.AtomicLong
 /** Direct Microsoft Edge TTS client. It does not require a PC or Android system TTS voice. */
 class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> Unit) {
     private val appContext = context.applicationContext
-    private val diagnostics = File(appContext.filesDir, "data/diagnostics").also { it.mkdirs() }
+    private val diagnostics = File(DataDirectory.prepare(appContext), "diagnostics").also { it.mkdirs() }
     private val executor = Executors.newSingleThreadExecutor()
     private val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(70, TimeUnit.SECONDS).build()
     private val main = Handler(Looper.getMainLooper())
@@ -92,7 +97,36 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
         }
     }
 
-    private fun requestAudio(text: String, voice: String): ByteArray {
+    fun validateFile(path: Path) { durationMillis(path) }
+
+    private fun durationMillis(path: Path): Long {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(path.toString())
+            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong()?.also {
+                require(it > 0) { "音频没有有效播放时长。" }
+            } ?: error("音频无法解码。")
+        } finally { retriever.release() }
+    }
+
+    fun completeArticle(paragraphs: List<String>, voice: String): CompleteSpeech {
+        require(voice in setOf(EdgeVoiceCatalog.KEITA, EdgeVoiceCatalog.NANAMI)) { "请选择圭太或七海。" }
+        val output = ByteArrayOutputStream()
+        val boundaries = mutableListOf<SpeechBoundary>()
+        var offset = 0L
+        for (text in splitText(paragraphs.joinToString("\n"))) {
+            check(!closed && !Thread.currentThread().isInterrupted) { "音频生成已中止。" }
+            val bytes = requestAudio(text, voice) { boundary -> boundaries += boundary.copy(offset = boundary.offset + offset) }
+            require(output.size().toLong() + bytes.size <= 8 * 1024 * 1024) { "完整音频超过体积限制。" }
+            val temporary = File.createTempFile("edge-duration-", ".mp3", diagnostics)
+            try { temporary.writeBytes(bytes); offset += durationMillis(temporary.toPath()) * 10_000 }
+            finally { temporary.delete() }
+            output.write(bytes)
+        }
+        return CompleteSpeech(output.toByteArray(), EdgeSentenceTimings.segments(paragraphs, boundaries))
+    }
+
+    private fun requestAudio(text: String, voice: String, boundary: ((SpeechBoundary) -> Unit)? = null): ByteArray {
         val connectionId = UUID.randomUUID().toString().replace("-", "")
         val url = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1" +
             "?TrustedClientToken=$TRUSTED_CLIENT_TOKEN&ConnectionId=$connectionId" +
@@ -100,6 +134,7 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
         val audio = ByteArrayOutputStream()
         val finished = CountDownLatch(1)
         var failure: Throwable? = null
+        var ended = false
         val request = Request.Builder().url(url)
             .header("Pragma", "no-cache")
             .header("Cache-Control", "no-cache")
@@ -109,16 +144,30 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
             .build()
         val socket = http.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                webSocket.send(speechConfig())
+                webSocket.send(speechConfig(boundary != null))
                 webSocket.send(ssml(text, voice))
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val path = textPath(text)
                 if (path == "turn.end") {
+                    ended = true
                     if (audio.size() == 0) failure = IllegalStateException("Edge TTS 未返回音频。")
                     finished.countDown()
                     webSocket.close(1000, "done")
+                } else if (path == "audio.metadata" && boundary != null) {
+                    try {
+                        val metadata = JSONObject(text.substringAfter("\r\n\r\n")).getJSONArray("Metadata")
+                        for (index in 0 until metadata.length()) {
+                            val item = metadata.getJSONObject(index)
+                            if (item.optString("Type") == "SentenceBoundary") {
+                                val data = item.getJSONObject("Data")
+                                boundary(SpeechBoundary(Parser.unescapeEntities(data.getJSONObject("text").getString("Text"), false), data.getLong("Offset"), data.getLong("Duration")))
+                            }
+                        }
+                    } catch (error: Exception) {
+                        failure = error; finished.countDown(); webSocket.cancel()
+                    }
                 }
             }
 
@@ -133,7 +182,13 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
                     return
                 }
                 val path = headerPath(data, headerLength)
-                if (path == "audio" && headerLength + 2 < data.size) audio.write(data, headerLength + 2, data.size - headerLength - 2)
+                if (path == "audio" && headerLength + 2 < data.size) {
+                    if (audio.size().toLong() + data.size - headerLength - 2 > 8 * 1024 * 1024) {
+                        failure = IllegalStateException("在线声线音频超过体积限制。")
+                        finished.countDown(); webSocket.cancel(); return
+                    }
+                    audio.write(data, headerLength + 2, data.size - headerLength - 2)
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
@@ -142,22 +197,21 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                if (finished.count > 0 && audio.size() == 0) failure = IllegalStateException("Edge TTS 连接已关闭。")
+                if (!ended) failure = IllegalStateException("Edge TTS 连接在音频完成前已关闭。")
                 finished.countDown()
             }
         })
-        if (!finished.await(70, TimeUnit.SECONDS)) {
-            socket.cancel()
-            throw IllegalStateException("Edge TTS 请求超时。")
-        }
+        try { if (!finished.await(70, TimeUnit.SECONDS)) throw IllegalStateException("Edge TTS 请求超时。") }
+        finally { if (!ended) socket.cancel() }
         failure?.let { throw it }
+        check(ended) { "Edge TTS 未完成整段音频。" }
         return audio.toByteArray().also { if (it.isEmpty()) throw IllegalStateException("Edge TTS 未返回音频。") }
     }
 
-    private fun speechConfig(): String {
+    private fun speechConfig(boundaries: Boolean = false): String {
         val timestamp = timestamp()
         return "X-Timestamp:$timestamp\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n" +
-            "{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"false\",\"wordBoundaryEnabled\":\"false\"},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n"
+            "{\"context\":{\"synthesis\":{\"audio\":{\"metadataoptions\":{\"sentenceBoundaryEnabled\":\"$boundaries\",\"wordBoundaryEnabled\":\"false\"},\"outputFormat\":\"audio-24khz-48kbitrate-mono-mp3\"}}}}\r\n"
     }
 
     private fun ssml(text: String, voice: String): String {
@@ -258,8 +312,9 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
         val chunks = mutableListOf<String>()
         val current = StringBuilder()
         var bytes = 0
-        text.forEach { char ->
-            val size = char.toString().toByteArray(StandardCharsets.UTF_8).size
+        text.codePoints().toArray().forEach { point ->
+            val char = String(Character.toChars(point))
+            val size = char.toByteArray(StandardCharsets.UTF_8).size
             if (current.isNotEmpty() && bytes + size > limit) {
                 chunks += current.toString().trim()
                 current.clear()

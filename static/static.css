@@ -9488,6 +9488,80 @@ html:not([data-mobile-app="true"]) .mobile-app-bar {
   padding-bottom: 4px;
 }
 
+/* Page-owned single-choice fields are enabled only by the Android bridge. */
+html[data-android-app="true"] select.android-native-select {
+  display: none !important;
+}
+
+.android-select-trigger {
+  display: block;
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 48px;
+  padding: 11px 36px 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 500;
+  text-align: left;
+  line-height: 1.5;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.android-select-trigger::after {
+  content: '';
+  position: absolute;
+  right: 15px;
+  top: calc(50% - 5px);
+  width: 7px;
+  height: 7px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.android-select-trigger:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 3px;
+}
+
+.android-select-list {
+  box-sizing: border-box;
+  position: fixed;
+  inset: auto;
+  z-index: 10000;
+  margin: 0;
+  padding: 4px 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 8px 24px #00000024;
+  font: inherit;
+  font-size: .82rem;
+}
+
+.android-select-option {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.android-select-option[aria-selected="true"] { color: var(--moss); font-weight: 700; }
+.android-select-option.is-active { background: color-mix(in srgb, var(--moss) 12%, var(--panel)); outline: 2px solid var(--moss); outline-offset: -2px; }
+.android-select-option[aria-disabled="true"] { color: var(--muted); opacity: .65; cursor: default; }
+.android-select-trigger[hidden], .android-select-option[hidden] { display: none; }
+
 #settings-view .mobile-sync-stats {
   margin: 10px 0;
 }

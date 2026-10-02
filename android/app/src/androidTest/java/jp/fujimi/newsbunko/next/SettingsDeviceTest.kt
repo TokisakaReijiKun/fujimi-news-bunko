@@ -48,9 +48,35 @@ class SettingsDeviceTest {
             evaluate(scenario, "window.__edgeVoices=null;api('/api/browser-voices').then(v=>window.__edgeVoices=JSON.stringify(v.map(x=>x.id)));true")
             assertTrue(waitFor(scenario, "window.__edgeVoices === '[\"ja-JP-KeitaNeural\",\"ja-JP-NanamiNeural\"]'"))
             assertEquals("true", evaluate(scenario, "document.querySelector('#mobile-sync-now').disabled"))
-            assertEquals("true", evaluate(scenario, "document.querySelector('#daily-mode [data-mode=automatic]').disabled"))
-            assertTrue(waitFor(scenario, "document.querySelector('#generate-daily').disabled"))
+            assertEquals("false", evaluate(scenario, "document.querySelector('#daily-mode [data-mode=automatic]').disabled"))
+            assertTrue(waitFor(scenario, "!document.querySelector('#generate-daily').disabled"))
         }
+    }
+
+    @Test fun automaticModePersistsARealFutureAlarmAndManualModeCancelsIt() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val preferences = context.getSharedPreferences("mobile-settings", Context.MODE_PRIVATE)
+        val scheduler = jp.fujimi.newsbunko.next.daily.DailyRuntime.get(context).schedule
+        val time = java.time.LocalTime.now(jp.fujimi.newsbunko.next.settings.CstSchedule.zone)
+            .plusHours(2).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+        try {
+            ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+                assertTrue(waitFor(scenario, "typeof window.api === 'function'"))
+                evaluate(scenario, "window.__scheduleSave=null;api('/api/settings/daily-schedule',{method:'PUT',body:JSON.stringify({mode:'automatic',time:'$time'})}).then(v=>window.__scheduleSave=v);true")
+                assertTrue(waitFor(scenario, "window.__scheduleSave?.mode === 'automatic' && Boolean(window.__scheduleSave?.next_run)"))
+                assertTrue(preferences.getLong("next-alarm", 0) > System.currentTimeMillis())
+                scenario.recreate()
+                assertTrue(waitFor(scenario, "typeof window.api === 'function'"))
+                evaluate(scenario, "showView('settings');true")
+                assertTrue(waitFor(scenario, "document.querySelector('#daily-mode [data-mode=automatic]').classList.contains('active')"))
+                assertEquals("\"$time\"", evaluate(scenario, "document.querySelector('#daily-update-time').value"))
+                evaluate(scenario, "document.querySelector('#daily-mode [data-mode=manual]').click();true")
+                assertTrue(waitFor(scenario, "document.querySelector('#daily-mode [data-mode=manual]').classList.contains('active') && document.querySelector('#daily-update-time').disabled"))
+                evaluate(scenario, "window.__manualSaved=false;api('/api/settings/daily-schedule').then(v=>window.__manualSaved=v.mode==='manual');true")
+                assertTrue(waitFor(scenario, "window.__manualSaved === true"))
+            }
+            assertEquals(0L, preferences.getLong("next-alarm", 0))
+        } finally { scheduler.configure("manual", "00:00") }
     }
 
     @Test fun clearingPCAddressDoesNotStartSync() {

@@ -250,6 +250,7 @@ window.__fujimiCloseMobileDictionaryDetail = () => {
   return true;
 };
 window.__fujimiHandleBack = () => {
+  if (closeAndroidSelect()) return true;
   const dialog = document.querySelector("dialog[open]");
   if (dialog) { dialog.close(); return true; }
   if (setMobileNavOpen(false)) return true;
@@ -262,6 +263,206 @@ window.__fujimiRefreshNativeSettings = () => {
   if (state.currentView === "settings") loadDesktopSettings();
 };
 window.__fujimiNativeNotice = message => toast(String(message || "操作失败"), true);
+
+// Keep the original select as the form/API source of truth. Only the actual
+// Android bridge gets a page-owned list; mobile Web and desktop retain selects.
+let activeAndroidSelect = null;
+function closeAndroidSelect(restoreFocus = true) {
+  const field = activeAndroidSelect;
+  if (!field) return false;
+  activeAndroidSelect = null;
+  if (typeof field.list.hidePopover === 'function' && field.list.matches(':popover-open')) field.list.hidePopover();
+  field.list.remove();
+  field.trigger.setAttribute('aria-expanded', 'false');
+  field.trigger.removeAttribute('aria-activedescendant');
+  if (restoreFocus && field.trigger.isConnected && !field.trigger.disabled) field.trigger.focus({ preventScroll: true });
+  return true;
+}
+
+function initializeAndroidSelects() {
+  if (!window.FujimiMobile) return;
+  document.documentElement.dataset.androidApp = 'true';
+  const fields = new Map();
+  const trackedOptions = new WeakSet();
+  let sequence = 0;
+  const enabled = (select, option) => !select.matches(':disabled') && !option.disabled && !option.parentElement?.disabled && !option.hidden;
+  const position = field => {
+    const rect = field.trigger.getBoundingClientRect();
+    if (!rect.width || !rect.height || rect.bottom <= 0 || rect.top >= innerHeight) { closeAndroidSelect(false); return; }
+    const below = Math.max(0, innerHeight - rect.bottom - 12);
+    const above = Math.max(0, rect.top - 12);
+    const upward = below < Math.min(field.list.scrollHeight, 192) && above > below;
+    const height = Math.min(320, upward ? above : below);
+    field.list.style.width = `${rect.width}px`;
+    field.list.style.maxHeight = `${height}px`;
+    field.list.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - rect.width - 8))}px`;
+    field.list.style.top = `${upward ? rect.top - Math.min(field.list.scrollHeight, height) - 4 : rect.bottom + 4}px`;
+  };
+  const highlight = (field, index) => {
+    field.active = index;
+    [...field.list.children].forEach((row, i) => row.classList.toggle('is-active', i === index));
+    const row = field.list.children[index];
+    if (!row) { field.trigger.removeAttribute('aria-activedescendant'); return; }
+    field.trigger.setAttribute('aria-activedescendant', row.id);
+    if (row.offsetTop < field.list.scrollTop) field.list.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > field.list.scrollTop + field.list.clientHeight) field.list.scrollTop = row.offsetTop + row.offsetHeight - field.list.clientHeight;
+  };
+  const render = field => {
+    const { select, list } = field;
+    list.replaceChildren(...[...select.options].map((option, index) => {
+      const row = document.createElement('div');
+      row.id = `${list.id}-${index}`;
+      row.className = 'android-select-option';
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(option.selected));
+      row.setAttribute('aria-disabled', String(!enabled(select, option)));
+      row.hidden = option.hidden;
+      row.textContent = option.label;
+      row.onclick = () => {
+        if (!enabled(select, option)) return;
+        const changed = select.selectedIndex !== index;
+        select.selectedIndex = index;
+        closeAndroidSelect();
+        if (changed) {
+          select.dispatchEvent(new Event('input', { bubbles: true }));
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      };
+      return row;
+    }));
+    position(field);
+    const index = enabled(select, select.options[field.active] || {}) ? field.active : [...select.options].findIndex(option => enabled(select, option));
+    highlight(field, index);
+  };
+  const sync = field => {
+    const { select, trigger } = field;
+    [...select.options].forEach(option => {
+      if (trackedOptions.has(option)) return;
+      trackedOptions.add(option);
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLOptionElement.prototype, 'selected');
+      Object.defineProperty(option, 'selected', { configurable: true, get() { return descriptor.get.call(this); }, set(value) {
+        descriptor.set.call(this, value);
+        const owner = fields.get(this.closest('select'));
+        if (owner) { owner.active = owner.select.selectedIndex; sync(owner); }
+      } });
+    });
+    const text = select.selectedOptions[0]?.label || '请选择';
+    if (trigger.textContent !== text) trigger.textContent = text;
+    trigger.disabled = select.matches(':disabled');
+    trigger.hidden = select.hidden;
+    trigger.setAttribute('aria-required', String(select.required));
+    if (activeAndroidSelect === field) {
+      if (trigger.disabled || select.hidden || !trigger.getClientRects().length) closeAndroidSelect(false);
+      else render(field);
+    }
+  };
+  const open = field => {
+    sync(field);
+    if (field.trigger.disabled || field.trigger.hidden) return;
+    if (activeAndroidSelect === field) { closeAndroidSelect(); return; }
+    closeAndroidSelect(false);
+    field.active = field.select.selectedIndex;
+    (field.select.closest('dialog[open]') || document.body).append(field.list);
+    activeAndroidSelect = field;
+    field.trigger.setAttribute('aria-expanded', 'true');
+    if (typeof field.list.showPopover === 'function') field.list.showPopover();
+    render(field);
+    field.trigger.focus({ preventScroll: true });
+  };
+  const enhance = select => {
+    if (fields.has(select) || select.multiple || select.size > 1) return;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'android-select-trigger';
+    trigger.dataset.androidSelect = select.id || `android-select-${++sequence}`;
+    trigger.setAttribute('role', 'combobox');
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    const label = select.labels?.[0]?.cloneNode(true);
+    label?.querySelectorAll('select, button').forEach(node => node.remove());
+    if (select.hasAttribute('aria-labelledby')) trigger.setAttribute('aria-labelledby', select.getAttribute('aria-labelledby'));
+    else trigger.setAttribute('aria-label', select.getAttribute('aria-label') || label?.textContent.trim() || '选择');
+    const list = document.createElement('div');
+    list.id = `android-select-list-${++sequence}`;
+    list.className = 'android-select-list';
+    // Listbox rows use the combobox's focus; clicking a disabled row must not
+    // strand keyboard navigation on the document. Touch scrolling stays native.
+    list.onmousedown = event => event.preventDefault();
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', trigger.getAttribute('aria-label') || '选择');
+    if (typeof list.showPopover === 'function') list.setAttribute('popover', 'manual');
+    trigger.setAttribute('aria-controls', list.id);
+    const field = { select, trigger, list, active: select.selectedIndex };
+    fields.set(select, field);
+    select.classList.add('android-native-select');
+    select.setAttribute('aria-hidden', 'true');
+    select.tabIndex = -1;
+    select.after(trigger);
+    // Programmatic value changes don't emit mutation/change events. Delegate to
+    // the native accessors so assignments used by existing loaders stay intact.
+    ['value', 'selectedIndex'].forEach(property => {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, property);
+      Object.defineProperty(select, property, { configurable: true, get() { return descriptor.get.call(this); }, set(value) { descriptor.set.call(this, value); field.active = this.selectedIndex; sync(field); } });
+    });
+    select.focus = options => trigger.focus(options);
+    select.addEventListener('change', () => sync(field));
+    select.addEventListener('input', () => sync(field));
+    trigger.onclick = () => open(field);
+    trigger.onkeydown = event => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' ', 'Escape', 'Tab'].includes(event.key)) return;
+      if (event.key === 'Escape' || event.key === 'Tab') {
+        if (activeAndroidSelect === field) { if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); } closeAndroidSelect(event.key === 'Escape'); }
+        return;
+      }
+      event.preventDefault();
+      if (activeAndroidSelect !== field) { open(field); return; }
+      if (event.key === 'Enter' || event.key === ' ') { field.list.children[field.active]?.click(); return; }
+      const indices = [...select.options].map((option, i) => enabled(select, option) ? i : -1).filter(i => i >= 0);
+      const current = indices.indexOf(field.active);
+      const next = event.key === 'Home' ? indices[0] : event.key === 'End' ? indices.at(-1) : indices[Math.max(0, Math.min(indices.length - 1, current + (event.key === 'ArrowDown' ? 1 : -1)))];
+      highlight(field, next ?? -1);
+    };
+    sync(field);
+  };
+  document.querySelectorAll('select').forEach(enhance);
+  const observer = new MutationObserver(records => {
+    const changed = new Set();
+    records.forEach(record => {
+      const select = record.target instanceof Element ? record.target.closest('select') : record.target.parentElement?.closest('select');
+      if (select && fields.has(select)) changed.add(fields.get(select));
+      if (record.type === 'attributes' && record.target instanceof Element && !select) {
+        record.target.querySelectorAll('select').forEach(node => { if (fields.has(node)) changed.add(fields.get(node)); });
+      }
+      record.addedNodes.forEach(node => {
+        if (!(node instanceof Element)) return;
+        if (node.matches('select')) enhance(node);
+        node.querySelectorAll('select').forEach(enhance);
+      });
+    });
+    fields.forEach((field, select) => {
+      if (!select.isConnected) {
+        if (activeAndroidSelect === field) closeAndroidSelect(false);
+        field.trigger.remove(); field.list.remove(); fields.delete(select);
+      } else if (select.nextElementSibling !== field.trigger) select.after(field.trigger);
+    });
+    changed.forEach(sync);
+  });
+  observer.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+  document.addEventListener('pointerdown', event => {
+    if (activeAndroidSelect && !activeAndroidSelect.trigger.contains(event.target) && !activeAndroidSelect.list.contains(event.target)) closeAndroidSelect(false);
+  }, true);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && activeAndroidSelect) { event.preventDefault(); event.stopImmediatePropagation(); closeAndroidSelect(); }
+  }, true);
+  document.addEventListener('cancel', event => {
+    if (activeAndroidSelect) { event.preventDefault(); closeAndroidSelect(); }
+  }, true);
+  document.addEventListener('close', () => { if (activeAndroidSelect && !activeAndroidSelect.trigger.getClientRects().length) closeAndroidSelect(false); }, true);
+  document.addEventListener('reset', () => queueMicrotask(() => fields.forEach(sync)), true);
+  document.addEventListener('scroll', event => { if (activeAndroidSelect && event.target !== activeAndroidSelect.list) position(activeAndroidSelect); }, true);
+  window.addEventListener('resize', () => { if (activeAndroidSelect) position(activeAndroidSelect); });
+}
+initializeAndroidSelects();
 let hlsLibraryPromise = null;
 
 async function api(path, options = {}) {
@@ -365,7 +566,7 @@ function mobileApiRequest(path, method, body, multipart = null) {
     const timer = window.setTimeout(() => {
       mobileCallbacks.delete(callbackId);
       reject(new Error("本机请求超时，请重试。"));
-    }, path.startsWith("/api/dictionary/") ? 120000 : 30000);
+    }, /^\/api\/articles\/\d+\/edge-tts$/.test(path) ? 600000 : path.startsWith("/api/dictionary/") ? 120000 : 30000);
     mobileCallbacks.set(callbackId, result => { window.clearTimeout(timer); resolve(result); });
     try { window.FujimiMobile.request(JSON.stringify({ path, method, body, multipart }), callbackId); }
     catch (_error) {
@@ -1802,6 +2003,7 @@ function desktopOnlineVoices() {
 }
 
 function desktopOnlineVoice(name) {
+  if (window.FujimiMobile?.request && ["ja-JP-KeitaNeural", "ja-JP-NanamiNeural"].includes(name)) return { id: name };
   return desktopOnlineVoices().find(voice => voice.name === name || voice.id === name) || null;
 }
 
@@ -2223,7 +2425,8 @@ function articleDetail(article) {
   setArticleTranslationView(root, "show");
 
   const audio = $(".audio", root);
-  const hasAudio = Boolean(article.audio_path) && !["browser", "disabled"].includes(article.audio_status);
+  const selectedVoiceChanged = window.FujimiMobile?.request && state.browserVoiceName && article.audio_voice_name && article.audio_voice_name !== state.browserVoiceName;
+  const hasAudio = Boolean(article.audio_path) && !["browser", "disabled"].includes(article.audio_status) && !selectedVoiceChanged;
   if (hasAudio) audio.src = mobileMediaUrl(article.audio_path, "/api/audio/");
   const bookmarkButton = $(".bookmark", root);
   renderBookmarkButton(bookmarkButton, Boolean(article.bookmarked));
@@ -2238,7 +2441,7 @@ function articleDetail(article) {
   };
   $(".exit-reader", root).onclick = exitReaderRoom;
   if (hasAudio) setupNativeArticlePlayer(article, root, audio);
-  else if (article.audio_status === "browser") setupBrowserArticlePlayer(article, root);
+  else if (article.audio_status === "browser" || selectedVoiceChanged) setupBrowserArticlePlayer(article, root);
   const voiceSelect = $(".reread-voice", root);
   populateRereadVoices(voiceSelect, article).catch(error => setRereadTask(root, "failed", "声線を読み込めませんでした。", "", error.message));
   const rereadLink = $(".reread-link", root);
@@ -2393,7 +2596,7 @@ async function rereadArticle(article, voiceValue, target, root) {
       browserName = selected?.id || selected?.name || "";
       if (!browserName) throw new Error("利用できる日本語のブラウザー音声がありません。");
     }
-    const sharedOnlineVoice = window.FujimiDesktop && voiceValue === "browser" ? desktopOnlineVoice(browserName) : null;
+    const sharedOnlineVoice = (window.FujimiDesktop || window.FujimiMobile?.request) && voiceValue === "browser" ? desktopOnlineVoice(browserName) : null;
     if (sharedOnlineVoice) {
       setRereadTask(root, "running", "オンライン音声を生成して保存しています…", "", "", 0, 1, { cancellable: false });
       const result = await api(`/api/articles/${article.id}/edge-tts`, {
@@ -2855,7 +3058,7 @@ function setupMobileMediaPlayer(article, root, audio) {
     controller.started = true;
     renderNativeArticleAudio(controller);
   };
-  bindParagraphSeeking(root, index => {
+  const seekParagraph = index => {
     const bounded = Math.max(0, Math.min((article.paragraphs || []).length - 1, index));
     const position = controller.timeline[bounded]?.speechStart || 0;
     const accepted = window.FujimiMobile.playMedia(controller.mediaSource, position, controller.rate);
@@ -2868,7 +3071,9 @@ function setupMobileMediaPlayer(article, root, audio) {
     controller.mobileStatus.ended = false;
     controller.started = true;
     renderNativeArticleAudio(controller);
-  });
+  };
+  bindParagraphSeeking(root, seekParagraph);
+  controller.seekParagraph = seekParagraph;
   renderNativeArticleAudio(controller);
 }
 
@@ -2926,6 +3131,7 @@ function setupNativeArticlePlayer(article, root, audio) {
     audio.play().catch(() => toast("音频播放失败", true));
   };
   bindParagraphSeeking(root, seekParagraph);
+  controller.seekParagraph = seekParagraph;
   if (audio.readyState >= 1) rebuildTimeline();
   else renderNativeArticleAudio(controller);
 }
@@ -3169,6 +3375,36 @@ async function speakDesktopOnlineChunk(controller, voice, token) {
 }
 
 async function speakBrowserSpeech(controller, startIndex = 0) {
+  if (window.FujimiMobile?.request && controller.article?.id) {
+    if (controller.savingAudio) return;
+    controller.savingAudio = true;
+    const button = $(".audio-player-toggle", controller.root);
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    notice("正在生成并保存完整音频…");
+    const target = controller.root.parentElement;
+    const paragraph = Math.max(0, controller.segments.findIndex(segment => startIndex >= segment.start && startIndex < segment.end));
+    try {
+      const result = await api(`/api/articles/${controller.article.id}/edge-tts`, {
+        method: "POST", body: JSON.stringify({ voice: controller.browserVoiceName || state.browserVoiceName }),
+      });
+      if (state.browserSpeech !== controller || !controller.root.isConnected) return;
+      openArticle(result.article, target);
+      notice(result.cached ? "已读取保存的完整音频。" : "完整音频已保存到文章的 audio/。");
+      const player = state.articleAudio;
+      if (player?.root.isConnected) player.seekParagraph(paragraph);
+    } catch (error) {
+      if (controller.root.isConnected) notice(error.message || "完整音频未能保存，请重试。", true);
+    } finally {
+      controller.savingAudio = false;
+      if (button.isConnected) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        renderBrowserSpeech(controller);
+      }
+    }
+    return;
+  }
   stopDesktopOnlineAudio(controller);
   stopLocalBrowserAudio(controller);
   stopSpeechEngine();
@@ -3285,6 +3521,7 @@ function setupBrowserArticlePlayer(article, root) {
   const controller = {
     root,
     text: model.text,
+    article,
     textLength: model.text.length,
     segments: model.segments,
     index: 0,
@@ -3519,8 +3756,9 @@ function renderDailySchedule(schedule) {
   const automatic = schedule.mode === "automatic";
   $("#schedule-state").textContent = automatic ? "自動更新" : "手動生成";
   $("#schedule-sidebar-summary").innerHTML = automatic ? `日刊：${escapeText(schedule.time)} CST 自動<br>完成した記事から順次公開` : "日刊：手動生成<br>完成した記事から順次公開";
-  const nextRun = schedule.next_run ? new Date(schedule.next_run).toLocaleString("zh-CN", { hour12: false }) : null;
-  $("#schedule-summary").textContent = schedule.scheduler_available === false ? "Android 日刊采集与自动调度尚未接入。" : automatic ? `每天 ${schedule.time}（CST）自动更新${nextRun ? `；下次运行：${nextRun}` : ""}` : "自动更新已关闭。需要时使用“今すぐ生成”。";
+  const nextRun = schedule.next_run ? new Date(schedule.next_run).toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" }) : null;
+  const precision = schedule.schedule_precision === "window" ? "（系统时间窗口，可能延后）" : "";
+  $("#schedule-summary").textContent = schedule.scheduler_available === false ? "Android 日刊采集与自动调度尚未接入。" : automatic ? `每天 ${schedule.time}（CST）自动更新${precision}${nextRun ? `；下次安排：${nextRun} CST` : ""}${schedule.background_detail ? `。${schedule.background_detail}` : ""}` : "自动更新已关闭。需要时使用“今すぐ生成”。";
   const automaticButton = $("#daily-mode [data-mode='automatic']");
   if (automaticButton) automaticButton.disabled = schedule.scheduler_available === false;
 }
@@ -4288,8 +4526,8 @@ function formatBytes(bytes) {
 
 function renderMobileNodeStatus(status) {
   mobileNodeStatus = status;
-  $("#mobile-runtime-summary").textContent = "本机运行 · Windows 可选";
-  $("#mobile-service-status").textContent = status.startup_error ? "初始化失败" : "本机就绪";
+  $("#mobile-runtime-summary").textContent = status.article_index_error || "本机运行 · Windows 可选";
+  $("#mobile-service-status").textContent = status.startup_error ? "初始化失败" : status.article_index_error ? "索引待修复" : "本机就绪";
   const address = $("#mobile-windows-address");
   if (!address.dataset.dirty && !mobileWindowsCheck) address.value = status.server_url || "";
   $("#mobile-deepseek-status").textContent = status.deepseek_configured ? "已保存" : "未配置";
@@ -4340,10 +4578,10 @@ function renderMobileNodeStatus(status) {
   syncButton.textContent = active ? "同步中…" : "立即同步";
   syncButton.setAttribute("aria-busy", String(active));
 
-  const nextAlarm = status.next_alarm ? new Date(status.next_alarm).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "未安排";
+  const nextAlarm = status.next_alarm ? `${new Date(status.next_alarm).toLocaleString([], { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} CST` : "未安排";
   $("#mobile-alarm-status").textContent = status.scheduler_available === false
     ? `${status.exact_alarm ? "精确闹钟权限已授权" : "精确闹钟权限未授权"} · 调度尚未接入`
-    : `${status.exact_alarm ? "精确" : "时间窗口"} · ${nextAlarm}`;
+    : status.alarm_error || `${status.schedule_precision === "exact" ? "精确" : "系统时间窗口"} · ${nextAlarm}`;
   $("#mobile-exact-alarm").hidden = Boolean(status.exact_alarm);
   $("#mobile-app-info").hidden = !status.app_version && !status.data_path;
   $("#mobile-app-settings-panel").hidden = $("#mobile-app-info").hidden;
@@ -4353,6 +4591,9 @@ function renderMobileNodeStatus(status) {
   if (status.daily_generation_available === false) {
     $("#generate-daily").disabled = true;
     $("#generate-daily").title = "Android 日刊采集尚未接入";
+  } else if (status.daily_generation_available === true) {
+    $("#generate-daily").disabled = state.dailyTaskRunning;
+    $("#generate-daily").title = "在此手机上独立采集日刊";
   }
   if (status.reference_voices_available === false) {
     $("#add-voice").textContent = "选择声线";
@@ -4361,7 +4602,7 @@ function renderMobileNodeStatus(status) {
     $("#add-voice").title = "选择日语声线";
     $("#voice-editor-hint").textContent = "Edge 在线声线（圭太／七海）";
     const hint = $("#voice-settings-disclosure summary small");
-    if (hint) hint.textContent = "选择 PC edge-tts 提供的圭太或七海";
+    if (hint) hint.textContent = "选择圭太或七海在线声线";
   }
 }
 

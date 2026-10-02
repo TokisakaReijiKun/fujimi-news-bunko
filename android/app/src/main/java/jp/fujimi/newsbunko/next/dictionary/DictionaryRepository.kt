@@ -3,6 +3,7 @@ package jp.fujimi.newsbunko.next.dictionary
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import jp.fujimi.newsbunko.next.store.ApiResponse
+import jp.fujimi.newsbunko.next.storage.DataDirectory
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -11,7 +12,7 @@ import java.nio.file.Files
 import java.security.MessageDigest
 
 class DictionaryRepository(private val context: Context) {
-    private val databaseFile = File(context.filesDir, "data/dictionary-search.sqlite3")
+    private val databaseFile = File(DataDirectory.root(), "dictionary-search.sqlite3")
     private val originalFile = File(context.filesDir, "dictionary/dictionary.sqlite3")
     private var database: SQLiteDatabase? = null
     private var original: SQLiteDatabase? = null

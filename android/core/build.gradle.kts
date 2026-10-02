@@ -15,6 +15,7 @@ java {
 }
 
 dependencies {
+    implementation("org.jsoup:jsoup:1.21.2")
     implementation("org.json:json:20250517")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.12.2")

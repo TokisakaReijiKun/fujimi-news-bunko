@@ -14,16 +14,18 @@ import android.provider.Settings
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import jp.fujimi.newsbunko.next.dictionary.DictionaryRepository
+import jp.fujimi.newsbunko.next.daily.DailyRuntime
 import jp.fujimi.newsbunko.next.settings.LocalSettingsApi
 import jp.fujimi.newsbunko.next.settings.EdgeVoiceCatalog
 import jp.fujimi.newsbunko.next.settings.PcEndpoint
 import jp.fujimi.newsbunko.next.settings.SecretStore
 import jp.fujimi.newsbunko.next.settings.SettingsBackend
 import jp.fujimi.newsbunko.next.speech.EdgeSpeechPlayer
+import jp.fujimi.newsbunko.next.speech.ArticleEdgeAudio
 import jp.fujimi.newsbunko.next.store.ApiResponse
 import jp.fujimi.newsbunko.next.store.LocalLibraryApi
+import jp.fujimi.newsbunko.next.storage.DataDirectory
 import org.json.JSONObject
-import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
@@ -35,17 +37,19 @@ class MobileBridge(private val activity: Activity, private val webView: WebView)
     private val preferences = context.getSharedPreferences("mobile-settings", Context.MODE_PRIVATE)
     private val executor = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
-    private val dataRoot = File(context.filesDir, "data").also { it.mkdirs() }
-    private val library = LocalLibraryApi(dataRoot.toPath())
+    private val dataRoot = DataDirectory.prepare(context)
+    private val daily = DailyRuntime.get(context)
+    private val library = LocalLibraryApi(dataRoot.toPath(), daily::snapshot)
     private val dictionary = DictionaryRepository(context)
     private val secrets = SecretStore(context)
     private val speech = EdgeSpeechPlayer(context) { id, event -> deliverTts(id, event) }
+    private val articleAudio = ArticleEdgeAudio(dataRoot.toPath(), speech::completeArticle, speech::validateFile)
     private val settings = LocalSettingsApi(object : SettingsBackend {
         override fun read(key: String) = preferences.getString("setting:$key", null)
         override fun write(key: String, value: String) {
             check(preferences.edit().putString("setting:$key", value).commit()) { "设置保存失败，请检查可用空间。" }
         }
-    }) { EdgeVoiceCatalog.voices() }
+    }, daily.schedule) { EdgeVoiceCatalog.voices() }
     private val connectionGeneration = AtomicLong()
     private val speechGeneration = AtomicLong()
     @Volatile private var closed = false
@@ -68,9 +72,8 @@ class MobileBridge(private val activity: Activity, private val webView: WebView)
                     "/api/health" -> ApiResponse(200, JSONObject().put("status", "ok").put("runtime", "android")
                         .put("dictionary", true).put("translation_configured", secrets.isConfigured())
                         .put("tts", "browser").put("tts_details", JSONObject().put("enabled", false))
-                        .put("capabilities", JSONObject().put("system_speech", false).put("edge_speech", true).put("sync", false).put("daily_generation", false).put("reference_voices", false)).toString())
-                    "/api/tasks/daily" -> ApiResponse(200, JSONObject().put("status", "idle").put("stage", "idle").put("message", "Android 日刊采集尚未接入。").toString())
-                    else -> settings.request(method, path, body) ?: dictionary.request(method, path) ?: library.request(method, path)
+                        .put("capabilities", JSONObject().put("system_speech", false).put("edge_speech", true).put("sync", false).put("daily_generation", true).put("reference_voices", false)).toString())
+                    else -> edgeAudioRequest(method, path, body) ?: daily.request(method, path) ?: settings.request(method, path, body) ?: dictionary.request(method, path) ?: library.request(method, path)
                 }
             } catch (_: Exception) {
                 ApiResponse(400, JSONObject().put("detail", "请求或设置未能保存，请检查格式与可用空间。").toString())
@@ -91,10 +94,31 @@ class MobileBridge(private val activity: Activity, private val webView: WebView)
         .put("deepseek_configured", secrets.isConfigured())
         .put("allow_cellular", preferences.getBoolean("allow-cellular", false))
         .put("exact_alarm", Build.VERSION.SDK_INT < 31 || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms())
-        .put("scheduler_available", false).put("next_alarm", JSONObject.NULL)
-        .put("irodori_available", false).put("daily_generation_available", false).put("reference_voices_available", false)
+        .put("scheduler_available", true).put("next_alarm", daily.schedule.status().opt("next_run"))
+        .put("schedule_precision", daily.schedule.status().optString("schedule_precision", "window"))
+        .put("alarm_error", preferences.getString("alarm-error", ""))
+        .put("article_index_error", preferences.getString("article-index-error", ""))
+        .put("irodori_available", false).put("daily_generation_available", true).put("reference_voices_available", false)
         .put("edge_voices_available", true)
         .toString()
+
+    private fun edgeAudioRequest(method: String, path: String, body: String?): ApiResponse? {
+        val match = Regex("/api/articles/(\\d+)/edge-tts").matchEntire(path) ?: return null
+        if (method != "POST") return ApiResponse(405, JSONObject().put("detail", "请使用 POST 生成音频。").toString())
+        val id = match.groupValues[1].toLong()
+        val voice = JSONObject(body ?: "{}").optString("voice").ifEmpty {
+            settings.value("voice-mode").optString("browser_voice_name", EdgeVoiceCatalog.KEITA)
+        }
+        return try {
+            val saved = articleAudio.generate(id, voice)
+            ApiResponse(200, JSONObject().put("status", "ready").put("cached", saved.cached)
+                .put("article", JSONObject(library.request("GET", "/api/articles/$id").body)).toString())
+        } catch (failure: IllegalArgumentException) {
+            ApiResponse(409, JSONObject().put("detail", failure.message ?: "音频与正文不匹配，未保存。").toString())
+        } catch (_: Exception) {
+            ApiResponse(502, JSONObject().put("detail", "在线声线生成或保存失败，请检查网络与存储空间后重试；已有音频保留。").toString())
+        }
+    }
 
     @JavascriptInterface fun setAllowCellular(value: Boolean): Boolean = preferences.edit().putBoolean("allow-cellular", value).commit()
     @JavascriptInterface fun setDeepSeekKey(value: String): Boolean = secrets.saveDeepSeekKey(value.trim())
