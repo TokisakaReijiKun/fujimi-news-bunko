@@ -3000,8 +3000,10 @@ function renderNativeArticleAudio(controller) {
   progress.max = Math.max(1, duration);
   progress.value = current;
   renderAudioPlayerChrome(player, { playing, current, duration, progress: current, maximum: duration });
+  // Media seeks round to microseconds; accumulated paragraph starts may be slightly larger.
+  const boundaryTime = current + 0.000001;
   const active = controller.started
-    ? controller.timeline.findIndex(segment => current >= segment.start && current < segment.end)
+    ? controller.timeline.findIndex(segment => boundaryTime >= segment.start && boundaryTime < segment.end)
     : -1;
   setActiveAudioParagraph(root, active);
 }
