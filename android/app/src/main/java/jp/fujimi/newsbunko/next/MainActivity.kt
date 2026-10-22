@@ -29,6 +29,7 @@ import jp.fujimi.newsbunko.next.store.ArticleMediaAccess
 import jp.fujimi.newsbunko.next.storage.DataDirectory
 import jp.fujimi.newsbunko.next.speech.ArticleAudioResponse
 import java.io.FileInputStream
+import com.google.zxing.integration.android.IntentIntegrator
 
 class MainActivity : Activity() {
     lateinit var webView: WebView
@@ -89,6 +90,28 @@ class MainActivity : Activity() {
         val loader = WebViewAssetLoader.Builder().addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this)).build()
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (trusted(request.url)) {
+                    val bookAudio = Regex("^/api/books/(\\d+)/audio/(.+)$").matchEntire(request.url.path.orEmpty())
+                    if (bookAudio != null) return try {
+                        val path = jp.fujimi.newsbunko.next.store.LocalSyncedLibraryApi(DataDirectory.root().toPath())
+                            .audioAsset(bookAudio.groupValues[1].toLong(), bookAudio.groupValues[2])
+                        ArticleAudioResponse(DataDirectory.root().toPath()).openFile(path,
+                            request.requestHeaders.entries.firstOrNull { it.key.equals("Range", true) }?.value)
+                    } catch (_: Exception) {
+                        WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), "书籍音频缺失或校验失败。".byteInputStream())
+                    }
+                    val resource = Regex("^/api/books/(\\d+)/assets/(.+)$").matchEntire(request.url.path.orEmpty())
+                    if (resource != null) return try {
+                        val path = jp.fujimi.newsbunko.next.store.LocalSyncedLibraryApi(DataDirectory.root().toPath())
+                            .asset(resource.groupValues[1].toLong(), resource.groupValues[2])
+                        val type = android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(path.fileName.toString().substringAfterLast('.', "").lowercase()) ?: "application/octet-stream"
+                        WebResourceResponse(type, null, FileInputStream(path.toFile())).apply {
+                            responseHeaders = mapOf("X-Content-Type-Options" to "nosniff", "Cache-Control" to "no-store", "Content-Security-Policy" to "default-src 'none'; style-src 'unsafe-inline'")
+                        }
+                    } catch (_: Exception) {
+                        WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), "书籍资源缺失或校验失败。".byteInputStream())
+                    }
+                }
                 if (trusted(request.url) && request.url.path?.startsWith("/api/articles/") == true) {
                     val audio = Regex("^/api/articles/(\\d+)/assets/audio/(.+)$").matchEntire(request.url.path.orEmpty())
                     if (audio != null) {
@@ -166,6 +189,10 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1003 && ::bridge.isInitialized) {
+            bridge.completeWindowsScan(IntentIntegrator.parseActivityResult(resultCode, data).contents)
+            return
+        }
         if (requestCode == 1001) {
             chooser?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data))
             chooser = null

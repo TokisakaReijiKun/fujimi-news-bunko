@@ -111,6 +111,145 @@ class ArticleStore(dataRoot: Path) {
 
     fun recover() = locked { Unit }
 
+    /** Shares the existing file lock with synchronisation of PC-format book and example folders. */
+    fun <T> withSyncLock(work: () -> T): T = locked(work)
+
+    /** Merge validated files through the ordinary recoverable article directory transaction. */
+    fun importSynced(source: Path): String = locked {
+        SyncFiles.validate("article", source)
+        val remote = SyncFiles.json(source.resolve("article.json"))
+        val remoteArticle = remote.getJSONObject("article")
+        val key = SyncFiles.articleKey(remoteArticle)
+        val all = ArticleCatalog(data).days().flatMap { ArticleCatalog(data).onDay(it) }
+        val existing = all.firstOrNull { SyncFiles.articleKey(it.metadata) == key }
+        if (existing != null && existing.manifest.getJSONObject("text_files").getJSONObject("original.txt").getString("sha256") !=
+            remote.getJSONObject("text_files").getJSONObject("original.txt").getString("sha256")) return@locked "conflict"
+        val day = remoteArticle.optJSONArray("edition_dates")?.optString(0).orEmpty()
+        LocalDate.parse(day)
+        val id = existing?.metadata?.getLong("id") ?: allocateId()
+        val relative = existing?.directory ?: allocateDirectory(remoteArticle.getString("title"), id, day)
+        val target = contentDirectory(relative)
+        val transaction = transactions.resolve(UUID.randomUUID().toString().replace("-", ""))
+        val stage = transaction.resolve("new")
+        safeDirectories(stage)
+        try {
+            if (existing != null) SyncFiles.copyTree(target, stage)
+            val merged = if (existing == null) JSONObject(remote.toString()) else JSONObject(existing.manifest.toString())
+            val article = merged.getJSONObject("article")
+            article.put("id", id).put("storage_key", key.removePrefix("article:"))
+            if (existing == null) { article.put("progress", JSONObject()).put("last_read_at", "") }
+            var changed = existing == null
+            val oldBookmarked = article.optBoolean("bookmarked")
+            article.put("bookmarked", oldBookmarked || remoteArticle.optBoolean("bookmarked"))
+            if (oldBookmarked != article.optBoolean("bookmarked")) changed = true
+            val textSpecs = merged.getJSONObject("text_files")
+            for (name in SyncFiles.allowed("article", source)) {
+                if (name == "article.json") continue
+                val from = SyncFiles.path(source, name)
+                val to = SyncFiles.path(stage, name)
+                if (Files.exists(to)) {
+                    if (SyncFiles.hash(from) == SyncFiles.hash(to)) continue
+                    if (name in setOf("translation.txt", "furigana.html")) {
+                        val currentSpec = textSpecs.getJSONObject(name)
+                        val incomingSpec = remote.getJSONObject("text_files").getJSONObject(name)
+                        if (currentSpec.getJSONArray("paragraphs").length() == 0 && incomingSpec.getJSONArray("paragraphs").length() > 0) {
+                            Files.copy(from, to, StandardCopyOption.REPLACE_EXISTING)
+                            textSpecs.put(name, incomingSpec); changed = true; continue
+                        }
+                        // Independent valid translations stay local; neither side silently overwrites them.
+                        if (incomingSpec.getJSONArray("paragraphs").length() == 0) continue
+                        val currentParts = syncParagraphs(to, currentSpec)
+                        val incomingParts = syncParagraphs(from, incomingSpec)
+                        if (currentParts.size != incomingParts.size || currentParts.indices.any {
+                            currentParts[it].isNotBlank() && incomingParts[it].isNotBlank() && currentParts[it] != incomingParts[it]
+                        }) return@locked "conflict"
+                        val combined = currentParts.indices.map { currentParts[it].ifBlank { incomingParts[it] } }
+                        if (combined != currentParts) {
+                            val field = currentSpec.getString("field")
+                            val (bytes, spec) = textFile(JSONObject().put(field, JSONArray(combined)), field, currentSpec.optString("whole_field").ifEmpty { null })
+                            Files.write(to, bytes); textSpecs.put(name, spec); changed = true
+                        }
+                        continue
+                    }
+                    return@locked "conflict"
+                }
+                safeDirectories(to.parent); Files.copy(from, to); changed = true
+            }
+            val assets = merged.optJSONArray("assets") ?: JSONArray().also { merged.put("assets", it) }
+            val knownAssets = (0 until assets.length()).map { assets.getJSONObject(it).getString("path") }.toMutableSet()
+            val remoteAssets = remote.optJSONArray("assets") ?: JSONArray()
+            for (i in 0 until remoteAssets.length()) {
+                val asset = remoteAssets.getJSONObject(i)
+                if (knownAssets.add(asset.getString("path"))) { assets.put(asset); changed = true }
+            }
+            for (field in listOf("image_paths", "video_urls")) {
+                val values = article.optJSONArray(field) ?: JSONArray()
+                val known = strings(values).toMutableSet()
+                val incoming = remoteArticle.optJSONArray(field) ?: JSONArray()
+                for (i in 0 until incoming.length()) {
+                    val value = incoming.getString(i)
+                    if (known.add(value)) { values.put(value); changed = true }
+                }
+                if (values.length() > 0) article.put(field, values)
+            }
+            if (article.optString("audio_path").isEmpty() && remoteArticle.optString("audio_path").isNotEmpty()) {
+                remoteArticle.keys().asSequence().filter { it.startsWith("audio_") }.forEach { article.put(it, remoteArticle.get(it)) }
+                changed = true
+            }
+            if (!changed) {
+                if (article.optBoolean("bookmarked")) saveSyncedBookmark(target, article)
+                return@locked "unchanged"
+            }
+            merged.put("revision", (existing?.manifest?.optInt("revision") ?: 0) + 1)
+            val manifestBytes = merged.toString().toByteArray(Charsets.UTF_8)
+            Files.deleteIfExists(stage.resolve("article.json"))
+            durableWrite(stage.resolve("article.json"), manifestBytes)
+            SyncFiles.validate("article", stage)
+            if (existing != null) SyncFiles.copyTree(target, data.resolve("backups/sync-${UUID.randomUUID()}/${target.fileName}"))
+            durableWrite(transaction.resolve("journal.json"), JSONObject().put("target", relative.removePrefix("articles/"))
+                .put("article_id", id).put("manifest_sha256", sha256(manifestBytes)).toString().toByteArray(Charsets.UTF_8))
+            safeDirectories(target.parent)
+            if (existing != null) moveNew(target, transaction.resolve("old"))
+            moveNew(stage, target)
+            ArticleReader(data).load(relative)
+            deleteTree(transaction)
+            if (article.optBoolean("bookmarked")) saveSyncedBookmark(target, article)
+            if (existing == null) "created" else "updated"
+        } finally { if (!Files.exists(transaction.resolve("journal.json"))) deleteTree(transaction) }
+    }
+
+    private fun syncParagraphs(path: Path, spec: JSONObject): List<String> {
+        val text = String(Files.readAllBytes(path), Charsets.UTF_8)
+        val spans = spec.getJSONArray("paragraphs")
+        return (0 until spans.length()).map {
+            val span = spans.getJSONArray(it)
+            text.substring(text.offsetByCodePoints(0, span.getInt(0)), text.offsetByCodePoints(0, span.getInt(1)))
+        }
+    }
+
+    private fun saveSyncedBookmark(source: Path, article: JSONObject) {
+        val root = data.resolve("bookmarks")
+        safeDirectories(root)
+        val key = SyncFiles.articleKey(article)
+        val existing = Files.list(root).use { paths -> paths.filter { Files.isDirectory(it, LinkOption.NOFOLLOW_LINKS) }
+            .filter { runCatching { SyncFiles.articleKey(SyncFiles.json(it.resolve("article.json")).getJSONObject("article")) == key }.getOrDefault(false) }
+            .findFirst().orElse(null) }
+        var target = existing ?: root.resolve(source.fileName)
+        if (existing == null && Files.exists(target)) target = root.resolve("${source.fileName}--${article.getLong("id")}")
+        if (existing != null && SyncFiles.files(source).toSet() == SyncFiles.files(existing).toSet() &&
+            SyncFiles.files(source).all { SyncFiles.hash(source.resolve(it)) == SyncFiles.hash(existing.resolve(it)) }) return
+        val transaction = transactions.resolve(UUID.randomUUID().toString().replace("-", ""))
+        val stage = transaction.resolve("new")
+        SyncFiles.copyTree(source, stage)
+        if (existing != null) SyncFiles.copyTree(existing, data.resolve("backups/sync-${UUID.randomUUID()}/${existing.fileName}"))
+        durableWrite(transaction.resolve("journal.json"), JSONObject().put("target_root", "bookmarks").put("target", target.fileName.toString())
+            .put("article_id", article.getLong("id")).put("manifest_sha256", SyncFiles.hash(stage.resolve("article.json")))
+            .toString().toByteArray(Charsets.UTF_8))
+        if (existing != null) moveNew(existing, transaction.resolve("old"))
+        moveNew(stage, target)
+        deleteTree(transaction)
+    }
+
     /** Commit complete TTS through the same recoverable directory transaction as article files. */
     fun saveAudio(source: ArticleSnapshot, voice: String, filename: String, audio: Path, segments: JSONArray): ArticleSnapshot = locked {
         val current = ArticleCatalog(data).find(source.metadata.getLong("id"))
@@ -202,7 +341,7 @@ class ArticleStore(dataRoot: Path) {
                 if (!Files.exists(journal, LinkOption.NOFOLLOW_LINKS)) return@forEach
                 require(!Files.isSymbolicLink(journal)) { "事务日志不能是符号链接。" }
                 val record = JSONObject(readUtf8(journal))
-                val relative = "articles/${record.getString("target")}" 
+                val relative = "${record.optString("target_root", "articles")}/${record.getString("target")}"
                 val target = contentDirectory(relative)
                 val stage = transaction.resolve("new")
                 val old = transaction.resolve("old")
@@ -213,9 +352,9 @@ class ArticleStore(dataRoot: Path) {
                             verifyRecoveryIdentity(record, old)
                             safeDirectories(target.parent)
                             moveNew(old, target)
-                            ArticleReader(data).load(relative)
+                            validateRecoveryFolder(relative)
                         } else if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-                            ArticleReader(data).load(relative)
+                            validateRecoveryFolder(relative)
                             verifyRecoveryIdentity(record, target)
                             if (Files.exists(old, LinkOption.NOFOLLOW_LINKS) && manifestId(old) != manifestId(target)) {
                                 throw ArticleFormatException("恢复目标属于另一篇文章，保留事务和旧版本。")
@@ -223,7 +362,7 @@ class ArticleStore(dataRoot: Path) {
                         }
                     }
                     Files.exists(target, LinkOption.NOFOLLOW_LINKS) -> {
-                        ArticleReader(data).load(relative)
+                        validateRecoveryFolder(relative)
                         verifyRecoveryIdentity(record, target)
                         if (record.has("manifest_sha256") && sha256(Files.readAllBytes(target.resolve("article.json"))) != record.getString("manifest_sha256")) {
                             throw ArticleFormatException("已提交文章与事务记录不一致，保留恢复日志。")
@@ -236,7 +375,7 @@ class ArticleStore(dataRoot: Path) {
                         verifyRecoveryIdentity(record, old)
                         safeDirectories(target.parent)
                         moveNew(old, target)
-                        ArticleReader(data).load(relative)
+                        validateRecoveryFolder(relative)
                     }
                     else -> throw ArticleFormatException("无法恢复文章事务：${transaction.fileName}")
                 }
@@ -250,6 +389,11 @@ class ArticleStore(dataRoot: Path) {
         if (record.has("article_id") && record.getLong("article_id") != id) {
             throw ArticleFormatException("恢复目标属于另一篇文章，保留事务和旧版本。")
         }
+    }
+
+    private fun validateRecoveryFolder(relative: String) {
+        if (relative.startsWith("bookmarks/")) SyncFiles.validate("article", contentDirectory(relative))
+        else ArticleReader(data).load(relative)
     }
 
     private fun manifestId(folder: Path): Long {
@@ -314,8 +458,8 @@ class ArticleStore(dataRoot: Path) {
 
     private fun contentDirectory(relative: String): Path {
         val parts = relative.split('/')
-        require(parts.size == 3 && parts[0] == "articles") { "文章事务目录格式无效。" }
-        LocalDate.parse(parts[1])
+        require(parts.size == 3 && parts[0] == "articles" || parts.size == 2 && parts[0] == "bookmarks") { "文章事务目录格式无效。" }
+        if (parts[0] == "articles") LocalDate.parse(parts[1])
         val target = PreservedPathStore(data).resolveContentPath("$relative/article.json").parent
         ensureNoSymlinks(target)
         return target

@@ -75,7 +75,4 @@ New-Item -ItemType Directory -Path $destinationDir -Force | Out-Null
 $filename = "FujimiShinbunBunkoAndroid-$variant.apk"
 $destination = Join-Path $destinationDir $filename
 Copy-Item -LiteralPath $source -Destination $destination -Force
-$hash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant()
-Set-Content -LiteralPath (Join-Path $destinationDir "$filename.sha256") -Value "$hash  $filename" -Encoding ascii
 Write-Output "APK: $destination"
-Write-Output "SHA256: $hash"

@@ -67,7 +67,7 @@ def css_rules(css):
     return out
 
 
-def sanitize(node, path, assets):
+def sanitize(node, path, assets, *, normalized=False):
     soup=BeautifulSoup(str(node),'html.parser')
     for bad in soup.select('script,style,iframe,object,embed,form,input,button,link,meta,foreignObject'):
         bad.decompose()
@@ -87,7 +87,9 @@ def sanitize(node, path, assets):
     for el in list(soup.find_all(True)):
         if el.name not in allowed:el.unwrap();continue
         attrs={}
-        if el.get('id'):attrs['id']=anchor_id(path,el['id'])
+        if el.get('id'):
+            identifier=el['id']
+            attrs['id']=identifier if normalized and re.fullmatch(r'epub-[0-9a-f]{20}',identifier) else anchor_id(path,identifier)
         if el.get('lang'):attrs['lang']=el['lang'][:20]
         style=safe_style(el.get('style',''))
         classes=el.get('class',[])
@@ -114,6 +116,12 @@ def sanitize(node, path, assets):
                 try:
                     destination,fragment=resolve(path,href)
                     attrs['data-book-href']=destination+'#'+anchor_id(destination,fragment)
+                except ValueError:pass
+            elif normalized and el.get('data-book-href'):
+                try:
+                    destination,fragment=resolve('',el['data-book-href'])
+                    if re.fullmatch(r'epub-[0-9a-f]{20}',fragment):
+                        attrs['data-book-href']=destination+'#'+fragment
                 except ValueError:pass
         el.attrs=attrs
     # Drop indentation added by XML pretty printers while retaining inline spaces.

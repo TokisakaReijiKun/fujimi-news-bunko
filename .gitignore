@@ -46,6 +46,7 @@ apk-original/dictionary/dictionary.sqlite3
 
 # Android local build outputs and signing material
 android/.gradle/
+android/.kotlin/
 android/**/build/
 android/local.properties
 *.apk

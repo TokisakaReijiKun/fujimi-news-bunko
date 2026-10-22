@@ -268,6 +268,23 @@ class ExampleStore:
                     return item
         raise LookupError("示例不存在。")
 
+    def import_content(self, item, audio_files=None):
+        """Install validated paired-device content with the normal example transaction."""
+        with self.locks.locked():
+            title = self._clean_text(item.get('title'), '标题', _MAX_TITLE)
+            text = self._clean_text(item.get('text'), '正文', _MAX_TEXT)
+            existing = next((value for value in self.list() if value['title'] == title), None)
+            identifier = existing['id'] if existing else 'custom-' + uuid.uuid4().hex
+            voice = self.validate_voice(item.get('voice_mode', 'inherit'), item.get('voice_id'), item.get('browser_voice_name', ''))
+            saved = dict(item, id=identifier, title=title, text=text,
+                         directory=existing['directory'] if existing else self._directory_for(title, identifier),
+                         builtin=bool(existing and existing.get('builtin')), **voice)
+            saved['audio_versions'] = [dict(version) for version in saved.get('audio_versions', [])]
+            for version in saved['audio_versions']:
+                if version['path'] in (audio_files or {}):
+                    version['_source'] = str(audio_files[version['path']])
+            return self._commit(saved)
+
     def save_translation(self, example_id, translations):
         with self.locks.locked():
             item = self.get(example_id)

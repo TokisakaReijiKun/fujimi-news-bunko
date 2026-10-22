@@ -11,6 +11,12 @@ import java.nio.file.Path
 class ArticleAudioResponse(private val data: Path) {
     fun open(id: Long, name: String, range: String?): WebResourceResponse {
         val path = ArticleAudioAccess(data).resolve(id, name)
+        return openFile(path, range)
+    }
+
+    /** Caller resolves and validates the file through its own content store. */
+    fun openFile(path: Path, range: String?): WebResourceResponse {
+        val name = path.fileName.toString()
         val size = Files.size(path)
         val headers = mutableMapOf("Accept-Ranges" to "bytes", "Cache-Control" to "no-store", "X-Content-Type-Options" to "nosniff")
         var start = 0L

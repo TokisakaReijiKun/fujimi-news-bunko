@@ -37,6 +37,8 @@ from database_layout import check_database_layout
 from epub_parser import parse_epub
 from book_store import BookStore
 from example_store import ExampleStore
+from device_sync import DeviceSync
+from library_sync import LibrarySync
 from news_providers import provider_for
 from news_providers.services import ArticleServices
 from browser_tts import MAX_TEXT as BROWSER_TTS_MAX_TEXT, BrowserTTS, browser_voice
@@ -310,6 +312,8 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None, tts_root=No
                         enabled=enable_tts, backend=tts_backend, examples=example_store)
     app.extensions['tts'] = tts
     app.extensions['examples'] = example_store
+    DeviceSync(LibrarySync(store, book_store, example_store, getattr(tts, 'voices', None),
+                          browser_voices=browser_tts.voices)).register_control(app)
 
     def article(aid):
         return store.load(aid)
@@ -1133,6 +1137,7 @@ if __name__ == '__main__':
     try:
         http_server.serve_forever()
     finally:
+        app.extensions['device_sync'].shutdown()
         app.extensions['tts'].close()
         app.extensions['browser_tts'].close()
         http_server.server_close()

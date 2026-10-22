@@ -547,6 +547,31 @@ class ArticleStore:
                 raise
             return self.load(aid)
 
+    def refresh_bookmark(self, aid):
+        """Refresh a synced bookmark from its article, keeping the old copy recoverable."""
+        with self.locked():
+            article = self.load(aid)
+            if not article.get('bookmarked'):
+                return article
+            previous = self._bookmark_copy(aid)
+            destination = previous or self._bookmark_destination(article)
+            stage = self.bookmarks / ('.' + uuid.uuid4().hex + '.tmp')
+            backup = self.data / 'backups' / ('sync-bookmark-' + str(aid) + '-' + uuid.uuid4().hex)
+            shutil.copytree(safe_path(self.root, article['_directory']), stage)
+            try:
+                if previous:
+                    replace_transaction_directory(previous, backup)
+                try:
+                    replace_transaction_directory(stage, destination)
+                except Exception:
+                    if backup.exists() and not destination.exists():
+                        replace_transaction_directory(backup, destination)
+                    raise
+            finally:
+                if stage.exists():
+                    shutil.rmtree(stage)
+            return article
+
     def add_day(self, aid, day):
         with self.locked():
             a = self.load(aid)

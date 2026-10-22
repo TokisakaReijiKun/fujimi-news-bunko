@@ -15,7 +15,7 @@
       if (isMobileApp) root.classList.add("mobile-app-booting");
     })();
   </script>
-  <link rel="stylesheet" href="/static/static.css?v=20261002-android-audio">
+  <link rel="stylesheet" href="/static/static.css?v=20261017-pc-settings">
   <link rel="stylesheet" href="/static/book-reader.css?v=3">
 </head>
 <body>
@@ -128,7 +128,7 @@
         </div>
       </section>
 
-      <section id="settings-view" class="view settings-design-a" hidden>
+      <section id="settings-view" class="view" hidden>
         <div class="section-head"><div><p class="section-kicker">PREFERENCES</p><h2>設置</h2><p>読む時間を、自分らしく整える。</p></div></div>
         <div class="settings-stack">
           <section class="settings-panel voice-panel">
@@ -212,6 +212,22 @@
             </div>
           </section>
 
+          <section id="device-sync-panel" class="settings-panel device-sync-panel" hidden>
+            <div class="panel-heading device-sync-heading">
+              <div><h3>文庫互联</h3><p>在同一网络中连接 Android 文庫</p></div>
+              <div class="device-sync-controls"><span id="device-sync-state" role="status">未开启</span><input id="device-sync-enabled" type="checkbox" role="switch" aria-label="开启文庫同步"></div>
+            </div>
+            <p id="device-sync-error" class="panel-notice error" role="alert" hidden></p>
+            <div id="device-sync-details" class="device-sync-details" hidden>
+              <img id="device-sync-qr" width="220" height="220" alt="在 Android 文庫中扫描此二维码配对">
+              <dl class="device-sync-values">
+                <div><dt>连接地址</dt><dd><strong id="device-sync-url"></strong><button id="device-sync-copy-url" class="quiet" type="button" aria-label="复制连接地址">复制</button></dd></div>
+                <div><dt>配对码</dt><dd><strong id="device-sync-code"></strong><button id="device-sync-copy-code" class="quiet" type="button" aria-label="复制配对码">复制</button></dd></div>
+              </dl>
+            </div>
+            <p id="device-sync-detail" class="muted device-sync-detail">开启后，在 Android 的 Windows 同步中连接。</p>
+          </section>
+
           <section id="mobile-settings-panel" class="settings-panel mobile-settings-panel" hidden>
             <div class="panel-heading"><div><span class="settings-section-number">04 / ANDROID</span><h3>Android 本地节点</h3><p id="mobile-runtime-summary">本地数据就绪</p></div><span id="mobile-service-status" class="status-badge">读取中</span></div>
             <div id="android-local-settings" class="android-local-settings" hidden>
@@ -231,15 +247,23 @@
               </section>
               <section class="mobile-node-group" aria-labelledby="mobile-windows-title">
                 <div class="mobile-node-group-heading">
-                  <div><h4 id="mobile-windows-title">PC 协同</h4><p>可选节点</p></div>
+                  <div><h4 id="mobile-windows-title">Windows 同步</h4><p>连接电脑文庫</p></div>
                   <span id="mobile-windows-state" class="mobile-node-state">未配置</span>
                 </div>
-                <p class="mobile-node-purpose" id="mobile-windows-purpose">连接状态与同步进度分别显示。</p>
-                <label class="mobile-compact-field" for="mobile-windows-address">私有局域网或 VPN 地址</label>
-                <div class="mobile-control-row mobile-address-row">
-                  <input id="mobile-windows-address" type="url" inputmode="url" autocapitalize="off" spellcheck="false" aria-describedby="mobile-windows-result" placeholder="https://192.168.1.20:8429">
-                  <button id="mobile-save-windows" class="quiet" type="button">检测</button>
-                </div>
+                <p class="mobile-node-purpose" id="mobile-windows-purpose">手机与电脑连接同一网络，并在 PC 设置中开启文庫互联。</p>
+                <button id="mobile-scan-windows" class="quiet mobile-scan-windows" type="button">扫码连接</button>
+                <div class="mobile-pair-divider"><span>或使用地址与配对码</span></div>
+                <form id="mobile-pair-form">
+                  <label class="mobile-compact-field" for="mobile-windows-address">连接地址</label>
+                  <div class="mobile-control-row mobile-address-row">
+                    <input id="mobile-windows-address" type="url" inputmode="url" autocapitalize="off" spellcheck="false" aria-describedby="mobile-windows-result" placeholder="http://192.168.1.20:8429" required>
+                  </div>
+                  <label class="mobile-compact-field" for="mobile-windows-code">配对码</label>
+                  <div class="mobile-control-row mobile-pair-code-row">
+                    <input id="mobile-windows-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-describedby="mobile-windows-result" placeholder="6 位配对码" required>
+                    <button id="mobile-save-windows" type="submit">连接</button>
+                  </div>
+                </form>
                 <div class="mobile-address-feedback">
                   <p id="mobile-windows-result" role="status">尚未填写地址</p>
                   <button id="mobile-clear-windows" class="mobile-text-action" type="button">清除</button>
@@ -247,12 +271,6 @@
                 <p class="mobile-network-warning">仅限私有网络，不得暴露到公网。</p>
               </section>
             </div>
-            <p class="panel-notice mobile-host-only">同步端口仅限私有网络，不得暴露到公网。</p>
-            <div id="mobile-service-urls" class="desktop-paths mobile-host-only"></div>
-            <figure id="mobile-service-qr" class="mobile-service-qr mobile-host-only" hidden>
-              <img alt="Android 服务器地址二维码">
-              <figcaption>在手机端扫描或手动输入上方地址。</figcaption>
-            </figure>
             <div id="android-sync-settings" class="android-sync-settings" hidden>
               <section class="mobile-node-group mobile-sync-group" aria-labelledby="mobile-sync-title">
                 <div class="mobile-node-group-heading mobile-sync-heading">
@@ -262,7 +280,7 @@
                 <div id="mobile-sync-progress" class="mobile-sync-progress" role="progressbar" aria-label="同步进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                   <span></span>
                 </div>
-                <p id="mobile-sync-detail" class="mobile-sync-detail" role="status" aria-live="polite">填写并检测 Windows 地址后即可同步。</p>
+                <p id="mobile-sync-detail" class="mobile-sync-detail" role="status" aria-live="polite">连接 Windows 后，点击“立即同步”传输文庫。</p>
                 <dl class="mobile-sync-stats">
                   <div><dt>上次同步</dt><dd id="mobile-sync-last">尚未完成</dd></div>
                   <div><dt>待提交</dt><dd id="mobile-sync-pending">0</dd></div>

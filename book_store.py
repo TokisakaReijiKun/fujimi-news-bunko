@@ -110,6 +110,12 @@ class BookStore:
             state['revision']=oldstate.get('revision',0)+1
             files={};summary=[]
             for ch in book['chapters']:
+                # A transferred book can receive a different local ID. Playback URLs
+                # are derived from the local record and never trusted from its source.
+                for audio in [ch.get('audio'), *ch.get('audio_versions', [])]:
+                    if isinstance(audio, dict) and audio.get('path'):
+                        safe_path(folder/'audio',audio['path'])
+                        audio['url']=f"/api/books/{bid}/audio/{audio['path']}"
                 name=f"chapters/{ch['id']:04d}.json"
                 content={k:v for k,v in ch.items() if k not in ('file','sha256')}
                 blob=json.dumps(content,ensure_ascii=False,indent=2).encode('utf-8')
@@ -149,7 +155,7 @@ class BookStore:
             for name in ('resources','audio'): (folder/name).mkdir(exist_ok=True)
             return self.load(bid)
 
-    def create(self,b,blob,assets):
+    def create(self,b,blob,assets,audio_files=None):
         with self.locks.locked():
             sha=digest(blob)
             with db_connection(self.db) as db:
@@ -161,7 +167,7 @@ class BookStore:
                 db.execute('UPDATE book_sequence SET next_id=next_id+1 WHERE id=1')
             name=directory_name(b['title'],bid,55)
             if (self.root/name).exists():name=name[:45]+'--'+str(bid)
-            self.save(dict(b,id=bid),directory=name,assets=assets,original=blob,digest_value=sha)
+            self.save(dict(b,id=bid),directory=name,assets=assets,original=blob,digest_value=sha,audio_files=audio_files)
             return bid,False
 
     def ids(self):

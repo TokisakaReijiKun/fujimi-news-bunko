@@ -211,6 +211,8 @@ def run_desktop(*, data_dir=None, webview_module=None, tray_factory=None,
             thread.join(timeout=5)
         http_server.server_close()
         if app is not None:
+            if 'device_sync' in app.extensions:
+                app.extensions['device_sync'].shutdown()
             app.extensions['tts'].close()
             app.extensions['browser_tts'].close()
         if pid_file.exists() and pid_file.read_text(encoding='utf-8').strip() == str(os.getpid()):

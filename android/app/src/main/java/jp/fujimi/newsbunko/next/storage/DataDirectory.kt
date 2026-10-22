@@ -22,6 +22,7 @@ object DataDirectory {
         check(hasAccess(context)) { "请先允许文庫访问手机存储。" }
         return root().also {
             check(it.isDirectory || it.mkdirs()) { "无法创建文庫目录：${it.absolutePath}，请检查存储空间。" }
+            LibraryMediaVisibility.prepare(context, it)
         }
     }
 }

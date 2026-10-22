@@ -148,6 +148,8 @@ let mobileNavPreviousFocus = null;
 let mobileSyncPollTimer = null;
 let mobileNodeStatus = null;
 let mobileWindowsCheck = null;
+let deviceSyncPollTimer = null;
+let deviceSyncStatus = null;
 
 function syncMobileViewHeading(view) {
   const meta = MOBILE_VIEW_META[view] || { kicker: "PRIVATE NEWS LIBRARY", title: "富士見新聞文庫", description: "ニュースを、深く読む。" };
@@ -216,8 +218,20 @@ function finishMobileAppBoot() {
   });
 }
 
-function enhanceAndroidSettingsLayout() {
-  if (!window.FujimiMobile || $("#source-settings-disclosure")) return;
+function initializeSettingsLayout() {
+  // The Android card layout must not replace the established PC settings page.
+  $("#settings-view").classList.toggle("settings-design-a", Boolean(window.FujimiMobile));
+  if (!window.FujimiMobile) {
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.append($("#active-voice-badge"), $("#add-voice"));
+    $(".voice-panel > .panel-heading").append(actions);
+    $(".daily-content-settings").append($("#daily-content-summary"));
+    document.querySelectorAll(".settings-section-number, .voice-heading-copy > p, .voice-settings-actions, .daily-source-stat, .settings-reading-note, .settings-storage-note")
+      .forEach(element => { element.hidden = true; });
+    return;
+  }
+  if ($("#source-settings-disclosure")) return;
   $("#settings-view .section-head")?.classList.add("settings-page-head");
   // Keep the selected voice visible; source controls retain their existing disclosure.
   $("#settings-system-speech").hidden = typeof window.FujimiMobile.openSpeechSettings !== "function";
@@ -260,7 +274,10 @@ window.__fujimiHandleBack = () => {
   return false;
 };
 window.__fujimiRefreshNativeSettings = () => {
-  if (state.currentView === "settings") loadDesktopSettings();
+  if (state.currentView === "settings") {
+    loadDesktopSettings();
+    loadVoices();
+  }
 };
 window.__fujimiNativeNotice = message => toast(String(message || "操作失败"), true);
 
@@ -1378,6 +1395,7 @@ async function speakDictionaryText(text, button) {
     if (token !== state.dictionarySpeechToken) return;
   }
   if (window.FujimiMobile?.speak) {
+    if (mobileVoiceNeedsPc()) return toast("所选声线由 PC 合成，手机可播放已同步音频；词典即时朗读请选择圭太或七海。", true);
     button.classList.add("is-speaking");
     button.setAttribute("aria-label", "停止朗读");
     button.title = "停止朗读";
@@ -2009,8 +2027,13 @@ function desktopOnlineVoice(name) {
 }
 
 function applyBrowserVoiceSettings(mode) {
+  if (mode.mode) state.voiceMode = mode.mode;
   state.browserVoiceName = mode.browser_voice_name || "";
   state.browserVoiceLabel = mode.browser_voice_label || "ブラウザー";
+}
+
+function mobileVoiceNeedsPc(browserName = state.browserVoiceName) {
+  return Boolean(window.FujimiMobile && (state.voiceMode === "voice" || localBrowserVoice(browserName)?.saved_audio_only));
 }
 
 function configuredBrowserVoice() {
@@ -2092,9 +2115,10 @@ async function initializeBrowserVoice() {
       if (Array.isArray(catalog)) state.browserVoices = catalog;
     } catch (_error) { state.browserVoices = []; }
     if (window.FujimiMobile?.speak) {
-      const available = state.browserVoices.filter(voice => voice.provider === "edge-tts" && voice.available !== false);
+      if (mode.mode === "voice") return;
+      const available = state.browserVoices.filter(voice => voice.available !== false);
       const selected = available.find(voice => voice.id === edgeVoiceId(state.browserVoiceName))
-        || available.find(voice => voice.default) || available[0];
+        || (!state.browserVoiceName ? available.find(voice => voice.default) || available[0] : null);
       if (selected && state.browserVoiceName !== selected.id) {
         applyBrowserVoiceSettings(await api("/api/settings/browser-voice", { method: "PUT", body: JSON.stringify({ name: selected.id, label: "システム音声" }) }));
         if (state.currentView === "settings") loadVoices();
@@ -2426,8 +2450,7 @@ function articleDetail(article) {
   setArticleTranslationView(root, "show");
 
   const audio = $(".audio", root);
-  const selectedVoiceChanged = window.FujimiMobile?.request && state.browserVoiceName && article.audio_voice_name && article.audio_voice_name !== state.browserVoiceName;
-  const hasAudio = Boolean(article.audio_path) && !["browser", "disabled"].includes(article.audio_status) && !selectedVoiceChanged;
+  const hasAudio = Boolean(article.audio_path) && !["browser", "disabled", "unavailable"].includes(article.audio_status);
   if (hasAudio) audio.src = mobileMediaUrl(article.audio_path, "/api/audio/");
   const bookmarkButton = $(".bookmark", root);
   renderBookmarkButton(bookmarkButton, Boolean(article.bookmarked));
@@ -2442,7 +2465,7 @@ function articleDetail(article) {
   };
   $(".exit-reader", root).onclick = exitReaderRoom;
   if (hasAudio) setupNativeArticlePlayer(article, root, audio);
-  else if (article.audio_status === "browser" || selectedVoiceChanged) setupBrowserArticlePlayer(article, root);
+  else if (article.audio_status === "browser" && !article.audio_unavailable_detail) setupBrowserArticlePlayer(article, root);
   const voiceSelect = $(".reread-voice", root);
   populateRereadVoices(voiceSelect, article).catch(error => setRereadTask(root, "failed", "声線を読み込めませんでした。", "", error.message));
   const rereadLink = $(".reread-link", root);
@@ -2550,6 +2573,8 @@ function openArticle(article, target) {
     startRereadTracking(article, target, root, "reread");
   } else if (root && ["failed", "replace_failed"].includes(article.audio_status)) {
     setRereadTask(root, "failed", article.audio_task_detail || "朗読生成に失敗しました。再試行してください。");
+  } else if (root && article.audio_unavailable_detail) {
+    setRereadTask(root, "failed", article.audio_unavailable_detail);
   }
   target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -2616,7 +2641,7 @@ async function rereadArticle(article, voiceValue, target, root) {
     }
     const mode = voiceValue.startsWith("voice:") ? "voice" : voiceValue;
     const voiceId = mode === "voice" ? Number(voiceValue.split(":", 2)[1]) : null;
-    setRereadTask(root, "running", "音声生成を準備しています…", "", "", 0, 1, { cancellable: true });
+    setRereadTask(root, "running", window.FujimiMobile ? "保存済みの朗読を確認しています…" : "音声生成を準備しています…", "", "", 0, 1, { cancellable: !window.FujimiMobile });
     const result = await api(articleApiPath(article, "/reread"), { method: "POST", body: JSON.stringify({ mode, voice_id: voiceId, browser_voice_name: browserName }) });
     if (result.status === "ready") {
       stopRereadTracking();
@@ -3091,7 +3116,7 @@ function setupMobileMediaPlayer(article, root, audio) {
 }
 
 function setupNativeArticlePlayer(article, root, audio) {
-  if (window.FujimiMobile?.playMedia && /\/api\/articles\/\d+\/assets\/audio\//.test(audio.src)) return setupMobileMediaPlayer(article, root, audio);
+  if (window.FujimiMobile?.playMedia && /\/api\/(?:articles\/\d+\/assets|books\/\d+)\/audio\//.test(audio.src)) return setupMobileMediaPlayer(article, root, audio);
   const player = $(".article-audio-player", root);
   const controller = { root, player, audio, timeline: [], started: false, pendingParagraph: null, rate: savedPlaybackRate() };
   state.articleAudio = controller;
@@ -3390,6 +3415,9 @@ async function speakDesktopOnlineChunk(controller, voice, token) {
 }
 
 async function speakBrowserSpeech(controller, startIndex = 0) {
+  if (mobileVoiceNeedsPc(controller.browserVoiceName || state.browserVoiceName)) {
+    return notice("所选声线尚无已同步音频，请先在 PC 生成后同步。", true);
+  }
   if (window.FujimiMobile?.request && controller.article?.id) {
     if (controller.savingAudio) return;
     controller.savingAudio = true;
@@ -3919,12 +3947,15 @@ async function loadVoices() {
         } catch (error) { panelError("#voice-error", error.message); }
       };
       const editButton = $(".edit", row);
+      const readOnly = Boolean(window.FujimiMobile && voice.read_only);
+      editButton.hidden = readOnly;
       editButton.onclick = () => {
         $(".voice-actions-menu", row)?.removeAttribute("open");
         if (isBrowser) openBrowserVoiceDialog();
         else openVoiceDialog(voice);
       };
       const deleteButton = $(".delete", row);
+      if (deleteButton) deleteButton.hidden = readOnly;
       if (deleteButton) deleteButton.onclick = async () => {
         $(".voice-actions-menu", row)?.removeAttribute("open");
         if (!confirm(`删除声线“${voice.name}”？`)) return;
@@ -3934,9 +3965,15 @@ async function loadVoices() {
           panelError("#voice-error");
         } catch (error) { panelError("#voice-error", error.message); }
       };
+      if (window.FujimiMobile && voice.saved_audio_only) {
+        const detail = $(".voice-detail", row) || document.createElement("span");
+        detail.className = "voice-detail";
+        detail.textContent = `${active ? "使用中 · " : ""}播放已同步音频`;
+        $(".voice-copy", row).append(detail);
+      }
       list.append(row);
     };
-    appendVoice({ id: null, name: browserTitle }, { isBrowser: true });
+    appendVoice({ id: null, name: browserTitle, saved_audio_only: localBrowserVoice(state.browserVoiceName)?.saved_audio_only }, { isBrowser: true });
     voices.forEach(voice => appendVoice(voice));
   } catch (error) { panelError("#voice-error", error.message); }
 }
@@ -3964,7 +4001,7 @@ function populateSourceVoiceSelect(select, selected = "inherit") {
     new Option("朗読なし", "none"),
     ...state.voices.map(voice => new Option(voice.name, `voice:${voice.id}`)),
   );
-  if (window.FujimiMobile && mobileNodeStatus?.reference_voices_available === false) {
+  if (window.FujimiMobile && (mobileNodeStatus?.reference_synthesis_available ?? mobileNodeStatus?.reference_voices_available) === false) {
     const model = [...select.options].find(option => option.value === "model");
     if (model) model.disabled = true;
   }
@@ -4167,7 +4204,7 @@ async function populateBrowserVoiceSelect() {
     || (!state.browserVoiceName || isHiddenBrowserVoiceName(state.browserVoiceName) ? preferredJapaneseBrowserVoice(voices) : null);
   const online = desktopOnlineVoices();
   const localOptions = local.map(voice => {
-    const option = new Option(`${voice.name}${voice.available === false ? "（资源不可用）" : ""}`, voice.id);
+    const option = new Option(`${voice.name}${voice.available === false ? "（资源不可用）" : mobile && voice.saved_audio_only ? "（已同步音频）" : ""}`, voice.id);
     option.disabled = voice.available === false;
     return option;
   });
@@ -4212,7 +4249,7 @@ function openBrowserVoiceDialog() {
   $("#voice-editor-form").reset();
   setBrowserVoiceEditor(true);
   $("#voice-editor-name").value = state.browserVoiceLabel || "ブラウザー";
-  $("#voice-dialog-title").textContent = window.FujimiMobile ? "选择 Edge 声线" : "修改浏览器声线";
+  $("#voice-dialog-title").textContent = window.FujimiMobile ? "选择系统声线" : "修改浏览器声线";
   $("#submit-voice").textContent = "保存修改";
   $("#native-speech-settings").hidden = true;
   populateBrowserVoiceSelect();
@@ -4482,6 +4519,7 @@ async function loadDesktopSettings() {
   const mobilePanel = $("#mobile-settings-panel");
   if (!panel) return;
   if (window.FujimiMobile?.mobileStatus) {
+    $("#device-sync-panel").hidden = true;
     panel.hidden = true;
     mobilePanel.hidden = false;
     $("#android-sync-settings").hidden = false;
@@ -4497,6 +4535,7 @@ async function loadDesktopSettings() {
     }
     return;
   }
+  await loadDeviceSyncSettings();
   try {
     const health = await api("/api/health");
     if (!window.pywebview?.api) {
@@ -4505,20 +4544,6 @@ async function loadDesktopSettings() {
     }
     const settings = await window.pywebview.api.get_desktop_settings();
     panel.hidden = false;
-    if (mobilePanel && window.pywebview.api.get_mobile_status) {
-      const mobile = await window.pywebview.api.get_mobile_status();
-      mobilePanel.hidden = false;
-      $("#mobile-service-status").textContent = mobile.enabled ? `端口 ${mobile.port}` : "未启动";
-      const mobileUrls = mobile.urls || [];
-      const primaryUrl = mobile.primary_url || mobileUrls[0] || "";
-      const alternateUrls = mobileUrls.filter(url => url !== primaryUrl);
-      $("#mobile-service-urls").innerHTML = primaryUrl
-        ? `<div class="mobile-primary-url"><dt>推荐地址</dt><dd><strong>${escapeText(primaryUrl)}</strong><small>手机请优先使用此地址</small></dd></div>${alternateUrls.length ? `<details class="mobile-alternate-urls"><summary>其他网卡地址（${alternateUrls.length}）</summary>${alternateUrls.map(url => `<div><dt>备用地址</dt><dd>${escapeText(url)}</dd></div>`).join("")}</details>` : ""}`
-        : "<p class=\"muted\">未发现可用的私有网络地址。</p>";
-      const qr = $("#mobile-service-qr");
-      qr.hidden = !primaryUrl;
-      if (primaryUrl) $("img", qr).src = `/api/desktop/mobile-qr?url=${encodeURIComponent(primaryUrl)}`;
-    }
     $("#desktop-project-root").textContent = settings.project_root || "未设置";
     $("#desktop-data-path").textContent = settings.data_dir || "未设置";
     $("#desktop-python-path").textContent = settings.python_executable || "未设置";
@@ -4527,6 +4552,72 @@ async function loadDesktopSettings() {
     panel.hidden = false;
     panelError("#desktop-settings-error", error.message || "无法读取桌面设置");
   }
+}
+
+function renderDeviceSyncSettings(status) {
+  deviceSyncStatus = status;
+  $("#device-sync-enabled").checked = Boolean(status.enabled);
+  const available = Boolean(status.enabled && status.url && status.pairing_code);
+  $("#device-sync-details").hidden = !available;
+  $("#device-sync-url").textContent = available ? status.url : "";
+  $("#device-sync-code").textContent = available ? status.pairing_code : "";
+  const qr = $("#device-sync-qr");
+  if (available) {
+    const version = `${status.url}|${status.pairing_code}`;
+    if (qr.dataset.version !== version) {
+      qr.src = `${status.qr_url || '/api/settings/device-sync/qr'}?v=${Date.now()}`;
+      qr.dataset.version = version;
+    }
+  } else {
+    qr.removeAttribute("src");
+    delete qr.dataset.version;
+  }
+  const count = Array.isArray(status.paired_devices) ? status.paired_devices.length : Number(status.paired_devices) || 0;
+  $("#device-sync-state").textContent = status.enabled ? (count ? `已配对 ${count} 台设备` : "等待手机配对") : "未开启";
+  $("#device-sync-state").dataset.enabled = String(Boolean(status.enabled));
+  $("#device-sync-detail").textContent = status.detail || (status.enabled
+    ? "在 Android 的 Windows 同步中扫码，或输入以上地址和配对码。配对后由手机点击“立即同步”。"
+    : "开启后，在 Android 的 Windows 同步中连接。");
+}
+
+async function loadDeviceSyncSettings() {
+  const panel = $("#device-sync-panel");
+  if (!panel || window.FujimiMobile?.mobileStatus) return;
+  window.clearTimeout(deviceSyncPollTimer);
+  deviceSyncPollTimer = null;
+  panel.hidden = false;
+  try {
+    const status = await api("/api/settings/device-sync");
+    renderDeviceSyncSettings(status);
+    panelError("#device-sync-error");
+    if (status.enabled && state.currentView === "settings") {
+      deviceSyncPollTimer = window.setTimeout(() => {
+        if (state.currentView === "settings") loadDeviceSyncSettings();
+      }, 3000);
+    }
+  } catch (error) { panelError("#device-sync-error", error.message || "无法读取同步状态"); }
+}
+
+async function toggleDeviceSync() {
+  const toggle = $("#device-sync-enabled");
+  toggle.disabled = true;
+  window.clearTimeout(deviceSyncPollTimer);
+  try {
+    const status = await api("/api/settings/device-sync", { method: "PUT", body: JSON.stringify({ enabled: toggle.checked }) });
+    renderDeviceSyncSettings(status);
+    panelError("#device-sync-error");
+    if (status.enabled) deviceSyncPollTimer = window.setTimeout(loadDeviceSyncSettings, 3000);
+  } catch (error) {
+    toggle.checked = Boolean(deviceSyncStatus?.enabled);
+    panelError("#device-sync-error", error.message || "同步服务未能启动，请重试。");
+  } finally { toggle.disabled = false; }
+}
+
+async function copyDeviceSyncValue(selector) {
+  const value = $(selector).textContent;
+  if (!value) return;
+  try { await navigator.clipboard.writeText(value); toast("已复制"); }
+  catch (_error) { toast("复制失败，请选中内容手动复制。", true); }
 }
 
 function formatBytes(bytes) {
@@ -4553,14 +4644,14 @@ function renderMobileNodeStatus(status) {
     offline: "离线",
     checking: "检测中",
     syncing: "同步中",
-    ready: status.irodori_available ? "可用 · Irodori" : "可用",
+    ready: status.paired ? "已配对" : "可用",
   };
   const windowsMessages = {
     unconfigured: "尚未填写 PC 地址。",
     offline: "地址已保存，但当前未连上；本地功能不受影响。",
-    checking: "正在检查 HTTPS 节点，不传输文库。",
+    checking: "正在连接 Windows…",
     syncing: "已连接，正在交换本地与电脑端修改。",
-    ready: status.irodori_available ? "已连接，可双向同步并请求 Irodori。" : "已连接，可以双向同步。",
+    ready: status.paired ? "已配对，点击“立即同步”传输文庫。" : "节点可用，请输入配对码连接。",
   };
   const windowsState = status.windows_status || "unconfigured";
   const windowsBadge = $("#mobile-windows-state");
@@ -4576,7 +4667,7 @@ function renderMobileNodeStatus(status) {
   const active = ["queued", "running"].includes(syncState);
   const progress = Math.max(0, Math.min(100, Number(status.sync_progress) || 0));
   const defaultStage = configured ? "尚未同步" : "等待配置";
-  const defaultDetail = configured ? "Windows 地址已配置，可以开始同步。" : "填写并检测 Windows 地址后即可同步。";
+  const defaultDetail = status.paired ? "点击“立即同步”传输文庫。" : "扫码或输入地址与配对码连接 Windows。";
   $("#mobile-sync-stage").textContent = status.sync_stage || defaultStage;
   $("#mobile-sync-percent").textContent = `${Math.round(progress)}%`;
   const progressTrack = $("#mobile-sync-progress");
@@ -4614,7 +4705,7 @@ function renderMobileNodeStatus(status) {
     $("#add-voice").onclick = openBrowserVoiceDialog;
     $("#add-voice").disabled = false;
     $("#add-voice").title = "选择日语声线";
-    $("#voice-editor-hint").textContent = "Edge 在线声线（圭太／七海）";
+    $("#voice-editor-hint").textContent = "圭太／七海可在线生成，PC 声线播放已同步音频。";
     const hint = $("#voice-settings-disclosure summary small");
     if (hint) hint.textContent = "选择圭太或七海在线声线";
   }
@@ -4657,12 +4748,13 @@ function updateMobileCellularSetting() {
 function startMobileSync() {
   const accepted = Boolean(window.FujimiMobile?.syncNow());
   if (!accepted) {
-    const detail = mobileNodeStatus?.sync_detail || "请先填写并检测 Windows 地址。";
+    const detail = mobileNodeStatus?.sync_detail || "请先连接 Windows。";
     $("#mobile-sync-detail").textContent = detail;
     toast(detail, true);
     return;
   }
   renderMobileNodeStatus({
+    ...mobileNodeStatus,
     server_url: $("#mobile-windows-address").value.trim(), windows_status: "syncing",
     deepseek_configured: $("#mobile-deepseek-status").textContent !== "未配置",
     allow_cellular: $("#mobile-allow-cellular").checked, sync_state: "queued",
@@ -4705,28 +4797,50 @@ function clearMobileDeepSeekKey() {
   } catch (error) { result.textContent = error.message || "密钥清除失败。"; result.dataset.state = "error"; }
 }
 
-function saveMobileWindowsAddress() {
+function saveMobileWindowsAddress(event) {
+  event?.preventDefault();
   const input = $("#mobile-windows-address");
   const value = input.value.trim();
-  const button = $("#mobile-save-windows");
+  const code = $("#mobile-windows-code");
   if (mobileWindowsCheck) return;
   input.removeAttribute("aria-invalid");
+  code.removeAttribute("aria-invalid");
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash || !["", "/"].includes(url.pathname)) throw new Error();
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || !["", "/"].includes(url.pathname)) throw new Error();
   } catch (_error) {
-    $("#mobile-windows-result").textContent = "请输入 HTTPS 私网地址，例如 https://192.168.1.20:8429。";
+    $("#mobile-windows-result").textContent = "请输入 PC 显示的连接地址，例如 http://192.168.1.20:8429。";
     $("#mobile-windows-result").dataset.state = "error";
     input.setAttribute("aria-invalid", "true");
     input.focus();
     return;
   }
+  if (!/^\d{6}$/.test(code.value.trim())) {
+    $("#mobile-windows-result").textContent = "请输入 PC 显示的 6 位配对码。";
+    $("#mobile-windows-result").dataset.state = "error";
+    code.setAttribute("aria-invalid", "true");
+    code.focus();
+    return;
+  }
+  beginMobilePairing(false, value, code.value.trim());
+}
+
+function beginMobilePairing(scan, address = "", code = "") {
+  if (mobileWindowsCheck) return;
+  const input = $("#mobile-windows-address");
+  const codeInput = $("#mobile-windows-code");
+  const button = $("#mobile-save-windows");
+  const scanButton = $("#mobile-scan-windows");
   button.disabled = true;
-  button.textContent = "检测中…";
+  scanButton.disabled = true;
+  button.textContent = scan ? "连接" : "连接中…";
   button.setAttribute("aria-busy", "true");
+  scanButton.setAttribute("aria-busy", String(scan));
   input.disabled = true;
+  codeInput.disabled = true;
+  $("#mobile-clear-windows").disabled = true;
   $("#mobile-sync-now").disabled = true;
-  $("#mobile-windows-result").textContent = "正在检查 Windows 节点…";
+  $("#mobile-windows-result").textContent = scan ? "请扫描 PC 的文庫互联二维码。" : "正在与 Windows 配对…";
   $("#mobile-windows-result").dataset.state = "syncing";
   const callbackId = `setup-${Date.now()}`;
   const finish = (success, message) => {
@@ -4734,12 +4848,16 @@ function saveMobileWindowsAddress() {
     window.clearTimeout(mobileWindowsCheck.timer);
     mobileWindowsCheck = null;
     button.disabled = false;
-    button.textContent = "检测";
+    scanButton.disabled = false;
+    $("#mobile-clear-windows").disabled = false;
+    button.textContent = "连接";
     button.setAttribute("aria-busy", "false");
+    scanButton.setAttribute("aria-busy", "false");
     input.disabled = false;
-    $("#mobile-windows-result").textContent = message || (success ? "连接成功，可以双向同步。" : "Windows 当前离线。");
+    codeInput.disabled = false;
+    if (success) codeInput.value = "";
+    $("#mobile-windows-result").textContent = message || (success ? "配对成功，可以开始同步。" : "连接失败，请检查 PC 服务和配对码。");
     $("#mobile-windows-result").dataset.state = success ? "ready" : "offline";
-    if (!success) input.setAttribute("aria-invalid", "true");
     try {
       const status = JSON.parse(window.FujimiMobile.mobileStatus());
       delete input.dataset.dirty;
@@ -4748,24 +4866,31 @@ function saveMobileWindowsAddress() {
       renderMobileNodeStatus(status);
     } catch (_error) { $("#mobile-sync-now").disabled = true; }
   };
-  mobileWindowsCheck = { id: callbackId, finish, timer: window.setTimeout(() => finish(false, "检测超时，请检查 PC 服务和网络后重试。"), 20000) };
-  window.__fujimiSetupResolve = (id, success, message) => {
-    if (mobileWindowsCheck?.id === id) finish(Boolean(success), message || (success ? "节点可用。" : "节点当前不可用。"));
+  mobileWindowsCheck = { id: callbackId, finish, timer: scan ? null : window.setTimeout(() => finish(false, "连接超时，请检查 PC 服务和网络后重试。"), 45000) };
+  window.__fujimiWindowsCheckResult = (id, success, message) => {
+    if (mobileWindowsCheck?.id === id) finish(Boolean(success), message || (success ? "配对成功。" : "配对失败。"));
   };
   try {
-    if (!window.FujimiMobile?.connectServer) throw new Error();
-    window.FujimiMobile.connectServer(value, callbackId);
-  } catch (_error) { finish(false, "无法调用连接检测接口。"); }
+    const bridge = window.FujimiMobile;
+    if (scan) {
+      if (!bridge?.scanWindowsPairing) throw new Error("当前 APK 不支持扫码，请更新安装包。");
+      if (bridge.scanWindowsPairing(callbackId) === false) throw new Error("相机无法启动，请使用地址和配对码连接。");
+    } else {
+      if (!bridge?.pairWindows) throw new Error("当前 APK 不支持配对，请更新安装包。");
+      if (bridge.pairWindows(address, code, callbackId) === false) throw new Error("配对任务未能启动，请重试。");
+    }
+  } catch (error) { finish(false, error.message || "无法连接 Windows。"); }
 }
 
 function clearMobileWindowsAddress() {
   try {
     if (!window.FujimiMobile?.setServerUrl("")) throw new Error("地址清除失败。");
   } catch (error) { toast(error.message || "地址清除失败。", true); return; }
-  if (mobileWindowsCheck) mobileWindowsCheck.finish(false, "检测已取消。");
+  if (mobileWindowsCheck) mobileWindowsCheck.finish(false, "连接已取消。");
   delete $("#mobile-windows-address").dataset.dirty;
   $("#mobile-windows-address").removeAttribute("aria-invalid");
   $("#mobile-windows-address").value = "";
+  $("#mobile-windows-code").value = "";
   $("#mobile-windows-result").textContent = "尚未填写 PC 地址。";
   $("#mobile-windows-result").dataset.state = "unconfigured";
   stopMobileSyncPoll();
@@ -5114,6 +5239,10 @@ function renderBookBlocks(payload, root) {
 function setupBookAudio(payload, root) {
   const paragraphs = payload.chapter.blocks.filter(block => block.text_ja).map(block => block.text_ja);
   const audio = $(".book-audio", root);
+  if (payload.chapter.audio_unavailable_detail) {
+    setRereadTask(root, "failed", payload.chapter.audio_unavailable_detail);
+    return;
+  }
   if (payload.chapter.audio?.url && payload.chapter.voice_mode !== "none"
       && (payload.chapter.voice_mode !== "browser" || payload.chapter.audio.voice_id == null && payload.chapter.audio.voice_name)) {
     audio.src = mobileMediaUrl(payload.chapter.audio.url);
@@ -5671,7 +5800,13 @@ $("#mobile-allow-cellular").onchange = updateMobileCellularSetting;
 $("#mobile-sync-now").onclick = startMobileSync;
 $("#mobile-save-deepseek").onclick = saveMobileDeepSeekKey;
 $("#mobile-clear-deepseek").onclick = clearMobileDeepSeekKey;
-$("#mobile-save-windows").onclick = saveMobileWindowsAddress;
+$("#mobile-pair-form").onsubmit = saveMobileWindowsAddress;
+$("#mobile-scan-windows").onclick = () => beginMobilePairing(true);
+$("#device-sync-enabled").onchange = toggleDeviceSync;
+$("#device-sync-copy-url").onclick = () => copyDeviceSyncValue("#device-sync-url");
+$("#device-sync-copy-code").onclick = () => copyDeviceSyncValue("#device-sync-code");
+$("#device-sync-qr").onerror = () => panelError("#device-sync-error", "二维码加载失败，可使用连接地址和配对码连接。");
+$("#mobile-windows-code").oninput = event => event.target.removeAttribute("aria-invalid");
 $("#mobile-windows-address").oninput = event => { event.target.dataset.dirty = "true"; event.target.removeAttribute("aria-invalid"); };
 $("#mobile-clear-windows").onclick = clearMobileWindowsAddress;
 $("#mobile-exact-alarm").onclick = requestMobileExactAlarm;
@@ -5725,7 +5860,7 @@ window.addEventListener("popstate", event => {
   showView(currentRouteView(), { historyMode: "none", resetReader: false });
 });
 const initialView = currentRouteView();
-enhanceAndroidSettingsLayout();
+initializeSettingsLayout();
 syncMobileNavigationLayout();
 finishMobileAppBoot();
 loadDailySettings();

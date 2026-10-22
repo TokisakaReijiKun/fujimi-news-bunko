@@ -1,6 +1,7 @@
 package jp.fujimi.newsbunko.next.settings
 
 import jp.fujimi.newsbunko.next.store.ApiResponse
+import jp.fujimi.newsbunko.next.store.LocalVoiceStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -13,6 +14,7 @@ interface SettingsBackend {
 class LocalSettingsApi(
     private val backend: SettingsBackend,
     private val dailySchedule: DailyScheduleService? = null,
+    private val referenceVoices: LocalVoiceStore? = null,
     private val voices: () -> JSONArray,
 ) {
     private val defaults = mapOf(
@@ -24,6 +26,33 @@ class LocalSettingsApi(
 
     @Synchronized
     fun value(key: String): JSONObject = JSONObject(backend.read(key) ?: defaults.getValue(key))
+
+    fun browserVoices(): JSONArray {
+        val result = JSONArray(voices().toString())
+        val known = (0 until result.length()).map { result.getJSONObject(it).getString("id") }.toMutableSet()
+        val remote = runCatching { JSONArray(backend.read("pc-browser-voices") ?: "[]") }.getOrDefault(JSONArray())
+        for (i in 0 until remote.length()) {
+            val voice = remote.optJSONObject(i) ?: continue
+            val id = voice.optString("id"); val name = voice.optString("name")
+            if (id.isBlank() || name.isBlank() || id.length > 200 || name.length > 100 || !known.add(id)) continue
+            result.put(JSONObject().put("id", id).put("name", name).put("provider", voice.optString("provider"))
+                .put("lang", voice.optString("lang", "ja-JP")).put("available", true).put("saved_audio_only", true).put("local", false))
+        }
+        return result
+    }
+
+    fun savePcBrowserVoices(voices: JSONArray) {
+        require(voices.length() <= 100) { "PC 声线目录过大。" }
+        val catalog = JSONArray()
+        for (i in 0 until voices.length()) {
+            val voice = voices.getJSONObject(i)
+            val id = voice.getString("id"); val name = voice.getString("name")
+            require(id.isNotBlank() && id.length <= 200 && name.isNotBlank() && name.length <= 100)
+            catalog.put(JSONObject().put("id", id).put("name", name).put("provider", voice.optString("provider"))
+                .put("lang", voice.optString("lang", "ja-JP")))
+        }
+        backend.write("pc-browser-voices", catalog.toString())
+    }
 
     @Synchronized
     fun request(method: String, path: String, body: String?): ApiResponse? {
@@ -41,11 +70,11 @@ class LocalSettingsApi(
                         ok(dailySchedule.configure(mode, time))
                     } else error(405, "不支持此请求方式。")
                 }
-                path == "/api/browser-voices" && method == "GET" -> ok(voices())
-                path == "/api/settings/voices" && method == "GET" -> ok(JSONArray())
+                path == "/api/browser-voices" && method == "GET" -> ok(browserVoices())
+                path == "/api/settings/voices" && method == "GET" -> ok(referenceVoices?.list(value("voice-mode").takeIf { it.optString("mode") == "voice" }?.optLong("voice_id")) ?: JSONArray())
                 path == "/api/settings/browser-voice" && method == "PUT" -> {
                     val name = payload.getString("name")
-                    val catalog = voices()
+                    val catalog = browserVoices()
                     require((0 until catalog.length()).any {
                         val voice = catalog.getJSONObject(it)
                         voice.optString("id") == name && voice.optBoolean("available", true)
@@ -58,8 +87,13 @@ class LocalSettingsApi(
                     ok(mode)
                 }
                 path == "/api/settings/active-voice" && method == "PUT" -> {
-                    require(payload.optBoolean("browser")) { "手机独立朗读仅支持圭太或七海 Edge 在线声线。" }
-                    val mode = value("voice-mode").put("mode", "browser")
+                    val mode = value("voice-mode")
+                    if (payload.optBoolean("browser")) mode.put("mode", "browser")
+                    else {
+                        val id = payload.getLong("voice_id")
+                        require(referenceVoices?.find(id) != null) { "所选参考声线尚未同步或文件无效。" }
+                        mode.put("mode", "voice").put("voice_id", id)
+                    }
                     save("voice-mode", mode)
                     ok(mode)
                 }

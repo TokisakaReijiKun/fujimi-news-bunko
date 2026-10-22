@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "items": [
+    {
+      "key": "article:edition:2026-10-17:https://example.test/sync-fixture",
+      "kind": "article",
+      "title": "端末同期のニュース",
+      "fingerprint": "85ca310340135f0baee6e7403af6d3623a8378dc9c37812bf5c644cd7c035892",
+      "filename": "article.zip"
+    },
+    {
+      "key": "book:f47b291d776852cbd7dd5f687c974f1ebc3f3ce90ab3190ae609daa2e6e3a121",
+      "kind": "book",
+      "title": "同期の本",
+      "fingerprint": "c805a24c1ebb93271b53dc4640c39b141e54de0d2cd4bb6918071b8d0c048471",
+      "filename": "book.zip"
+    },
+    {
+      "key": "example:537896c1b685295b7f1dad101ce64d24ee56699b5bbb2d2340c55b835b8758e9",
+      "kind": "example",
+      "title": "同期の例文",
+      "fingerprint": "a4670f92dc96503cee564b63b1d9964c619cd443829ecf7077edf3a53f9cdea9",
+      "filename": "example.zip"
+    }
+  ]
+}

@@ -22,6 +22,7 @@ class PublicDataDeviceTest {
             scenario.onActivity { path = JSONObject(it.bridge.mobileStatus()).getString("data_path") }
         }
         assertEquals("/storage/emulated/0/富士見新聞文庫/data", path)
+        assertTrue("公共文庫必须禁止系统扫描其中的媒体", File(path, ".nomedia").isFile)
         val diagnostics = File(path, "diagnostics").also { assertTrue(it.isDirectory || it.mkdirs()) }
         val temporary = Files.createTempDirectory(diagnostics.toPath(), "storage-test-").toFile()
         try {

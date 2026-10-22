@@ -19,6 +19,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.mp3.Mp3Extractor
 import jp.fujimi.newsbunko.next.store.ArticleAudioAccess
+import jp.fujimi.newsbunko.next.store.LocalSyncedLibraryApi
 import org.json.JSONObject
 import java.nio.file.Path
 import kotlin.math.roundToLong
@@ -63,8 +64,13 @@ class ArticleMediaPlayer(context: Context, private val data: Path,
         val path = try {
             val uri = Uri.parse(url)
             require(uri.scheme == "https" && uri.host == "appassets.androidplatform.net" && uri.port == -1)
-            val match = Regex("/api/articles/(\\d+)/assets/audio/(.+)").matchEntire(uri.path.orEmpty()) ?: return false
-            ArticleAudioAccess(data).resolve(match.groupValues[1].toLong(), match.groupValues[2])
+            val route = uri.path.orEmpty()
+            val article = Regex("/api/articles/(\\d+)/assets/audio/(.+)").matchEntire(route)
+            if (article != null) ArticleAudioAccess(data).resolve(article.groupValues[1].toLong(), article.groupValues[2])
+            else {
+                val book = Regex("/api/books/(\\d+)/audio/(.+)").matchEntire(route) ?: return false
+                LocalSyncedLibraryApi(data).audioAsset(book.groupValues[1].toLong(), book.groupValues[2])
+            }
         } catch (_: Exception) { return false }
         main.post {
             if (closed) return@post
