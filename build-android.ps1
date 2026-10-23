@@ -70,9 +70,11 @@ try {
 
 $variant = if ($Release) { 'release' } else { 'debug' }
 $source = Join-Path $env:USERPROFILE ".gradle\fujimi-android-build\app\outputs\apk\$variant\app-$variant.apk"
+$metadata = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $source) 'output-metadata.json') -Raw | ConvertFrom-Json
+$versionName = $metadata.elements[0].versionName
 $destinationDir = Join-Path $repo "dist\FujimiShinbunBunkoAndroid"
 New-Item -ItemType Directory -Path $destinationDir -Force | Out-Null
-$filename = "FujimiShinbunBunkoAndroid-$variant.apk"
+$filename = "FujimiShinbunBunkoAndroid-$versionName-$variant.apk"
 $destination = Join-Path $destinationDir $filename
 Copy-Item -LiteralPath $source -Destination $destination -Force
 Write-Output "APK: $destination"

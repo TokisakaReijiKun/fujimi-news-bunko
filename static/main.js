@@ -265,6 +265,14 @@ window.__fujimiCloseMobileDictionaryDetail = () => {
 };
 window.__fujimiHandleBack = () => {
   if (closeAndroidSelect()) return true;
+  const playerMenu = document.querySelector('.audio-rate-menu:not([hidden]), .audio-listen-menu:not([hidden])');
+  if (playerMenu) {
+    playerMenu.hidden = true;
+    const trigger = playerMenu.closest('.article-audio-player').querySelector(playerMenu.classList.contains('audio-rate-menu') ? '.audio-rate-toggle' : '.audio-listen-toggle');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.focus({ preventScroll: true });
+    return true;
+  }
   const dialog = document.querySelector("dialog[open]");
   if (dialog) { dialog.close(); return true; }
   if (setMobileNavOpen(false)) return true;
@@ -2958,6 +2966,8 @@ function configurePlaybackRate(root, initialRate, onChange) {
   };
   toggle.onclick = event => {
     event.stopPropagation();
+    $(".audio-listen-menu", root).hidden = true;
+    $(".audio-listen-toggle", root).setAttribute("aria-expanded", "false");
     menu.hidden = !menu.hidden;
     toggle.setAttribute("aria-expanded", String(!menu.hidden));
   };
@@ -2967,21 +2977,121 @@ function configurePlaybackRate(root, initialRate, onChange) {
       rememberPlaybackRate(rate);
       render(rate);
       close();
+      toggle.focus({ preventScroll: true });
       onChange(rate);
     };
   });
   root.addEventListener("click", event => { if (!event.target.closest(".audio-rate-control")) close(); });
+  toggle.addEventListener("keydown", event => {
+    if (event.key !== "ArrowDown") return;
+    event.preventDefault();
+    menu.hidden = false;
+    toggle.setAttribute("aria-expanded", "true");
+    menu.querySelector('[aria-checked="true"]')?.focus();
+  });
+  menu.addEventListener("keydown", event => {
+    const buttons = [...menu.querySelectorAll("button[data-rate]")];
+    const index = buttons.indexOf(document.activeElement);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      toggle.focus({ preventScroll: true });
+    } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 }[event.key] || 0;
+      const target = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + step + buttons.length) % buttons.length;
+      buttons[target].focus();
+    }
+  });
   render(initialRate);
 }
 
-function renderAudioPlayerChrome(player, { playing, current, duration, progress, maximum }) {
+function bindPlayerParagraphButtons(player, seekParagraph) {
+  for (const [selector, step] of [[".audio-player-previous", -1], [".audio-player-next", 1]]) {
+    $(selector, player).onclick = () => {
+      const target = Number(player.dataset.paragraphIndex || 0) + step;
+      if (target >= 0 && target < Number(player.dataset.paragraphCount || 0)) seekParagraph(target);
+    };
+  }
+  const root = player.closest('#book-reader, .article-detail');
+  const toggle = $(".audio-listen-toggle", player);
+  const menu = $(".audio-listen-menu", player);
+  const buttons = [...menu.querySelectorAll('button')];
+  const close = () => {
+    menu.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    $(".audio-rate-menu", player).hidden = true;
+    $(".audio-rate-toggle", player).setAttribute('aria-expanded', 'false');
+    const original = root.id === 'book-reader' ? root.dataset.languageMode === 'ja' : root.dataset.translationMode === 'hide';
+    buttons.forEach(button => {
+      if (button.dataset.listeningMode) button.setAttribute('aria-checked', String((button.dataset.listeningMode === 'original') === original));
+    });
+    menu.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+  };
+  toggle.onclick = event => { event.stopPropagation(); if (menu.hidden) open(); else close(); };
+  toggle.onkeydown = event => { if (event.key === 'ArrowDown') { event.preventDefault(); open(); buttons[0].focus(); } };
+  buttons.forEach(button => {
+    button.onclick = () => {
+      const mode = button.dataset.listeningMode;
+      if (mode) {
+        if (root.id === 'book-reader') setBookLanguageMode(root, mode === 'original' ? 'ja' : 'parallel');
+        else setArticleTranslationView(root, mode === 'original' ? 'hide' : 'show');
+      } else seekParagraph(Number(player.dataset.paragraphIndex || 0));
+      close();
+      toggle.focus({ preventScroll: true });
+    };
+  });
+  menu.onkeydown = event => {
+    const index = buttons.indexOf(document.activeElement);
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); toggle.focus(); }
+    else if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next].focus();
+    }
+  };
+  player.addEventListener('click', event => {
+    if (!event.target.closest('.audio-listen-toggle, .audio-listen-menu')) close();
+  });
+}
+
+function playbackParagraphIndex(segments, position) {
+  // Newlines between speech segments still belong to the preceding paragraph.
+  for (let index = segments.length - 1; index > 0; index -= 1) {
+    if (position + 0.000001 >= segments[index].start) return index;
+  }
+  return 0;
+}
+
+function renderAudioPlayerChrome(player, { playing, current, duration, progress, maximum, paragraphIndex = 0, paragraphCount = 0 }) {
   const toggle = $(".audio-player-toggle", player);
-  const icon = $(".audio-player-toggle-icon", toggle);
   const safeMaximum = Math.max(1, Number(maximum) || 1);
   const safeProgress = Math.max(0, Math.min(safeMaximum, Number(progress) || 0));
   toggle.setAttribute("aria-label", playing ? "暂停朗读" : "播放朗读");
   toggle.title = playing ? "暂停朗读" : "播放朗读";
-  icon.src = `/static/player_assets/ic_player_${playing ? "play" : "stop"}.png`;
+  player.dataset.playing = String(Boolean(playing));
+  player.dataset.paragraphIndex = String(paragraphIndex);
+  player.dataset.paragraphCount = String(paragraphCount);
+  $(".audio-player-previous", player).disabled = paragraphCount < 2 || paragraphIndex <= 0;
+  $(".audio-player-next", player).disabled = paragraphCount < 2 || paragraphIndex >= paragraphCount - 1;
+  $(".audio-player-replay", player).disabled = paragraphCount < 1;
+  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const artwork = [
+    ['.audio-player-toggle-icon', `ic_player_${playing ? 'play' : 'stop'}${dark ? '_dark' : ''}`],
+    ['.audio-player-previous img', `ic_player_prev${dark ? '_dark' : ''}`],
+    ['.audio-player-next img', `ic_player_next${dark ? '_dark' : ''}`],
+    ['.audio-rate-toggle img', `ic_player_set${dark ? '_dark' : ''}`],
+    ['.audio-listen-toggle img', dark ? 'ic_common_listen_and_read_dark' : 'ic_common_listen_read'],
+  ];
+  artwork.forEach(([selector, name]) => {
+    const image = $(selector, player);
+    const source = `/static/player_assets/${name}.png`;
+    if (image.getAttribute('src') !== source) image.src = source;
+  });
   $(".audio-player-current", player).textContent = formatSpeechTime(current);
   $(".audio-player-duration", player).textContent = formatSpeechTime(duration);
   $(".audio-player-progress-fill", player).style.width = `${safeProgress / safeMaximum * 100}%`;
@@ -3019,12 +3129,17 @@ function renderNativeArticleAudio(controller) {
   const duration = controller.mobileNative
     ? Number(controller.mobileStatus?.duration || (Number.isFinite(audio.duration) ? audio.duration : 0))
     : (Number.isFinite(audio.duration) ? audio.duration : 0);
-  const current = Math.min(duration || 0, Math.max(0, controller.mobileNative ? Number(controller.mobileStatus?.position || 0) : (audio.currentTime || 0)));
+  const position = Math.max(0, controller.mobileNative ? Number(controller.mobileStatus?.position || 0) : (audio.currentTime || 0));
+  const current = Math.min(duration || 0, position);
   const playing = controller.mobileNative ? Boolean(controller.mobileStatus?.playing) : (!audio.paused && !audio.ended);
   const progress = $(".audio-player-progress", player);
   progress.max = Math.max(1, duration);
   progress.value = current;
-  renderAudioPlayerChrome(player, { playing, current, duration, progress: current, maximum: duration });
+  renderAudioPlayerChrome(player, {
+    playing, current, duration, progress: current, maximum: duration,
+    paragraphIndex: controller.pendingParagraph ?? playbackParagraphIndex(controller.timeline, position),
+    paragraphCount: controller.paragraphCount,
+  });
   // Media seeks round to microseconds; accumulated paragraph starts may be slightly larger.
   const boundaryTime = current + 0.000001;
   const active = controller.started
@@ -3042,7 +3157,7 @@ function setupMobileMediaPlayer(article, root, audio) {
   audio.preload = "none";
   audio.removeAttribute("src");
   audio.load();
-  const controller = { root, player, audio, mediaSource, timeline: [], started: false, rate: savedPlaybackRate(), mobileNative: true, mobileStatus: { playing: false, position: 0, duration: 0 }, mobileError: "", timer: null };
+  const controller = { root, player, audio, mediaSource, timeline: [], paragraphCount: (article.paragraphs || []).length, started: false, rate: savedPlaybackRate(), mobileNative: true, mobileStatus: { playing: false, position: 0, duration: 0 }, mobileError: "", timer: null };
   state.articleAudio = controller;
   root.classList.add("has-audio-player");
   player.hidden = false;
@@ -3111,6 +3226,7 @@ function setupMobileMediaPlayer(article, root, audio) {
     renderNativeArticleAudio(controller);
   };
   bindParagraphSeeking(root, seekParagraph);
+  bindPlayerParagraphButtons(player, seekParagraph);
   controller.seekParagraph = seekParagraph;
   rebuildTimeline();
 }
@@ -3118,7 +3234,7 @@ function setupMobileMediaPlayer(article, root, audio) {
 function setupNativeArticlePlayer(article, root, audio) {
   if (window.FujimiMobile?.playMedia && /\/api\/(?:articles\/\d+\/assets|books\/\d+)\/audio\//.test(audio.src)) return setupMobileMediaPlayer(article, root, audio);
   const player = $(".article-audio-player", root);
-  const controller = { root, player, audio, timeline: [], started: false, pendingParagraph: null, rate: savedPlaybackRate() };
+  const controller = { root, player, audio, timeline: [], paragraphCount: (article.paragraphs || []).length, started: false, pendingParagraph: null, rate: savedPlaybackRate() };
   state.articleAudio = controller;
   root.classList.add("has-audio-player");
   player.hidden = false;
@@ -3169,8 +3285,10 @@ function setupNativeArticlePlayer(article, root, audio) {
       controller.started = true;
     }
     audio.play().catch(error => reportArticleAudioError(controller, error));
+    renderNativeArticleAudio(controller);
   };
   bindParagraphSeeking(root, seekParagraph);
+  bindPlayerParagraphButtons(player, seekParagraph);
   controller.seekParagraph = seekParagraph;
   if (audio.readyState >= 1) rebuildTimeline();
   else renderNativeArticleAudio(controller);
@@ -3203,6 +3321,8 @@ function renderBrowserSpeech(controller) {
     duration,
     progress,
     maximum: totalLength,
+    paragraphIndex: playbackParagraphIndex(controller.segments, progress),
+    paragraphCount: controller.segments.length,
   });
   const active = controller.started && controller.speechReady !== false && progress < totalLength
     ? controller.segments.findIndex(segment => progress >= segment.start && progress <= segment.end)
@@ -3652,6 +3772,7 @@ function setupBrowserArticlePlayer(article, root) {
     speakBrowserSpeech(controller, controller.segments[bounded]?.start || 0);
   };
   bindParagraphSeeking(root, seekParagraph);
+  bindPlayerParagraphButtons(player, seekParagraph);
   renderBrowserSpeech(controller);
 }
 
@@ -4464,7 +4585,9 @@ async function openBook(bookId) {
 }
 
 function bookAudioPlayerMarkup() {
-  return `<div class="article-audio-player" role="group" aria-label="章の朗読プレーヤー" hidden><div class="audio-player-timeline"><div class="audio-player-seek"><span class="audio-player-progress-fill"></span><input class="audio-player-progress" type="range" min="0" max="1" value="0" step="0.1" aria-label="朗読進度"></div><time class="audio-player-current">0:00</time><time class="audio-player-duration">0:00</time></div><button class="audio-player-toggle audio-icon-button" type="button" aria-label="朗読を再生" title="再生または一時停止"><img class="audio-player-toggle-icon" src="/static/player_assets/ic_player_stop.png" alt=""></button><div class="audio-rate-control"><button class="audio-rate-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="再生速度" title="再生速度"><img src="/static/player_assets/ic_player_set.png" alt=""><span class="audio-rate-value" aria-hidden="true">1.0x</span></button><div class="audio-rate-menu" role="menu" hidden>${PLAYBACK_RATES.map(rate => `<button type="button" role="menuitemradio" data-rate="${rate}">${rate}×</button>`).join("")}</div></div></div>`;
+  const player = $("#article-template").content.querySelector(".article-audio-player").cloneNode(true);
+  player.setAttribute("aria-label", "章の朗読プレーヤー");
+  return player.outerHTML;
 }
 
 function bookVoiceOptions(chapter) {

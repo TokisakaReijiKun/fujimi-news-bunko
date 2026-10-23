@@ -11,6 +11,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.View
 import android.widget.FrameLayout
@@ -39,6 +40,7 @@ class MainActivity : Activity() {
     private var chooser: ValueCallback<Array<Uri>>? = null
     private var initialState: Bundle? = null
     private var storagePromptVisible = false
+    private var playerBottomInset = 0
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -51,6 +53,11 @@ class MainActivity : Activity() {
         WebView.setWebContentsDebuggingEnabled(applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0)
         val container = FrameLayout(this)
         container.addView(webView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        container.setOnApplyWindowInsetsListener { _, insets ->
+            playerBottomInset = playerBottomInset(insets)
+            applyPlayerInsets()
+            insets
+        }
         val dark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
         container.setBackgroundColor(if (dark) Color.rgb(24, 30, 27) else Color.rgb(244, 245, 240))
         setContentView(container)
@@ -152,6 +159,8 @@ class MainActivity : Activity() {
                 if (!trusted(Uri.parse(url))) {
                     view.removeJavascriptInterface("FujimiMobile")
                     view.loadUrl("about:blank")
+                } else {
+                    applyPlayerInsets()
                 }
             }
         }
@@ -171,6 +180,26 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 33) {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT) { handleBack() }
         }
+        container.requestApplyInsets()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun playerBottomInset(insets: WindowInsets): Int {
+        if (Build.VERSION.SDK_INT >= 30) {
+            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            return bars.bottom
+        }
+        // Android 10's stable insets exclude the keyboard, unlike systemWindowInsetBottom.
+        return maxOf(insets.stableInsetBottom, insets.displayCutout?.safeInsetBottom ?: 0)
+    }
+
+    private fun applyPlayerInsets() {
+        if (!::webView.isInitialized || !trusted(Uri.parse(webView.url ?: ""))) return
+        val density = resources.displayMetrics.density
+        val properties = "style.setProperty('--player-native-safe-area-bottom','${playerBottomInset / density}px');" +
+            "style.setProperty('--player-native-font-scale','${webView.settings.textZoom / 100.0}');"
+        // Only the fixed audio player uses these values; the surrounding UI keeps its existing layout.
+        webView.evaluateJavascript("(()=>{const root=document.documentElement;if(!root)return;const style=root.style;$properties})()", null)
     }
 
     private fun trusted(uri: Uri) = uri.scheme == "https" && uri.host == WebViewAssetLoader.DEFAULT_DOMAIN && uri.port == -1

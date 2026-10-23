@@ -11,9 +11,15 @@ Android 工程位于 `android/`，包名为 `jp.fujimi.newsbunko.next`，最低�
 ./build-android.ps1 -Release        # 本机发布签名配置
 ```
 
-APK 位于 `dist/FujimiShinbunBunkoAndroid/`，不再生成独立的 `.sha256` 校验文件。Release 构建使用 `%LOCALAPPDATA%/FujimiShinbunBunko/signing/` 下的本机密钥与 DPAPI 保护的凭据文件；密钥不在仓库内，也不会写入文库。正式分发前需把该密钥安全备份到发布密钥库。
+APK 位于 `dist/FujimiShinbunBunkoAndroid/`，统一命名为 `FujimiShinbunBunkoAndroid-<versionName>-<release|debug>.apk`；版本号读取本次 Gradle 构建产物的 `output-metadata.json`，不生成无版本号的通用文件名，也不再生成独立的 `.sha256` 校验文件。Release 构建使用 `%LOCALAPPDATA%/FujimiShinbunBunko/signing/` 下的本机密钥与 DPAPI 保护的凭据文件；密钥不在仓库内，也不会写入文库。正式分发前需把该密钥安全备份到发布密钥库。
 
-当前 release APK（1.0.11）：`dist/FujimiShinbunBunkoAndroid/FujimiShinbunBunkoAndroid-1.0.11-release.apk`；沿用原发布签名。修复同步媒体进入系统相册，以及已有录音被全局声线设置隐藏的问题；新闻和书籍统一使用原生播放器，旧录音按稳定声线 ID 兼容，书籍音频路径正确编码特殊字符。范围见 [设备同步](device-sync.md)。
+当前 release APK（1.0.16）：`dist/FujimiShinbunBunkoAndroid/FujimiShinbunBunkoAndroid-1.0.16-release.apk`；沿用原发布签名。本版撤回播放器以外的整套移动端美化，恢复原有顶栏、抽屉、卡片、导入区、词典和设置页；保留 MOJi 播放控制和明确要求的新闻/书籍字号统一。系统底部避让与字体缩放信息只供播放器使用，不再改变其他页面布局。
+
+已有扫码 Activity 覆盖 ZXing 默认的 `sensorLandscape`，固定为竖屏；继续复用现有相机预览、二维码识别和配对流程。
+
+2026-10-24 扫码方向验证：API 35 模拟器中，新增设备测试先复现旧实现为横屏，再验证修复后为竖屏；从正式设置页触摸“扫码连接”打开 1080×2340 的竖屏界面，返回键取消后回到设置页、提示取消并恢复按钮。签名 release 构建通过，最终 APK 中扫码 Activity 的方向值为 `portrait`，签名与旧版一致。截图在 `build/qa/scanner-portrait/scanner.png`，结果在 `logs/scanner-portrait-device-green.log` 与 `logs/scanner-portrait-live.log`。实体手机相机画面尚未复验；本次未迁移文库数据或创建备份。
+
+此前 1.0.11 修复同步媒体进入系统相册，以及已有录音被全局声线设置隐藏的问题；新闻和书籍统一使用原生播放器，旧录音按稳定声线 ID 兼容，书籍音频路径正确编码特殊字符。范围见 [设备同步](device-sync.md)。
 
 此前 1.0.7 接入 PC 的 NHK 海外匿名授权与短期 `hdnts` 播放令牌流程，允许 HLS 播放器加载授权后的 NHK 视频。NHK HLS 在 Android 端按授权 URL 在线播放，未转换为 PC 的本地 MP4；授权失败时显示明确提示。详情见 [android-1.0.7-nhk-video.md](android-1.0.7-nhk-video.md)；此前音频记录见 [android-1.0.6-audio-fix.md](android-1.0.6-audio-fix.md)。
 

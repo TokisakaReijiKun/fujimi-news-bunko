@@ -15,8 +15,8 @@
       if (isMobileApp) root.classList.add("mobile-app-booting");
     })();
   </script>
-  <link rel="stylesheet" href="/static/static.css?v=20261017-pc-settings">
-  <link rel="stylesheet" href="/static/book-reader.css?v=3">
+  <link rel="stylesheet" href="/static/static.css?v=20261024-player-only">
+  <link rel="stylesheet" href="/static/book-reader.css?v=20261023-reading-type">
 </head>
 <body>
   <header class="mobile-app-bar" aria-label="应用导航">
@@ -455,9 +455,19 @@
           <time class="audio-player-current">0:00</time>
           <time class="audio-player-duration">0:00</time>
         </div>
-        <button class="audio-player-toggle audio-icon-button" type="button" aria-label="播放朗读" title="播放或暂停"><img class="audio-player-toggle-icon" src="/static/player_assets/ic_player_stop.png" alt=""></button>
+        <button class="audio-listen-toggle" type="button" aria-label="听读设置" title="听读设置" aria-haspopup="menu" aria-expanded="false"><img src="/static/player_assets/ic_common_listen_read.png" alt=""></button>
+        <div class="audio-listen-menu" role="menu" aria-label="听读设置" hidden>
+          <button type="button" role="menuitemradio" data-listening-mode="original">听原文</button>
+          <button type="button" role="menuitemradio" data-listening-mode="parallel">对照阅读</button>
+          <button class="audio-player-replay" type="button" role="menuitem">重听本段</button>
+        </div>
+        <div class="audio-player-transport">
+          <button class="audio-player-previous audio-icon-button" type="button" aria-label="上一段" title="上一段" disabled><img src="/static/player_assets/ic_player_prev.png" alt=""></button>
+          <button class="audio-player-toggle audio-icon-button" type="button" aria-label="播放朗读" title="播放朗读"><img class="audio-player-toggle-icon" src="/static/player_assets/ic_player_stop.png" alt=""></button>
+          <button class="audio-player-next audio-icon-button" type="button" aria-label="下一段" title="下一段" disabled><img src="/static/player_assets/ic_player_next.png" alt=""></button>
+        </div>
         <div class="audio-rate-control">
-          <button class="audio-rate-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="播放速度" title="播放速度"><img src="/static/player_assets/ic_player_set.png" alt=""><span class="audio-rate-value" aria-hidden="true">1.0x</span></button>
+          <button class="audio-rate-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="播放速度" title="播放速度"><span class="audio-rate-glyph" aria-hidden="true"><img src="/static/player_assets/ic_player_set.png" alt=""><span class="audio-rate-value">1.0x</span></span></button>
           <div class="audio-rate-menu" role="menu" hidden>
             <button type="button" role="menuitemradio" data-rate="0.5">0.5×</button>
             <button type="button" role="menuitemradio" data-rate="0.75">0.75×</button>
@@ -472,6 +482,6 @@
   </template>
   <script src="/static/book-reader.js?v=4"></script>
   <script src="/static/browser-speech.js?v=1"></script>
-  <script src="/static/main.js?v=20261007-audio-boundary"></script>
+  <script src="/static/main.js?v=20261023-moji-player"></script>
 </body>
 </html>
