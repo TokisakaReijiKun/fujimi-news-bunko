@@ -1,150 +1,310 @@
-# 富士見新聞文庫
+<p align="center">
+  <img src="assets/desktop-icon.png" width="112" alt="富士見新聞文庫">
+</p>
 
-富士見新聞文庫是一款正在开发和交付的本地新闻与日语阅读产品，提供 Web 应用和 Windows 桌面端。项目以新闻来源、阅读体验和用户提供的参考素材为输入，在本地实现采集、翻译、书架、词典和朗读能力；参考素材不是产品边界，也不代表所有功能都必须复制其行为。
+<h1 align="center">富士見新聞文庫</h1>
 
-## 启动（conda Tokyo）
+<p align="center">
+  <strong>ニュースを、深く読む。</strong><br>
+  把日语新闻、电子书、词典与朗读，放进自己的文库。
+</p>
 
-在本项目目录打开 PowerShell：
+<p align="center">
+  <a href="https://github.com/TokisakaReijiKun/fujimi-news-bunko/releases/latest"><img src="https://img.shields.io/github/v/release/TokisakaReijiKun/fujimi-news-bunko?style=flat-square&amp;color=31544b&amp;label=Release" alt="最新正式版本"></a>
+  <img src="https://img.shields.io/badge/Windows-x64-31544b?style=flat-square" alt="Windows x64">
+  <img src="https://img.shields.io/badge/Android-10%2B-31544b?style=flat-square&amp;logo=android&amp;logoColor=white" alt="Android 10 及以上">
+  <img src="https://img.shields.io/badge/Web-Local_First-a6553c?style=flat-square" alt="本地 Web 应用">
+</p>
+
+<p align="center">
+  <a href="#下载安装">下载安装</a> ·
+  <a href="#界面预览">界面预览</a> ·
+  <a href="#功能一览">功能一览</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#项目架构">项目架构</a> ·
+  <a href="#文档导航">文档</a>
+</p>
+
+---
+
+**富士見新聞文庫**是一款本地优先的日语新闻与电子书阅读应用，提供 **Windows 桌面端、Android 客户端和 Web 服务**。
+
+它把日常阅读中的几个环节连在一起：从六家媒体整理日刊，导入文章与 EPUB，结合假名和中文译文阅读，在正文中查词，再把喜欢的内容保存为可以反复阅读、听读的个人文库。电脑与手机通过局域网或 Tailscale 配对，补齐书籍、文章、插图和已生成音频。
+
+内容按文章和书籍保存为本地文件，阅读器、词典与音频围绕同一份文库工作。已经保存的正文、词典和本地附件可以离线使用；采集、在线翻译及在线声线按需联网。
+
+## 下载安装
+
+当前正式版本：**[1.1.28](https://github.com/TokisakaReijiKun/fujimi-news-bunko/releases/tag/v1.1.28)**。整个项目统一发布 Windows、Android 和含词典的源码包。
+
+| 使用方式 | 下载 | 运行要求 |
+| --- | --- | --- |
+| **Windows 桌面端** | [下载 Windows x64 便携包](https://github.com/TokisakaReijiKun/fujimi-news-bunko/releases/download/v1.1.28/FujimiShinbunBunko-1.1.28-windows-x64.zip) | Windows x64、Microsoft Edge WebView2 Runtime；普通运行无需另装 Python |
+| **Android 客户端** | [下载 Android APK](https://github.com/TokisakaReijiKun/fujimi-news-bunko/releases/download/v1.1.28/FujimiShinbunBunkoAndroid-1.1.28-release.apk) | Android 10 及以上；可覆盖安装已有正式版 |
+| **Web／自行构建** | [下载含词典的项目源码包](https://github.com/TokisakaReijiKun/fujimi-news-bunko/releases/download/v1.1.28/FujimiShinbunBunko-1.1.28-source.zip) | conda Tokyo、Python 3.10；构建 Android 另需 Android SDK 与 Gradle |
+
+Windows 用户解压后运行 `FujimiShinbunBunko.exe`，保留同目录的 `_internal/`。Android 首次启动按系统提示授予文库存储权限。
+
+源码发行包已附带只读词典。直接 `git clone` 或下载 GitHub 自动生成的 Source code 归档时，需要另从源码发行包取出 `apk-original/dictionary/dictionary.sqlite3`。
+
+发行包不包含个人文库、密钥或 TTS 模型。[查看所有版本与更新说明 →](https://github.com/TokisakaReijiKun/fujimi-news-bunko/releases)
+
+## 界面预览
+
+以下使用当前正式前端和示例内容截图，展示桌面布局、手机日刊、双语阅读与 EPUB 阅读。
+
+### 桌面阅读
+
+![Windows 与 Web 桌面阅读界面](docs/images/desktop.png)
+
+<table>
+  <tr>
+    <th align="center">手机日刊</th>
+    <th align="center">文章阅读</th>
+    <th align="center">电子书阅读</th>
+  </tr>
+  <tr>
+    <td width="33%"><img src="docs/images/android-daily.png" width="260" alt="Android 日刊列表"></td>
+    <td width="33%"><img src="docs/images/android-article.png" width="260" alt="Android 假名与中日对照阅读"></td>
+    <td width="33%"><img src="docs/images/android-book.png" width="260" alt="Android EPUB 章节阅读"></td>
+  </tr>
+</table>
+
+## 功能一览
+
+| | 可以做什么 |
+| --- | --- |
+| **每日新闻** | 汇集 NHK、朝日、读卖、日经、产经和 Yahoo! 新闻；按来源配额生成日刊，支持手动更新、CST 定时与历史日期回看 |
+| **文章阅读** | 网址导入、粘贴日文、保存阅读示例；显示假名、中日对照或按需展开译文，收藏文章并保留本地附件 |
+| **EPUB 书架** | PC 导入 EPUB，保留目录、插图、ruby 与书籍自带译文；支持章节跳转、横排／纵排、阅读进度和书签，手机可同步后阅读 |
+| **日中词典** | 内置 **159,396** 词，支持日语、假名、常见罗马字与中文释义检索；提供释义、例句及朗读，手机支持新闻和电子书点词查词、收藏词条 |
+| **朗读与声线** | 系统语音、圭太／七海在线声线，以及按环境配置的 Kokoro、VOICEVOX、Irodori；支持音频保存、播放、倍速与段落定位 |
+| **设备互连** | PC 与 Android 扫码配对，通过局域网或 Tailscale 手动双向补齐内容；传输书籍、文章、图片、完整音频与参考声线 |
+
+### 从一篇新闻，到一段自己的阅读时间
+
+**收集内容。** 六家来源分别处理候选、公开正文、分页和媒体。日刊先验证候选，再按配额选择，最后处理入选文章；会员门槛、无效页面和失败任务会如实反馈。阅读室也可以导入单篇网址，或保存自己的日文文章。
+
+**读懂正文。** 新闻和电子书都可以围绕原文、假名、译文与词典阅读。书籍按 EPUB 的正式目录和阅读顺序组织，保留图片与明确标记的双语内容；手机点词查词覆盖新闻和电子书。
+
+**保存并重读。** 收藏文章、收藏词条、书签和已保存音频构成日常阅读积累。文章正文、译文、资源和音频留在本机，不必每次重新获取。
+
+### 新闻来源
+
+[NHKニュース](https://news.web.nhk/newsweb/) · [朝日新聞](https://www.asahi.com/) · [読売新聞](https://www.yomiuri.co.jp/) · [日本経済新聞](https://www.nikkei.com/) · [産経新聞](https://www.sankei.com/) · [Yahoo!ニュース](https://news.yahoo.co.jp/)
+
+各来源独立维护采集与解析规则。来源是否可达、文章是否公开、媒体能否保存是不同状态；视频只能预览时会保留真实状态。日经标题含「【企業一覧】」的企业名单汇总文章不进入采集与导入流程。
+
+## 三端能力
+
+| 能力 | Windows／Web | Android |
+| --- | --- | --- |
+| 独立采集日刊与翻译 | 支持；翻译需配置密钥 | 支持；翻译需配置密钥 |
+| 新闻阅读、假名与中日对照 | 支持 | 支持 |
+| EPUB 导入 | 支持 | 通过 PC 导入后同步 |
+| EPUB 阅读、目录、进度与书签 | 支持 | 支持已同步书籍 |
+| 阅读中查词 | 选词查词 | 点词查词，覆盖新闻与 EPUB |
+| 圭太／七海在线朗读 | 支持 | 支持，可保存音频后离线播放 |
+| 本地模型合成 | 取决于模型和运行环境 | 请求已配对 PC 合成，接收完整音频 |
+| 文库补齐 | 与 Android 配对 | 与 PC 配对 |
+
+Windows 与 Web 共用服务和存储层，桌面端另外提供窗口、托盘及桌面声线。Android 使用本机文库、原生播放与后台调度，可以独立获取日刊；本地模型推理由 PC 承担。
+
+## 快速开始
+
+### 1. 准备源码与词典
+
+可以直接解压上面的**含词典源码包**，进入项目目录。通过 Git 获取源码时执行：
 
 ```powershell
-conda activate Tokyo
-python -m pip install -r requirements.txt
-python -X utf8 server.py
+git clone https://github.com/TokisakaReijiKun/fujimi-news-bunko.git
+cd fujimi-news-bunko
 ```
 
-浏览器打开 **http://127.0.0.1:8427**。也可以运行 `./start.ps1`；该脚本使用 `conda run -n Tokyo`。修改端口：`./start.ps1 -Port 8428`。
+确认 `apk-original/dictionary/dictionary.sqlite3` 已放好。原词典只读使用，首次查询会创建独立的本地搜索索引。
 
-Windows 桌面窗口默认使用 8428 端口，可用 `./start-desktop.ps1` 启动；先运行 `conda run -n Tokyo python -m pip install -r requirements-desktop.txt`。要制作独立程序，运行 `./build-desktop.ps1`。项目内的桌面程序可使用现有 Tokyo 环境与 Irodori 模型，显示并使用 `data/voices/` 中的声线；详见 [Windows 桌面客户端](docs/desktop-client.md)。
+### 2. 启动 Web 服务
 
-## 下载与发布
+下面以新建环境为例；已有 Tokyo 环境时跳过第一行。
 
-正式版本发布在 [GitHub Releases](https://github.com/TokisakaReijiKun/fujimi-news-bunko/releases)。Windows 用户下载带有 `windows-x64.zip` 的附件，解压后运行其中的 `FujimiShinbunBunko.exe`；该包是便携式桌面程序，不包含用户的 `data/`、`.env`、日志或 Irodori 模型。运行需要安装 Microsoft Edge WebView2 Runtime。桌面程序移出项目目录后，会把用户数据保存到 `%LOCALAPPDATA%/FujimiShinbunBunko/data/`。
+```powershell
+conda create -n Tokyo python=3.10
+conda run -n Tokyo python -m pip install -r requirements.txt
+conda run --no-capture-output -n Tokyo python -X utf8 server.py
+```
 
-当前实现无需 Node 构建步骤。服务器默认只监听本机，运行终端中按 Ctrl+C 停止。自动日刊仅在服务运行时检查 CST 时间；关机期间错过的任务不会补跑。后台启动的进程号记录在 `logs/server.pid`，日志位于 `logs/`。
+浏览器访问 **http://127.0.0.1:8427**。Windows 下也可使用：
 
-## 已实现
+```powershell
+./start.ps1
+```
 
-新闻采集和后处理已按六家来源拆分到 `news_providers/`。每家独立维护链接收集、正文解析、媒体规则、后处理顺序和重新翻译；公共层仅保留单项基础服务。详见 [分来源新闻处理](docs/news-providers.md)。
+### 3. 启动源码桌面端
 
-- 本日新闻：六家官网新闻列表及 RSS/Atom/RDF 来源、手动生成、CST 定时生成、日期切换、任务状态与停止后续采集。
-- 阅读室：网址导入、粘贴日文正文、离线假名、Irodori 本地音频与浏览器日语朗读、翻译显示切换、选词查词、复制。
-- 收藏：文章收藏与取消，文件持久化、SQLite 索引。
-- 书架：多 EPUB 导入、重复检测、封面、系列、元数据编辑、章节目录、横排／竖排、进度恢复、段落书签、章节假名处理、删除书籍记录。
-- 词典：内置 **159,396** 个词条，支持日语／假名／常见罗马字／中文释义搜索、释义与例句、查询历史。Tokyo 的 SQLite 不支持原词库所用 FTS4，因此首次启动会建立独立的搜索索引，词库文件不被修改。词典文件约 304 MiB，因 Git 托管平台的单文件限制未纳入本仓库；从源码运行前请将 `dictionary.sqlite3` 放回 `apk-original/dictionary/`。
-- 设置：参考声线上传／网址导入／管理、浏览器声线、新闻来源与最低数量、日刊数量与时间、书架排序、SQLite 整理。
-- 桌面侧栏、手机抽屉导航、键盘焦点、减少动画偏好。
+```powershell
+conda run -n Tokyo python -m pip install -r requirements-desktop.txt
+./start-desktop.ps1
+```
 
-首次运行不生成或冒充真实新闻。阅读室的“填入示例”是明确标注的操作例文。可以从设置生成日刊，或导入自己需要的文章与 EPUB。
+桌面服务默认使用 **http://127.0.0.1:8428**。关闭窗口会隐藏到托盘，托盘菜单的“退出”才会停止服务。定时任务需要服务保持运行。
 
-阅读室示例保存到 `data/articles/examples/<标题>/`，标题、正文和声线偏好由本地服务共享。“阅读声线”可选择默认、浏览器日语声线或现有模型声线；同名保存先备份再更新。旧浏览器示例会在打开服务页面时备份并迁移，详见 [示例存储与迁移](docs/reading-examples.md)。
+### 可选：启用翻译与模型朗读
 
-默认新闻来源包含六家媒体，设置页显示官网地址：
+翻译在本机 `.env` 中配置，或通过进程环境变量提供：
 
-| 来源 | 官网 |
+```dotenv
+DEEPSEEK_API_KEY=your_api_key
+```
+
+`DEEPSEEK_MODEL` 可指定模型；未配置密钥时，不发起翻译请求。翻译会把待处理正文发送给所配置的服务，可能产生 API 费用。Android 在设置页单独配置密钥，密钥不随文库同步。
+
+| 朗读方式 | 条件与用途 |
 | --- | --- |
-| NHKニュース | https://news.web.nhk/newsweb/ |
-| 朝日新聞 | https://www.asahi.com/ |
-| 読売新聞 | https://www.yomiuri.co.jp/ |
-| 日本経済新聞 | https://www.nikkei.com/ |
-| 産経新聞 | https://www.sankei.com/ |
-| Yahoo!ニュース | https://news.yahoo.co.jp/ |
+| 系统语音 | 使用当前设备可用的日语声线，即时朗读 |
+| 圭太／七海 | 使用在线语音服务；完整音频保存后可以离线播放 |
+| Kokoro／VOICEVOX | PC 准备对应模型和运行库后提供本地朗读，模型资源不随发行包提供 |
+| Irodori | PC 准备 Tokyo 推理环境、模型与参考音频；按文章或章节生成并保存完整音频 |
 
-旧版 NHK 官网 `https://www3.nhk.or.jp/news/` 现跳转到上表地址。升级会一次性修正旧 RSS 网址并补齐五家来源，保留已有来源 ID、最低数量、声线与自定义来源；旧配置保存在 SQLite 设置项 `news-sources-before-homepages-v1`。之后的自主编辑与删除不会在重启时被覆盖。官网链接发现通过验证不代表每一篇付费／登录文章都能导入。
+具体配置见 [朗读与模型](docs/tts.md)、[Windows 客户端](docs/desktop-client.md) 和 [手机请求 PC 合成](docs/android-1.1.22-pc-speech.md)。
 
-## 翻译与朗读
+## 设备互连
 
-Irodori 使用本地 `Irodori-TTS/model/model.safetensors`，由 Tokyo 启动受控推理子进程。默认参考声线为 `朽木冬子.mp3`，模型在 CUDA 上采用 BF16，音频编解码在 CPU 上运行。首次加载需要等待；单队列依次处理新闻和章节，空闲 5 分钟后释放显存。GPU、codec、tokenizer 和水印依赖须已在本机准备好，运行时不自动下载模型。
+1. 在 PC 设置中开启 **文庫互联**，保持服务运行。
+2. Android 扫描 PC 显示的二维码，或输入连接地址与六位配对码。
+3. 配对成功后执行同步，补齐另一端缺少的文章、书籍、插图、音频和参考声线。
 
-新新闻保存后自动生成朗读，正文可立即阅读；书籍从“読書設定”按章节生成。音频保存为 48kHz 单声道 WAV，支持暂停、拖动、倍速和段落定位。中止后当前分段返回即退出；重新生成失败保留旧音频。任务跨页面可查询，服务重启后未完成任务标记中断，需要手动重试；历史文章不会批量补生成。默认声线可以切换回浏览器或关闭，不会在模型失败时自动改用其他声线。
+已安装 Tailscale 时，应用可启动客户端并请求连接；首次登录和系统 VPN 授权仍由用户完成。同一局域网内也可直接配对使用。
 
-首次启用会先将 SQLite 和相关设置备份到 `data/backups/tts-settings-*/`，再注册冬子并让六家默认来源沿用全局声线。参考音频支持 1–120 秒、20 MB 以内的 WAV、MP3、FLAC、OGG、M4A；M4A 解码需要本机 `ffmpeg`。声线保存为 `data/voices/<声线名称>.wav`；替换会覆盖同名声线文件，改名会同步改名，删除前会归档。新闻音频保存为每篇文章 `audio/<声线名称>_<新闻名称>.wav`。详见 [TTS 接口与验证](docs/tts.md)。
+同步采用**手动双向补齐**：两端保留各自文库，按实体内的相对路径和文件大小决定附件是否需要传输。本机阅读进度独立保留，删除与最新编辑操作不会自动传播。它适合把电脑整理的内容带到手机，再把手机新增内容带回电脑。
 
-浏览器朗读依赖系统／浏览器安装的日语语音；部分在线语音需要网络。假名由 pykakasi 离线生成，多音字和人名读法可能需要校对。
+管理页面默认只监听本机；开启互连后，配对与传输使用选定的局域网或 Tailscale 地址，默认端口 `8429`。PC 服务重启后需要重新配对。完整范围与连接说明见 [设备同步](docs/device-sync.md)。
 
-可选 DeepSeek 翻译配置：在当前进程环境设置 `DEEPSEEK_API_KEY`，或在项目 `.env` 中保存 `DEEPSEEK_API_KEY=你的密钥`。`server.py` 启动时自动读取本机配置，环境变量优先；`.env` 已被 Git 忽略，密钥不写入网页、SQLite 或源码。可用 `DEEPSEEK_MODEL` 指定模型，当前本机配置为 `deepseek-v4-flash`。设置密钥后，网址导入、文章重新翻译和章节处理会将相应正文发送给 DeepSeek，可能产生 API 费用。未配置时不发起翻译请求，保留原文和假名。粘贴导入默认只在本地处理。
+## 项目架构
 
-日刊最低配额按成功收录数核算，失败时会尝试同来源后续文章；重试生成会优先补齐当日缺失来源。数量或来源不足时显示“部分完成”，不会显示 100% 完成。已完成的文章保持不变；如果已有条数达到目标但来源缺失，补齐可能使总数超过目标。非文章重定向页面不会进入日刊。
+Windows 与 Web 使用同一套应用服务，Android 通过原生桥接连接手机存储、播放和调度能力。前端为原生 HTML／CSS／JavaScript，**没有 npm 构建步骤**。
 
-日刊先由每个来源独立验证最多 5 个公开候选，会员、无效和错误分页候选在此阶段排除；随后先从六个来源各选 1 篇，再从剩余公开候选中随机补足每日目标，最后只对入选的新文章执行来源自己的翻译和媒体后处理。状态区分别显示候选、选择、后处理、翻译与媒体保存；会员标记在来源列表解析时排除（包括锁图标 alt/aria-label 和重复链接）；正文仅保留防漏标校验，不作为“未收录”错误。网页请求使用连接／读取超时，正文、翻译和媒体阶段另设等待预算。中止后，当前网络请求返回即退出，旧任务不会向新任务写入状态或文章。
+```mermaid
+flowchart LR
+    Desktop[Windows · pywebview] --> API[Python · Flask]
+    Browser[Web 浏览器] --> API
+    API --> News[六家新闻来源]
+    API --> PCStore[PC 文件文库与索引]
+    API --> Speech[在线语音与本地模型]
+    Mobile[Android · WebView] --> Bridge[Kotlin 原生桥接]
+    Bridge --> MobileStore[手机文件文库与索引]
+    Bridge --> Native[Media3 · 日刊后台调度]
+    PCStore <-->|配对后手动补齐| MobileStore
+```
 
-若已配置 HTTPS 代理而本地 DNS 返回非公网地址，采集器通过 Google DNS-over-HTTPS 独立验证该域名的公网记录，再由代理连接官网；无代理时不使用此回退。localhost、私网 IP 和解析到私网的目标仍被拒绝，TLS 校验保持开启。
+| 层次 | 主要技术与职责 |
+| --- | --- |
+| 页面与阅读器 | 原生 JavaScript、CSS、WebView，新闻与 EPUB 阅读、词典、播放器 |
+| Web／桌面服务 | Python、Flask、pywebview、pystray，API、窗口、托盘与任务管理 |
+| Android | Kotlin、AndroidX WebKit、Media3、WorkManager、Kuromoji，原生接口、音频、调度与离线假名 |
+| 内容存储 | 按文章与书籍组织的文件文库；SQLite 保存索引与设置 |
+| 新闻处理 | 来源独立的采集、解析、翻译、假名与媒体保存 |
+| 朗读 | 系统语音、Edge 在线声线与可选的 Kokoro／VOICEVOX／Irodori 后端 |
 
-产品源码、DeepSeek 密钥和 Irodori 权重分别按源码、用户配置和本地运行时管理。Irodori 已通过本地推理代码接入；**Android/Windows 双向同步和 Android 后台服务仍未接入**。模型权重和上游 `Irodori-TTS/` 代码保持原样。
-
-新闻解析支持公开的静态 HTML 正文与 RSS/Atom，跳过推荐链接、分享提示和署名；有付费／会员限定标记的文章不会收录。Yahoo 按正文段落与同一文章分页提取，遇到缓存页、错误重定向或未知正文结构时停止，不保存不完整正文。需要登录、订阅或客户端渲染的文章可在原站阅读。
-
-正文图片、图注和段落位置会保存到 `data/articles/首次采集日期/标题/media/`，阅读器通过按文章 ID 分配的附件接口显示；直接公开的 MP4/WebM 视频也可缓存。单篇上限 30 张图片、5 个视频、单文件 32 MB。动态播放器、HLS 和 DRM 视频暂不下载，界面会说明已保存预览图或媒体失败，用户可跳转原站观看。不会将预览图标记为已下载视频。EPUB 支持常见图片和 ruby，支持 SVG 包装的栅格封面；复杂固定排版、嵌入字体、动态 SVG 和 DRM 不支持。任务取消停止后续步骤，进行中的网络请求可能继续完成。
-
-## 文件结构
+### 目录结构
 
 ```text
-server.py                    Flask 服务、词典、新闻、EPUB、任务与定时器
-article_store.py             文件为主的新闻存储、事务恢复、SQLite 索引
-storage_migration.py         旧存储迁移、校验及回滚
-scripts/migrate_storage.py   只读预览／执行迁移／回滚入口
-news_sources.py              默认来源、配置迁移与来源分发兼容入口
-article_extraction.py        解析兼容入口，转交来源模块
-news_providers/              六家独立采集、解析、后处理与重新翻译
-article_media.py             经过格式校验的图片与直接视频本地缓存
-scripts/repair_articles.py   指定文章的备份、重新提取和付费记录隔离
-static/index.html            桌面 Web 页面入口
-static/main.js               主交互、浏览器适配、播客播放器与进度恢复
-static/static.css            主样式、布局与浏览器适配
-static/book-reader.js / book-reader.css  EPUB 阅读器适配
-static/player_assets/        播放器图标资源
-apk-original/               参考素材、只读词典和 Android 设置页（词典文件需另行放置）
-data/fujimi.sqlite3          新闻、书架索引与设置（运行时创建）
-data/dictionary-search.sqlite3  可重建的词典查询索引
-data/books/                 书名目录：原文件名.epub、book.json、state.json、chapters/、resources/、audio/
-data/articles/              每篇新闻的正文、译文、元数据、media/ 与 audio/
-data/backups/               迁移及修复备份
-data/diagnostics/           检查文件、重建报告、事务恢复日志
-docs/apk-manifest.json       参考包与提取资源 SHA-256
-tests/test_web.py            功能、持久化、导入及边界测试
-start.ps1                   Tokyo 启动脚本
+├── server.py                Web API、任务与服务装配
+├── desktop.py               Windows 窗口、托盘与运行环境
+├── news_providers/          六家来源各自的采集与解析
+├── article_store.py         新闻文件存储
+├── book_store.py            书籍文件存储
+├── epub_parser.py           EPUB 目录、章节与资源解析
+├── library_sync.py          文库补齐与内容传输
+├── device_sync.py           配对、互连服务与手机请求入口
+├── tts_service.py           声线、朗读队列与推理进程管理
+├── static/                  正式页面、阅读器与手机前端
+├── android/                 Android 客户端与核心存储实现
+├── apk-original/dictionary/  只读词典资源
+├── Irodori-TTS/             本地模型项目代码
+├── docs/                    架构、配置与子系统说明
+└── tests/                   回归测试与隔离样本
 ```
 
-备份个人数据时先停止服务，再复制整个 `data/`。应用内删除书籍会先将完整书籍目录归档到 backups，再移除书架索引。参考包、`apk-original/` 与现有 `Irodori-TTS/` 均保留。
+<details>
+<summary><strong>本地文库如何组织</strong></summary>
 
-如果在文件管理器中删除 `data/books/书名/`，点击设置中的“存储を反映”会清理失效索引并更新书架。书籍正文、进度与书签现在保存在目录中；删除整个目录后，数据库只能恢复残留的索引信息，不能恢复已删除的文件。无插图 EPUB 同样保留原文件和完整书籍目录。
+正文与书籍以文件为事实来源；SQLite 保存可重建的内容索引及应用设置。
 
-更正已有采集结果可使用 `conda run -n Tokyo python -X utf8 scripts/repair_articles.py --ids 文章ID` 预览；加 `--apply` 才执行。脚本先备份 SQLite 和选定文章目录，再按原 URL 重新提取，保留 ID、日期与收藏；复用未改变段落的译文，补译变化段落。付费记录标记为 `excluded_paid`，正文从阅读接口移除，修复前内容留在备份中。历史日刊因剔除付费文章而变少时会如实显示来源不足，不用当前日期的文章冒充历史新闻。
+```text
+data/
+├── articles/YYYY-MM-DD/标题/  正文、译文、假名、媒体与音频
+├── bookmarks/标题/            收藏文章的完整副本
+├── books/书名/                原 EPUB、目录、章节、资源、进度与音频
+├── voices/                    参考声线
+├── fujimi.sqlite3             内容索引与设置
+└── dictionary-search.sqlite3  词典搜索索引
+```
 
-## 验证
+Windows 便携版默认使用 `%LOCALAPPDATA%/FujimiShinbunBunko/data/`；源码版默认使用项目 `data/`，可由 `FUJIMI_DATA_DIR` 指定。Android 文库位于内部存储的 `富士見新聞文庫/data/`，密钥等私有配置单独保存。
 
-服务在 Windows 使用独占端口绑定，避免两个服务同时监听 8427 而让旧采集逻辑继续响应。只有绑定成功后才写入 `logs/server.pid` 并启动日刊定时器；重复启动会退出，已有服务不受影响。
+文件布局、索引恢复与迁移说明见 [新闻存储](docs/article-storage.md) 和 [书架与 EPUB](docs/book-reader.md)。
+
+</details>
+
+## 文档导航
+
+| 主题 | 文档 |
+| --- | --- |
+| Windows 启动、打包与数据目录 | [Windows 桌面客户端](docs/desktop-client.md) |
+| Android 构建、安装与本机能力 | [Android 客户端](docs/android-client.md) |
+| 局域网／Tailscale 配对与同步范围 | [设备同步](docs/device-sync.md) |
+| 新闻来源与独立处理流程 | [分来源新闻处理](docs/news-providers.md) |
+| EPUB 目录、阅读模式与书架存储 | [书架与 EPUB 阅读器](docs/book-reader.md) |
+| 本地模型、参考声线与音频保存 | [朗读系统](docs/tts.md) |
+| 文章文件、索引与恢复工具 | [新闻存储](docs/article-storage.md) |
+| 阅读室例文的保存与复用 | [阅读示例](docs/reading-examples.md) |
+| 手机发起 PC 音频合成 | [跨设备朗读](docs/android-1.1.22-pc-speech.md) |
+
+## 参与项目
+
+欢迎提交可复现的问题、文档改进和代码贡献。
+
+- **反馈问题**：在 [Issues](https://github.com/TokisakaReijiKun/fujimi-news-bunko/issues) 说明版本、运行平台、操作步骤和实际结果。采集问题请附文章网址；提交日志前移除密钥与个人信息。
+- **提交改动**：通过 [Pull Request](https://github.com/TokisakaReijiKun/fujimi-news-bunko/pulls) 描述具体问题、修改后的行为和验证方式。新闻来源保持独立，手机样式与桌面行为分别处理。
+- **开发约定**：参见 [AGENTS.md](AGENTS.md)。测试与修复使用临时文库，避免改写个人内容。
+
+<details>
+<summary><strong>构建与开发检查</strong></summary>
+
+Windows 打包：
+
+```powershell
+conda run -n Tokyo python -m pip install -r requirements-desktop.txt
+./build-desktop.ps1 -Version dev
+```
+
+Android 构建需要 Android SDK Platform 36、Build Tools 36.0.0 与 Gradle 9.6：
+
+```powershell
+./build-android.ps1
+```
+
+发布签名配置和 Release 构建说明见 [Android 文档](docs/android-client.md)。
+
+Python 与前端的常用检查：
 
 ```powershell
 conda run -n Tokyo python -X utf8 -m unittest discover -s tests -v
 node --check static/main.js
 node --check static/book-reader.js
+node --check static/browser-speech.js
 ```
 
-测试使用临时数据库和自行创建的 EPUB/新闻样本，不访问个人文章或真实网络；覆盖词典、罗马字、持久化、收藏、EPUB 顺序、危险 HTML 清理、章节进度、假名处理、RSS 导入、输入校验及缺少外部服务时的错误说明。浏览器另行检查桌面与 390px 手机布局。
+前端无需 npm 安装或打包，Node 用于 JavaScript 语法检查。具体子系统的检查范围见开发约定。
 
+</details>
 
-## 新闻文件存储
+## 致谢
 
-数据库直接放在 `data/` 根目录：`fujimi.sqlite3` 和 `dictionary-search.sqlite3`，不使用 `databases/` 子文件夹。之前版本创建的子文件夹可通过下方迁移工具 `--apply` 备份后搬回根目录，文章目录不变。
+项目基于 Flask、pywebview、pystray、SQLite、pykakasi、Kuromoji、AndroidX WebKit 和 Media3 等组件构建，朗读能力接入 Edge 在线语音、Kokoro、VOICEVOX 与 Irodori-TTS。
 
-新闻按 `data/articles/YYYY-MM-DD/标题/` 保存，目录日期是首次采集日（CST），与以后收录到哪些日刊分开。目录名只在创建时确定，重名时追加 ID；改标题不搬目录。每篇包含 `article.json`、`original.txt`、`translation.txt`、`furigana.html`、`media/` 和 `audio/`。
+第三方组件的许可信息随对应项目保留，参见 [Irodori-TTS 许可证](Irodori-TTS/LICENSE) 与 [edge-tts 许可说明](android/core/src/main/resources/META-INF/edge-tts-LICENSE.txt)。新闻、书籍与模型资源分别遵循各自的使用条件。
 
-正文和译文文件是内容来源，`article.json` 记录段落字符区间、校验值、日刊归属、收藏和附件信息。数据库的新闻表不再保存正文 `payload`；可通过设置中的“文庫刷新”重建新闻索引。数据库仍保存应用设置，不能直接删除整个数据库；书架索引可从有效书籍目录重建。不要只修改 TXT 而不更新元数据：检测到校验不一致时系统会报告异常，不会继续显示可能错位的译文。
+---
 
-图片和视频都在文章的 `media/` 内，不依赖全局共享目录。文章 `audio/` 保存本地 Irodori 朗读 WAV；旧媒体 URL 仍通过文章元数据中的兼容映射读取。
-
-迁移工具默认只读预览，执行或回滚前停止本地服务：
-
-```powershell
-conda run -n Tokyo python -X utf8 scripts/migrate_storage.py
-conda run -n Tokyo python -X utf8 scripts/migrate_storage.py --apply
-# 回滚：先保存当前新结构，再恢复迁移前布局；随后需使用迁移前版本的服务代码。
-conda run -n Tokyo python -X utf8 scripts/migrate_storage.py --rollback
-```
-
-`--data-dir` 可指定独立数据根目录，默认遵循 `FUJIMI_DATA_DIR`。迁移不联网、不重新翻译。详见 [存储格式与恢复说明](docs/article-storage.md)。
-
-
-## 书架新版
-
-书架采用按书独立文件存储、EPUB3 nav／EPUB2 NCX 正式目录和段落锚点。保留原 EPUB，章节与阅读状态分开写入；修复双语原序、插图与既有阅读模式的显示。详见 [书架与 EPUB 阅读器](docs/book-reader.md)。
+<p align="center"><strong>富士見新聞文庫</strong> · ニュースを、深く読む。</p>
