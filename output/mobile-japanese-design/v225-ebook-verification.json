@@ -1,0 +1,309 @@
+{
+  "geometry": [
+    {
+      "viewport": 375,
+      "scrollWidth": 375,
+      "scrollY": 0,
+      "header": {
+        "x": 0,
+        "y": 0,
+        "width": 375,
+        "height": 57,
+        "right": 375,
+        "bottom": 57
+      },
+      "image": {
+        "x": 23,
+        "y": 104,
+        "width": 330,
+        "height": 236,
+        "right": 352,
+        "bottom": 339
+      },
+      "natural": [
+        1600,
+        1142
+      ],
+      "title": {
+        "x": 60,
+        "y": 18,
+        "width": 207,
+        "height": 20,
+        "right": 267,
+        "bottom": 38
+      },
+      "chapter": {
+        "x": 23,
+        "y": 57,
+        "width": 330,
+        "height": 47,
+        "right": 353,
+        "bottom": 104
+      },
+      "original": {
+        "x": 23,
+        "y": 357,
+        "width": 330,
+        "height": 66,
+        "right": 353,
+        "bottom": 424
+      },
+      "translation": {
+        "x": 23,
+        "y": 430,
+        "width": 330,
+        "height": 47,
+        "right": 353,
+        "bottom": 477
+      },
+      "translationStyle": {
+        "fontSize": "15px",
+        "lineHeight": "26.25px",
+        "color": "rgb(99, 107, 98)",
+        "opacity": "1"
+      },
+      "audio": {
+        "x": 0,
+        "y": 727,
+        "width": 375,
+        "height": 73,
+        "right": 375,
+        "bottom": 800
+      },
+      "tools": [
+        {
+          "x": 12,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 56,
+          "bottom": 50
+        },
+        {
+          "x": 273,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 317,
+          "bottom": 50
+        },
+        {
+          "x": 319,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 363,
+          "bottom": 50
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": 390,
+      "scrollWidth": 390,
+      "scrollY": 0,
+      "header": {
+        "x": 0,
+        "y": 0,
+        "width": 390,
+        "height": 57,
+        "right": 390,
+        "bottom": 57
+      },
+      "image": {
+        "x": 23,
+        "y": 104,
+        "width": 343,
+        "height": 245,
+        "right": 367,
+        "bottom": 349
+      },
+      "natural": [
+        1600,
+        1142
+      ],
+      "title": {
+        "x": 60,
+        "y": 18,
+        "width": 222,
+        "height": 20,
+        "right": 282,
+        "bottom": 38
+      },
+      "chapter": {
+        "x": 23,
+        "y": 57,
+        "width": 343,
+        "height": 47,
+        "right": 367,
+        "bottom": 104
+      },
+      "original": {
+        "x": 23,
+        "y": 367,
+        "width": 343,
+        "height": 66,
+        "right": 367,
+        "bottom": 433
+      },
+      "translation": {
+        "x": 23,
+        "y": 439,
+        "width": 330,
+        "height": 47,
+        "right": 353,
+        "bottom": 486
+      },
+      "translationStyle": {
+        "fontSize": "15px",
+        "lineHeight": "26.25px",
+        "color": "rgb(99, 107, 98)",
+        "opacity": "1"
+      },
+      "audio": {
+        "x": 0,
+        "y": 727,
+        "width": 390,
+        "height": 73,
+        "right": 390,
+        "bottom": 800
+      },
+      "tools": [
+        {
+          "x": 12,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 56,
+          "bottom": 50
+        },
+        {
+          "x": 288,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 332,
+          "bottom": 50
+        },
+        {
+          "x": 334,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 378,
+          "bottom": 50
+        }
+      ],
+      "errors": []
+    },
+    {
+      "viewport": 1100,
+      "scrollWidth": 1100,
+      "scrollY": 0,
+      "header": {
+        "x": 230,
+        "y": 0,
+        "width": 640,
+        "height": 57,
+        "right": 870,
+        "bottom": 57
+      },
+      "image": {
+        "x": 262,
+        "y": 104,
+        "width": 576,
+        "height": 411,
+        "right": 838,
+        "bottom": 515
+      },
+      "natural": [
+        1600,
+        1142
+      ],
+      "title": {
+        "x": 290,
+        "y": 18,
+        "width": 472,
+        "height": 20,
+        "right": 762,
+        "bottom": 38
+      },
+      "chapter": {
+        "x": 262,
+        "y": 57,
+        "width": 576,
+        "height": 47,
+        "right": 838,
+        "bottom": 104
+      },
+      "original": {
+        "x": 262,
+        "y": 533,
+        "width": 576,
+        "height": 66,
+        "right": 838,
+        "bottom": 599
+      },
+      "translation": {
+        "x": 262,
+        "y": 605,
+        "width": 420,
+        "height": 21,
+        "right": 682,
+        "bottom": 626
+      },
+      "translationStyle": {
+        "fontSize": "15px",
+        "lineHeight": "26.25px",
+        "color": "rgb(99, 107, 98)",
+        "opacity": "1"
+      },
+      "audio": {
+        "x": 230,
+        "y": 727,
+        "width": 640,
+        "height": 73,
+        "right": 870,
+        "bottom": 800
+      },
+      "tools": [
+        {
+          "x": 242,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 286,
+          "bottom": 50
+        },
+        {
+          "x": 768,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 812,
+          "bottom": 50
+        },
+        {
+          "x": 814,
+          "y": 6,
+          "width": 44,
+          "height": 44,
+          "right": 858,
+          "bottom": 50
+        }
+      ],
+      "errors": []
+    }
+  ],
+  "verified": [
+    "real EPUB chapter and cover",
+    "TOC and settings focus",
+    "bilingual and tap to reveal",
+    "vertical horizontal scroll",
+    "translation-only preserves illustration",
+    "existing audio playback",
+    "back to shelf",
+    "formal data unchanged"
+  ],
+  "second_book": true
+}

@@ -1,0 +1,41 @@
+{
+  "version": "2.44",
+  "viewports": [
+    {
+      "width": 375,
+      "height": 56,
+      "background": "rgba(0, 0, 0, 0)",
+      "noOverflow": true,
+      "referenceSelection": true,
+      "keyboard": true,
+      "longNameWraps": true
+    },
+    {
+      "width": 390,
+      "height": 56,
+      "background": "rgba(0, 0, 0, 0)",
+      "noOverflow": true,
+      "referenceSelection": true,
+      "keyboard": true,
+      "longNameWraps": true
+    },
+    {
+      "width": 1100,
+      "height": 56,
+      "background": "rgba(0, 0, 0, 0)",
+      "noOverflow": true,
+      "referenceSelection": true,
+      "keyboard": true,
+      "longNameWraps": true
+    }
+  ],
+  "checks": [
+    "compact-56px-row",
+    "no-redundant-labels-or-engine",
+    "transparent-background",
+    "reference-voice-selection",
+    "keyboard-open-and-close",
+    "long-name-wraps-without-overflow"
+  ],
+  "deliveredDemo": true
+}

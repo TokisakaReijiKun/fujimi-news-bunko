@@ -1,0 +1,233 @@
+{
+  "checks": [
+    {
+      "screen": "daily",
+      "viewport": 375,
+      "width": 375,
+      "view": "daily",
+      "reading": "",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        775,
+        775,
+        775,
+        775,
+        775
+      ],
+      "navVisible": true,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "library",
+      "viewport": 375,
+      "width": 375,
+      "view": "library",
+      "reading": "",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        775,
+        775,
+        775,
+        775,
+        775
+      ],
+      "navVisible": true,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "settings",
+      "viewport": 375,
+      "width": 375,
+      "view": "settings",
+      "reading": "",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        775,
+        775,
+        775,
+        775,
+        775
+      ],
+      "navVisible": true,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "dictionary",
+      "viewport": 375,
+      "width": 375,
+      "view": "dictionary",
+      "reading": "",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        775,
+        775,
+        775,
+        775,
+        775
+      ],
+      "navVisible": true,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "article",
+      "viewport": 375,
+      "width": 375,
+      "view": "reader",
+      "reading": "article",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "navVisible": false,
+      "headingVisible": false,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "book",
+      "viewport": 375,
+      "width": 375,
+      "view": "library",
+      "reading": "book",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "navVisible": false,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "daily",
+      "viewport": 390,
+      "width": 390,
+      "view": "daily",
+      "reading": "",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        775,
+        775,
+        775,
+        775,
+        775
+      ],
+      "navVisible": true,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "library",
+      "viewport": 390,
+      "width": 390,
+      "view": "library",
+      "reading": "",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        775,
+        775,
+        775,
+        775,
+        775
+      ],
+      "navVisible": true,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "settings",
+      "viewport": 390,
+      "width": 390,
+      "view": "settings",
+      "reading": "",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        775,
+        775,
+        775,
+        775,
+        775
+      ],
+      "navVisible": true,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "dictionary",
+      "viewport": 390,
+      "width": 390,
+      "view": "dictionary",
+      "reading": "",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        775,
+        775,
+        775,
+        775,
+        775
+      ],
+      "navVisible": true,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "article",
+      "viewport": 390,
+      "width": 390,
+      "view": "reader",
+      "reading": "article",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "navVisible": false,
+      "headingVisible": false,
+      "voice": "voicevox:89"
+    },
+    {
+      "screen": "book",
+      "viewport": 390,
+      "width": 390,
+      "view": "library",
+      "reading": "book",
+      "cards": 10,
+      "images": 10,
+      "navRows": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "navVisible": false,
+      "headingVisible": true,
+      "voice": "voicevox:89"
+    }
+  ],
+  "formal_data_unchanged": true
+}

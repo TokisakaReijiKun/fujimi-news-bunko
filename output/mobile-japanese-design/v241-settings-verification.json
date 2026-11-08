@@ -1,0 +1,42 @@
+{
+  "version": "2.41",
+  "apiValidation": true,
+  "viewports": [
+    {
+      "width": 375,
+      "sources": 6,
+      "voices": 14,
+      "noHorizontalOverflow": true,
+      "saveAndReload": true
+    },
+    {
+      "width": 390,
+      "sources": 6,
+      "voices": 14,
+      "noHorizontalOverflow": true,
+      "saveAndReload": true
+    },
+    {
+      "width": 1100,
+      "sources": 6,
+      "voices": 14,
+      "noHorizontalOverflow": true,
+      "saveAndReload": true
+    }
+  ],
+  "checks": [
+    "save-failure-visible-and-retry-succeeds",
+    "voice-selection-still-works",
+    "integer-and-range-validation",
+    "zero-and-100-stepper-boundaries",
+    "direct-input-and-fast-stepper",
+    "preview-only-source-persistence",
+    "source-metadata-preserved",
+    "daily-required-total-recomputed"
+  ],
+  "deliveredDemo": {
+    "version": "2.41",
+    "realSaveAndReopen": true,
+    "formalSettingsUnchanged": true
+  }
+}

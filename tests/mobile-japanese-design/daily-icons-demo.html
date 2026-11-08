@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>日刊图标 · 样式确认</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#e8ebe2;color:#26312f;font:14px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+    main{width:min(850px,100%);margin:48px auto;padding:0 20px}
+    h1{margin:0 0 8px;font-size:20px;font-weight:500}
+    .note{margin:0 0 28px;font-size:13px;color:#727970}
+    .comparison{display:grid;grid-template-columns:repeat(2,minmax(0,390px));gap:24px;align-items:start}
+    section h2{margin:0 0 10px;font-size:13px;font-weight:500;color:#727970}
+    section:last-child h2{color:#284943}
+    icon-preview{display:block}
+    @media(max-width:650px){main{margin:24px auto;padding-inline:16px}.comparison{grid-template-columns:minmax(0,390px);justify-content:center;gap:22px}}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>日刊图标</h1>
+    <p class="note">统一尺寸、线宽和颜色。下方仅展示样式。</p>
+    <div class="comparison">
+      <section><h2>修改前</h2><icon-preview data-original></icon-preview></section>
+      <section><h2>修改后 · 20px / 1.6px / 同色</h2><icon-preview></icon-preview></section>
+    </div>
+  </main>
+  <script>
+    const paths = {
+      news: 'M5 4h15v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8h3m0-4v14M9 8h7M9 12h7M9 16h4',
+      calendar: 'M5 5h14v16H5zM8 2v6m8-6v6M5 10h14'
+    };
+    const glyph = name => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"></path></svg>`;
+    for (const host of document.querySelectorAll('icon-preview')) {
+      const root = host.attachShadow({mode:'open'});
+      const stylesheet = document.createElement('link');
+      stylesheet.rel = 'stylesheet';
+      stylesheet.href = new URL('../../static/mobile-app.css', location.href).href;
+      root.append(stylesheet);
+      const frame = document.createElement('style');
+      frame.textContent = `:host{position:relative;inset:auto;display:block;width:100%;height:280px;overflow:hidden;border:1px solid var(--line);border-radius:12px}.page{padding-top:27px}`;
+      if (host.hasAttribute('data-original')) frame.textContent += `
+        .daily-actions .icon-button{color:var(--ink)}
+        .daily-actions .icon-button svg{width:22px;height:22px}
+        .daily-actions .text-button svg{width:16px;height:16px}
+      `;
+      root.append(frame);
+      const page = document.createElement('div');
+      page.className = 'page daily-page';
+      page.lang = 'ja';
+      page.innerHTML = `<div class="daily-heading">
+        <header class="page-heading"><div><h1>本日ノニュース</h1><p>いま起きていることを、ひとつずつ。</p></div></header>
+        <div class="daily-issue"><p>10月2日(金)</p><div class="daily-actions">
+          <span class="icon-button" role="img" aria-label="日刊を更新">${glyph('news')}</span>
+          <span class="text-button">${glyph('calendar')}過去の日刊</span>
+        </div></div>
+      </div>`;
+      root.append(page);
+    }
+  </script>
+</body>
+</html>

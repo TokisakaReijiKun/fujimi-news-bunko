@@ -1,0 +1,172 @@
+{
+  "screens": [
+    {
+      "headerHeight": 162.58334350585938,
+      "imprintBottom": 86,
+      "numberGroups": [
+        "4人",
+        "1人",
+        "1人"
+      ],
+      "scrollWidth": 375,
+      "title": "茨城 鹿嶋 男性4人が海に転落 1人死亡 1人不明",
+      "titleBottom": 171.58333587646484,
+      "titleTop": 98,
+      "utilityTop": 185.58334350585935,
+      "visibleButtons": [
+        {
+          "height": 44,
+          "label": "訳文を表示",
+          "width": 88
+        },
+        {
+          "height": 44,
+          "label": "文章操作",
+          "width": 48
+        }
+      ],
+      "width": 375,
+      "actions": {
+        "controls": 4,
+        "focusInside": true,
+        "left": 137.33334350585938,
+        "right": 352.3333435058594
+      },
+      "reread": {
+        "actionPanelHidden": true,
+        "left": 23,
+        "right": 352.3333435058594
+      },
+      "translation": {
+        "left": 23,
+        "right": 213
+      },
+      "focusReturned": true
+    },
+    {
+      "headerHeight": 199.375,
+      "imprintBottom": 86,
+      "numberGroups": [],
+      "scrollWidth": 375,
+      "title": "生命の起源巡る理論、彗星を契機とする定説が覆る可能性　新研究",
+      "titleBottom": 208.375,
+      "titleTop": 98,
+      "utilityTop": 222.375,
+      "visibleButtons": [
+        {
+          "height": 44,
+          "label": "訳文を表示",
+          "width": 88
+        },
+        {
+          "height": 44,
+          "label": "文章操作",
+          "width": 48
+        }
+      ],
+      "width": 375,
+      "actions": {
+        "controls": 4,
+        "focusInside": true,
+        "left": 137.33334350585938,
+        "right": 352.3333435058594
+      },
+      "reread": {
+        "actionPanelHidden": true,
+        "left": 23,
+        "right": 352.3333435058594
+      },
+      "translation": {
+        "left": 23,
+        "right": 213
+      },
+      "focusReturned": true
+    },
+    {
+      "headerHeight": 162.58334350585938,
+      "imprintBottom": 86,
+      "numberGroups": [
+        "4人",
+        "1人",
+        "1人"
+      ],
+      "scrollWidth": 390,
+      "title": "茨城 鹿嶋 男性4人が海に転落 1人死亡 1人不明",
+      "titleBottom": 171.58333587646484,
+      "titleTop": 98,
+      "utilityTop": 185.58334350585935,
+      "visibleButtons": [
+        {
+          "height": 44,
+          "label": "訳文を表示",
+          "width": 88
+        },
+        {
+          "height": 44,
+          "label": "文章操作",
+          "width": 48
+        }
+      ],
+      "width": 390,
+      "actions": {
+        "controls": 4,
+        "focusInside": true,
+        "left": 152,
+        "right": 367
+      },
+      "reread": {
+        "actionPanelHidden": true,
+        "left": 23,
+        "right": 367
+      },
+      "translation": {
+        "left": 23,
+        "right": 213
+      },
+      "focusReturned": true
+    },
+    {
+      "headerHeight": 199.375,
+      "imprintBottom": 86,
+      "numberGroups": [],
+      "scrollWidth": 390,
+      "title": "生命の起源巡る理論、彗星を契機とする定説が覆る可能性　新研究",
+      "titleBottom": 208.375,
+      "titleTop": 98,
+      "utilityTop": 222.375,
+      "visibleButtons": [
+        {
+          "height": 44,
+          "label": "訳文を表示",
+          "width": 88
+        },
+        {
+          "height": 44,
+          "label": "文章操作",
+          "width": 48
+        }
+      ],
+      "width": 390,
+      "actions": {
+        "controls": 4,
+        "focusInside": true,
+        "left": 152,
+        "right": 367
+      },
+      "reread": {
+        "actionPanelHidden": true,
+        "left": 23,
+        "right": 367
+      },
+      "translation": {
+        "left": 23,
+        "right": 213
+      },
+      "focusReturned": true
+    }
+  ],
+  "translation": true,
+  "bookmarkRoundTrip": true,
+  "keyboardAndFocus": true,
+  "nativeReread": true
+}

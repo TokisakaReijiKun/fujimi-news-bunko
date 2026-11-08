@@ -1,0 +1,45 @@
+{
+  "version": "2.42",
+  "viewports": [
+    {
+      "width": 375,
+      "capRespected": true,
+      "reallocation": true,
+      "lowerTargetBlocked": true,
+      "noHorizontalOverflow": true
+    },
+    {
+      "width": 390,
+      "capRespected": true,
+      "reallocation": true,
+      "lowerTargetBlocked": true,
+      "noHorizontalOverflow": true
+    },
+    {
+      "width": 1100,
+      "capRespected": true,
+      "reallocation": true,
+      "lowerTargetBlocked": true,
+      "noHorizontalOverflow": true
+    }
+  ],
+  "checks": [
+    "failed-decrease-stops-increases-and-retries",
+    "dynamic-source-maximum",
+    "all-plus-disabled-at-total",
+    "direct-input-over-total-cannot-save",
+    "minus-corrects-over-limit",
+    "decreases-before-increases",
+    "lowering-target-respects-minimum-total",
+    "raising-target-adds-budget",
+    "empty-input-has-no-NaN-maximum"
+  ],
+  "deliveredDemo": {
+    "version": "2.42",
+    "savedTotalEqualsTarget": true,
+    "bypassUiRequestsRejected": true,
+    "lowerTargetRejected": true,
+    "formalSettingsUnchanged": true,
+    "apiRegressionTests": 11
+  }
+}

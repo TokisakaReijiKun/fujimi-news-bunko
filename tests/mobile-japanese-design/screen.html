@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>富士見新聞文庫 · 手机端日式设计稿</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="design.css">
+</head>
+<body>
+  <div class="phone" id="phone">
+    <div class="statusbar" aria-hidden="true"><b>9:41</b><div><svg viewBox="0 0 40 16"><path d="M1 13V10h3v3m3 0V7h3v6m3 0V4h3v9m3 0V1h3v12" stroke="currentColor" stroke-width="2"/><path d="M27 4q5-5 10 0m-8 3q3-3 6 0m-4 3h2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span class="battery"></span></div></div>
+    <header class="appbar" id="appbar"><a class="wordmark" href="#daily" aria-label="富士見新聞文庫，返回日刊"><span class="seal">富士<br>見</span><span>富士見新聞文庫</span></a><span class="bar-note">私の、読む時間。</span></header>
+    <main id="main" tabindex="-1"></main>
+    <nav class="bottom-nav" aria-label="主导航" id="navigation">
+      <a href="#daily" data-route="daily"><svg><use href="#i-news"/></svg><span>日刊</span></a>
+      <a href="#reader" data-route="reader"><svg><use href="#i-book"/></svg><span>閲読室</span></a>
+      <a href="#library" data-route="library"><svg><use href="#i-shelf"/></svg><span>書架</span></a>
+      <a href="#dictionary" data-route="dictionary"><svg><use href="#i-search"/></svg><span>辞書</span></a>
+      <button type="button" id="more" aria-label="更多：收藏与設置" aria-controls="drawer" aria-expanded="false"><svg><use href="#i-menu"/></svg><span>更多</span></button>
+    </nav>
+    <div class="sheet-backdrop" id="scrim" hidden></div>
+    <aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+      <div class="drawer-head"><span id="drawer-title">私の文庫</span><button class="icon-button" type="button" id="close-drawer" aria-label="关闭导航"><svg><use href="#i-close"/></svg></button></div>
+      <p>読むことを、日々のなかに。</p>
+      <a href="#bookmarks"><svg><use href="#i-bookmark"/></svg><span><b>收藏</b><small>心に留めた記事</small></span><svg><use href="#i-next"/></svg></a>
+      <a href="#settings"><svg><use href="#i-settings"/></svg><span><b>設置</b><small>読む時間を、自分らしく</small></span><svg><use href="#i-next"/></svg></a>
+      <footer><span class="seal">富士<br>見</span><span>富士見新聞文庫<br><small>ニュースを、深く読む。</small></span></footer>
+    </aside>
+    <dialog id="demo-dialog"><form method="dialog"><button class="icon-button dialog-close" aria-label="关闭说明"><svg><use href="#i-close"/></svg></button><h2 id="dialog-title">设计稿说明</h2><p id="dialog-copy"></p><button class="primary">返回设计稿</button></form></dialog>
+    <div class="prototype-caption" aria-hidden="true">高保真设计稿 · 合成示意内容</div>
+  </div>
+  <svg class="symbols" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-news" viewBox="0 0 24 24"><path d="M5 4h15v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8h3m0-4v14M9 8h7M9 12h7M9 16h4"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 6v14M3 4c4-1 6 0 9 2 3-2 5-3 9-2v14c-4-1-6 0-9 2-3-2-5-3-9-2Z"/></symbol>
+    <symbol id="i-shelf" viewBox="0 0 24 24"><path d="M4 5h4v14H4zM10 5h4v14h-4zM16 6l3-1 4 13-4 1zM2 21h21"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4Z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="m9 3 1-1h4l1 3 3 1 3-1 2 4-2 2v3l2 2-2 4-3-1-3 1-1 3h-4l-1-3-3-1-3 1-2-4 2-2v-3L1 9l2-4 3 1 3-1Z" transform="translate(1 0) scale(.9)"/><circle cx="12" cy="11" r="3"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="m9 15 6-6m-8 4-2 2a4 4 0 0 0 6 6l3-3m3-7 2-2a4 4 0 0 0-6-6l-3 3"/></symbol>
+    <symbol id="i-paste" viewBox="0 0 24 24"><path d="M8 5H4v16h16V5h-4M8 3h8v5H8zM8 12h8M8 16h5"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M3 9h4l5-4v14l-5-4H3Zm13-1c3 2 3 6 0 8m3-11c5 4 5 10 0 14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7Z"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M6 5v14m13-14L8 12l11 7Z"/></symbol>
+    <symbol id="i-skip" viewBox="0 0 24 24"><path d="M18 5v14M5 5l11 7-11 7Z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M5 5h14v16H5zM8 2v6m8-6v6M5 10h14"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 14 6M4 12a8 8 0 0 0 14 6"/></symbol>
+  </svg>
+
+  <template id="daily">
+    <div class="page daily-page">
+      <div class="edition"><span>令和八年 十一月一日</span><span>日曜日</span></div>
+      <div class="title-row"><div><h1>本日ノニュース</h1><p>いま起きていることを、ひとつずつ。</p></div></div>
+      <div class="daily-date"><b>11<span>月</span>01<span>日</span></b><button type="button" class="text-button" data-dialog="history"><svg><use href="#i-calendar"/></svg>历史日期</button></div>
+      <a class="lead" href="#article"><div class="lead-art"><img src="landscape.svg" alt="秋の街並みのイラスト"><span class="image-stamp">秋のたより</span></div><div class="article-meta"><span>NHKニュース</span><time>08:30</time></div><h2>京都の古い町並みで、<br>秋の色づきが始まる</h2><p>季節の移ろいを、いつもの道で見つける。</p><div class="article-foot"><span>社会</span><span>約 4 分で読む<svg><use href="#i-next"/></svg></span></div></a>
+      <div class="section-label"><h2>今日の記事</h2><span>10 篇</span></div>
+      <a class="news-row" href="#article"><div><div class="article-meta"><span>朝日新聞</span><time>07:45</time></div><h3>街の小さな書店がつなぐ、<br>人と本との新しい出会い</h3><p>文化</p></div><div class="mini-art books-art"><i></i><i></i><i></i><i></i></div></a>
+      <a class="news-row" href="#article"><div><div class="article-meta"><span>日本経済新聞</span><time>07:10</time></div><h3>地域の鉄道、次の世代へ<br>日常の移動を支える取り組み</h3><p>経済</p></div><div class="mini-art rail-art"><span>駅</span></div></a>
+      <p class="end-note">示意内容，仅用于呈现新闻排版。</p>
+    </div>
+  </template>
+
+  <template id="reader">
+    <div class="page reader-page">
+      <div class="title-row"><div><h1>閲読室</h1><p>ひとつの記事を、ことばから深く読む。</p></div></div>
+      <section class="import-panel"><span class="tiny-seal">読</span><h2>読みたい記事を、ここへ。</h2><p>記事のリンクを入れて、読む準備を。</p><label for="article-link">文章网址</label><div class="url-input"><svg><use href="#i-link"/></svg><input type="url" id="article-link" placeholder="https://…" autocomplete="off"></div><button type="button" class="primary" data-dialog="import">导入并处理<svg><use href="#i-next"/></svg></button><button type="button" class="paste-button" data-dialog="paste"><svg><use href="#i-paste"/></svg>粘贴正文</button></section>
+      <div class="section-label"><h2>阅读室示例</h2><button type="button" class="text-button" data-dialog="example"><svg><use href="#i-plus"/></svg>增加示例</button></div>
+      <a href="#article" class="example-row"><span class="example-mark">朝</span><div><h3>朝の散歩</h3><p>朝の光のなかで、一日を始める。</p><small>日文原文 · 中文译文</small></div><svg><use href="#i-next"/></svg></a>
+      <a href="#article" class="example-row"><span class="example-mark green">雨</span><div><h3>雨の日の喫茶店</h3><p>窓の向こうの、静かな時間。</p><small>日文原文 · 中文译文</small></div><svg><use href="#i-next"/></svg></a>
+      <p class="room-note">ことばを置いて、<br>読む時間へ。</p>
+    </div>
+  </template>
+
+  <template id="bookmarks">
+    <div class="page bookmarks-page">
+      <div class="title-row"><div><h1>收藏</h1><p>心に留めた記事を、いつでもここに。</p></div><span class="count-mark">12<span>篇</span></span></div>
+      <div class="saved-intro"><span class="tiny-seal">栞</span><div><h2>また、読みたくなる。</h2><p>あの日、出会ったことばたち。</p></div></div>
+      <div class="section-label"><h2>最近の收藏</h2><span>11 月</span></div>
+      <a href="#article" class="saved-article"><div class="article-meta"><span>朝日新聞</span><time>10 月 31 日</time></div><h2>街の小さな書店がつなぐ、<br>人と本との新しい出会い</h2><p>本を手に取る時間が、街の日常に戻ってきた。</p><div class="article-foot"><span>文化</span><svg class="saved-icon"><use href="#i-bookmark"/></svg></div></a>
+      <a href="#article" class="saved-article"><div class="article-meta"><span>NHKニュース</span><time>10 月 30 日</time></div><h2>山あいの町に、<br>秋のたよりが届く</h2><div class="saved-scene"><img src="landscape.svg" alt="山と町並みのイラスト"></div><div class="article-foot"><span>社会</span><svg class="saved-icon"><use href="#i-bookmark"/></svg></div></a>
+      <a href="#article" class="saved-article"><div class="article-meta"><span>読売新聞</span><time>10 月 29 日</time></div><h2>図書館で過ごす、<br>いつもより少し長い午後</h2><div class="article-foot"><span>文化</span><svg class="saved-icon"><use href="#i-bookmark"/></svg></div></a>
+    </div>
+  </template>
+
+  <template id="library">
+    <div class="page library-page">
+      <div class="title-row"><div><h1>書架</h1><p>物語の続きを、いつでもここから。</p></div><button type="button" class="icon-button add-book" data-dialog="book" aria-label="EPUBを追加"><svg><use href="#i-plus"/></svg></button></div>
+      <a class="continue-book" href="#book"><div class="book-cover kokoro"><span>夏目漱石</span><b>こゝろ</b><i>文庫</i></div><div class="continue-copy"><span>読書のつづき</span><h2>こゝろ</h2><p>夏目漱石</p><div class="read-progress"><i></i></div><small>上　先生と私</small><b>続きをよむ<svg><use href="#i-next"/></svg></b></div></a>
+      <div class="section-label"><h2>本棚</h2><span>6 冊</span></div>
+      <div class="book-grid">
+        <a href="#book" class="book-item"><div class="book-cover night"><span>宮沢賢治</span><b>銀河鉄道の夜</b><i>文庫</i></div><h3>銀河鉄道の夜</h3><p>宮沢賢治</p></a>
+        <a href="#book" class="book-item"><div class="book-cover snow"><span>川端康成</span><b>雪国</b><i>文庫</i></div><h3>雪国</h3><p>川端康成</p></a>
+        <a href="#book" class="book-item"><div class="book-cover cat"><span>夏目漱石</span><b>吾輩は猫である</b><i>文庫</i></div><h3>吾輩は猫である</h3><p>夏目漱石</p></a>
+        <a href="#book" class="book-item"><div class="book-cover leaf"><span>芥川龍之介</span><b>羅生門</b><i>文庫</i></div><h3>羅生門</h3><p>芥川龍之介</p></a>
+      </div>
+      <p class="end-note">书封为原创排版示意。</p>
+    </div>
+  </template>
+
+  <template id="dictionary">
+    <div class="page dictionary-page">
+      <div class="title-row"><div><h1>辞書</h1><p>ひとつの言葉から、世界をひらく。</p></div></div>
+      <form class="search-form" id="dictionary-form"><label for="dictionary-query">ことばを調べる</label><div class="search-input"><svg><use href="#i-search"/></svg><input type="search" id="dictionary-query" value="木漏れ日" placeholder="日本語・かな・中文释义"><button type="submit" class="icon-button" aria-label="搜索词条"><svg><use href="#i-next"/></svg></button></div></form>
+      <div class="result-summary"><span>本地词库</span><span>1 件</span></div>
+      <article class="word-detail"><div class="word-kana">こもれび</div><div class="word-heading"><h2>木漏れ日</h2><button type="button" class="icon-button pronunciation" data-dialog="speech" aria-label="朗读木漏れ日"><svg><use href="#i-volume"/></svg></button></div><span class="part-of-speech">名詞</span><div class="definition"><span>释义</span><p>从树叶的缝隙中洒落的阳光。</p></div><div class="dictionary-example"><span>用例</span><p lang="ja">木漏れ日が、<br>小道をやさしく照らしている。</p><p lang="zh">透过树叶的阳光，轻轻地照亮了小路。</p></div><div class="word-motif" aria-hidden="true"><span></span><i></i><b>光</b></div></article>
+      <p class="dictionary-note">日语 · 假名 · 罗马字 · 中文释义</p>
+    </div>
+  </template>
+
+  <template id="settings">
+    <div class="page settings-page">
+      <div class="title-row"><div><h1>設置</h1><p>読む時間を、自分らしく整える。</p></div></div>
+      <section class="voice-summary"><span class="tiny-seal">声</span><div><small>声の形</small><h2>七海</h2><p>文章・書籍・辞書の朗読</p></div><button type="button" class="icon-button" data-dialog="voice" aria-label="选择朗读声线"><svg><use href="#i-next"/></svg></button></section>
+      <div class="setting-section"><h2>日刊設定</h2><details><summary><span>ニュースソース</span><span>6 个来源<svg><use href="#i-next"/></svg></span></summary><p>NHKニュース、朝日新聞、読売新聞、日本経済新聞、産経新聞、Yahoo!ニュース</p></details><div class="setting-row"><span>每日新闻目标数</span><b>10 篇</b></div><details><summary><span>生成方式</span><span>手動生成<svg><use href="#i-next"/></svg></span></summary><p>设计稿展示手动模式；自动更新按 CST 执行。</p><button type="button" class="secondary" data-dialog="generate">今すぐ生成</button></details></div>
+      <div class="setting-section"><h2>書架表示</h2><details><summary><span>排列方式</span><span>最近読んだ順<svg><use href="#i-next"/></svg></span></summary><label for="sort">書架の並び順</label><select id="sort"><option>最近読んだ順</option><option>最近追加した順</option><option>タイトル順</option></select><p>这里只切换设计稿中的显示值。</p></details></div>
+      <div class="setting-section"><h2>Android 本地节点</h2><details><summary><span>PC 協同</span><span class="muted">未配对<svg><use href="#i-next"/></svg></span></summary><p>在同一网络中配对后，可手动双向补齐文库。</p><button type="button" class="secondary" data-dialog="pair">连接电脑</button></details><details><summary><span>翻译服务</span><span>DeepSeek<svg><use href="#i-next"/></svg></span></summary><p>配置与密钥状态需以实际服务返回值为准。</p></details><details><summary><span>应用信息</span><svg><use href="#i-next"/></svg></summary><p>版本与文库路径由本机提供。</p></details></div>
+      <div class="setting-section refresh-section"><h2>文庫刷新</h2><button type="button" class="refresh-button" data-dialog="refresh"><svg><use href="#i-refresh"/></svg>重新整理本地文库<svg><use href="#i-next"/></svg></button></div>
+      <p class="end-note">设计稿中的数值与声线均为示意。</p>
+    </div>
+  </template>
+
+  <template id="article">
+    <div class="reading-page">
+      <div class="reading-tools"><a href="#daily" class="icon-button" aria-label="返回日刊"><svg><use href="#i-back"/></svg></a><span>本日ノニュース</span><div><button class="icon-button translation-toggle" type="button" aria-label="切换中文译文" aria-pressed="true">訳</button><button class="icon-button bookmark-toggle" type="button" aria-label="收藏文章" aria-pressed="false"><svg><use href="#i-bookmark"/></svg></button></div></div>
+      <article class="reading-content"><div class="article-meta"><span>NHKニュース</span><time>2026.11.01</time></div><h1>京都の古い町並みで、<br>秋の色づきが始まる</h1><div class="reading-subtitle">京都古老街巷，渐染秋色</div><div class="reading-byline"><span>社会 · 08:30</span><button type="button" class="text-button" data-dialog="origin">原站打开 ↗</button></div><figure><img src="landscape.svg" alt="秋の町並みのイラスト"><figcaption>秋の朝、町をゆっくり歩く。</figcaption></figure><div class="paragraph"><p lang="ja">京都の<ruby>街<rt>まち</rt></ruby>に、少しずつ秋の色が<ruby>広<rt>ひろ</rt></ruby>がっています。朝の光を受けた木々は、赤や黄色に色づき始めました。</p><p class="translation" lang="zh">京都的街巷，渐渐染上秋日的色彩。沐浴晨光的树木，开始泛起红黄相间的颜色。</p></div><div class="paragraph"><p lang="ja">いつもの道をゆっくり歩くと、<ruby>季節<rt>きせつ</rt></ruby>の小さな変化に気づきます。町の人たちは、それぞれの秋を楽しんでいます。</p><p class="translation" lang="zh">沿着熟悉的小路慢慢走，会发现季节细微的变化。人们享受着属于自己的秋天。</p></div><p class="end-note">以上为合成文章示意。</p></article>
+      <section class="reading-player" aria-label="朗读设计示意"><div class="player-top"><span><svg><use href="#i-volume"/></svg>七海<span class="muted">· 朗読</span></span><span>0:00 / 3:42</span></div><div class="player-progress"><i></i></div><div class="player-controls"><button type="button" class="text-button" data-dialog="listen">听读</button><div><button type="button" class="icon-button" data-dialog="audio" aria-label="上一段"><svg><use href="#i-prev"/></svg></button><button type="button" class="play-button" data-dialog="audio" aria-label="播放朗读设计说明"><svg><use href="#i-play"/></svg></button><button type="button" class="icon-button" data-dialog="audio" aria-label="下一段"><svg><use href="#i-skip"/></svg></button></div><button type="button" class="text-button rate-toggle" aria-label="切换设计示意速度">1.0×</button></div></section>
+    </div>
+  </template>
+
+  <template id="book">
+    <div class="reading-page book-reading-page"><div class="reading-tools"><a href="#library" class="icon-button" aria-label="返回書架"><svg><use href="#i-back"/></svg></a><span>こゝろ</span><button type="button" class="icon-button" data-dialog="contents" aria-label="章节目录"><svg><use href="#i-menu"/></svg></button></div><article class="reading-content book-prose"><p class="book-part">夏目漱石　こゝろ</p><h1>上　先生と私</h1><span class="chapter-number">一</span><p>私はその人を常に先生と呼んでいた。だからここでもただ先生と書くだけで本名は打ち明けない。これは世間を憚かる遠慮というよりも、その方が私にとって自然だからである。</p><p>私はその人の記憶を呼び起こすごとに、すぐ「先生」といいたくなる。筆を執っても心持は同じ事である。よそよそしい頭文字などはとても使う気にならない。</p><p>私が先生と知り合いになったのは鎌倉である。その時私はまだ若々しい書生であった。</p><p class="end-note">公版文本节选 · 阅读版式示意</p></article><div class="book-bottom"><button type="button" class="text-button" data-dialog="contents"><svg><use href="#i-menu"/></svg>目次</button><span>上　先生と私</span><button type="button" class="text-button" data-dialog="audio"><svg><use href="#i-volume"/></svg>朗読</button></div></div>
+  </template>
+  <script src="design.js"></script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+/* The redesigned application is isolated in Shadow DOM. Keep only native readers. */
+@font-face{font-family:NewspaperReader;src:local('Noto Serif JP');font-display:swap}
+:root{--paper:#f8f8f3;--panel:#fffefa;--ink:#26312f;--muted:#727970;--line:#dce1d7;--moss:#284943;--accent:#a33f31;color-scheme:light}
+html,body{margin:0!important;min-width:0!important;max-width:100%!important;background:var(--paper)!important}
+html:not([data-native-reading]) body{height:100dvh!important;overflow:hidden!important}
+html[data-native-reading=article]{scrollbar-width:none;scrollbar-gutter:auto}
+html[data-native-reading=article]::-webkit-scrollbar{display:none}
+body>.app-shell,body>.mobile-app-bar,body>.mobile-nav-scrim{display:none!important}
+html[data-native-reading] body>.app-shell{display:block!important;width:100%!important;max-width:100%!important;margin:0!important}
+html[data-native-reading] .sidebar{display:none!important}
+html[data-native-reading] .content-shell{width:100%!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:83px 23px 126px!important;background:var(--paper)!important}
+html[data-native-reading=article] #reader-view>.section-head{display:none!important}
+html[data-native-reading] .view[hidden]{display:none!important}
+html[data-native-reading] .article-detail{background:var(--paper)!important;border:0!important;box-shadow:none!important;padding:0!important;margin:0!important}
+html[data-native-reading] .article-detail .source{font-size:11px!important;color:var(--accent)!important}
+/* MOJi 3.4.1 reading typography. The reference layout has one blank line between bilingual groups. */
+:root {
+  --reading-original-font: 'Noto Sans JP', 'Yu Gothic UI', Meiryo, sans-serif;
+  --reading-translation-font: 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --reading-original-color: #3a3a3a;
+  --reading-translation-color: #acacac;
+  --reading-gutter: 28px;
+  --reading-translation-gap: 2px;
+  --reading-paragraph-gap: 8px;
+  --reading-bilingual-gap: calc(24px + var(--reader-text-size) * var(--reader-text-leading));
+}
+html[data-native-reading=article] .article-detail :is(.parallel, .full-translation) {
+  padding-inline: calc(var(--reading-gutter) - var(--article-page-gutter));
+}
+html[data-native-reading=article] .article-detail .parallel {
+  color: var(--reading-original-color);
+}
+html[data-native-reading=article] .article-detail .paragraph:not(.paragraph-heading, .paragraph-box) {
+  padding: 0 0 var(--reading-paragraph-gap) !important;
+  border-bottom: 0 !important;
+}
+html[data-native-reading=article] .article-detail[data-translation-visible=true] .paragraph:not(.paragraph-heading, .paragraph-box, :last-child) {
+  padding-bottom: var(--reading-bilingual-gap) !important;
+}
+html[data-native-reading=article] .article-detail .paragraph:not(.paragraph-heading) > .japanese {
+  font-family: var(--reading-original-font) !important;
+  font-size: var(--reader-text-size) !important;
+  line-height: var(--reader-text-leading) !important;
+}
+html[data-native-reading=article] .article-detail .japanese rt {
+  color: inherit;
+  transform: translateY(-.125em);
+}
+html[data-native-reading=article] .article-detail :is(.chinese, .full-translation) {
+  font-family: var(--reading-translation-font);
+  font-size: var(--reader-translation-size) !important;
+  line-height: var(--reader-translation-leading) !important;
+  color: var(--reading-translation-color) !important;
+}
+html[data-native-reading=article] .article-detail .chinese {
+  background: none !important;
+  padding: 0 !important;
+  margin: var(--reading-translation-gap) 0 0 !important;
+  border-left: 0 !important;
+}
+html[data-native-reading=article] .article-detail .chinese .translation-main {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+html[data-native-reading] .article-detail .media{margin:22px 0!important}
+html[data-native-reading] .article-detail .media img{border-radius:2px!important;max-height:none!important}
+html[data-native-reading] .article-detail .media figcaption{font-size:10px!important;line-height:1.8!important;color:var(--muted)!important}
+html[data-native-reading=article] .article-audio-player{--player-surface:#eef1e6!important;--player-ink:#2a3931!important;--player-muted:#697761!important;--player-track:#c5ceba!important;--player-button:#dce5cf!important;--player-accent:#284943!important;background:var(--player-surface)!important;border-top:1px solid var(--line)!important;box-shadow:none!important}
+body>dialog{max-width:calc(100vw - 28px)!important;background:var(--paper)!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:10px!important}
+body>dialog input,body>dialog select,body>dialog button{min-height:44px!important}
+@media(max-width:375px){html[data-native-reading] .content-shell{padding-inline:21px!important}}
+
+/* Article opening follows the application's paper, ink and vermilion palette. */
+html[data-native-reading=article] .content-shell{--article-page-gutter:23px;padding-top:68px!important;padding-inline:var(--article-page-gutter)!important}
+html[data-native-reading=article] #reader-view.is-reading .article-heading{display:block;min-width:0;margin:0;padding:0;border:0}
+html[data-native-reading=article] #reader-view.is-reading .article-heading>.title{font:600 23px/1.6 NewspaperReader,'Noto Serif SC','Yu Mincho',serif!important;color:var(--ink)!important;letter-spacing:.005em!important;margin:0 0 2px!important;padding:0!important;word-break:normal;line-break:strict;overflow-wrap:anywhere;text-wrap:pretty;font-feature-settings:'palt';font-kerning:normal}
+html[data-native-reading=article] #reader-view.is-reading .title-unit{white-space:nowrap}
+html[data-native-reading=article] #reader-view.is-reading .article-imprint{display:flex;flex:1;min-width:0;align-items:baseline;gap:4px;margin:0}
+html[data-native-reading=article] #reader-view.is-reading .article-publisher{min-width:0;overflow-wrap:anywhere}
+html[data-native-reading=article] #reader-view.is-reading .article-publisher .origin{display:inline-flex;align-items:center;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#a33f3140}
+html[data-native-reading=article] #reader-view.is-reading .article-imprint .source{writing-mode:horizontal-tb;font:500 11px/1.6 'Noto Sans JP','Noto Sans SC',sans-serif!important;color:var(--accent)!important;letter-spacing:.025em}
+html[data-native-reading=article] #reader-view.is-reading .article-imprint .published{flex:none;max-width:100%;margin:0;color:#616b60;font:400 10px/1.4 'Noto Sans JP','Noto Sans SC',sans-serif;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+html[data-native-reading=article] #reader-view.is-reading .article-utility{--article-tool-width:44px;position:relative;display:flex;align-items:center;min-height:44px;margin:0;padding:0;border:0;overflow:visible}
+@media(max-width:390px){html[data-native-reading=article] .content-shell{--article-page-gutter:18px}}
+@media(max-width:420px){html[data-native-reading=article] #reader-view.is-reading .article-utility{--article-tool-width:clamp(38px,10vw,44px);margin-inline-end:-12px}}
+@media(max-width:350px){
+  html[data-native-reading=article] #reader-view.is-reading .article-utility{flex-wrap:wrap;justify-content:flex-end}
+  html[data-native-reading=article] #reader-view.is-reading .article-imprint{flex-basis:100%}
+}
+html[data-native-reading=article] #reader-view.is-reading .translation-switch,html[data-native-reading=article] #reader-view.is-reading .reread-popover-wrap{position:static!important;display:block!important;width:auto!important;min-width:0!important}
+html[data-native-reading=article] #reader-view.is-reading .article-utility>.bookmark,
+html[data-native-reading=article] #reader-view.is-reading .article-utility>.copy-original,
+html[data-native-reading=article] #reader-view.is-reading .reread-link,
+html[data-native-reading=article] #reader-view.is-reading .translation-menu-toggle{display:flex!important;align-items:center!important;justify-content:center!important;gap:3px!important;width:var(--article-tool-width)!important;min-width:var(--article-tool-width)!important;height:44px!important;min-height:44px!important;margin:0!important;padding:0!important;border:0!important;border-radius:5px!important;background:transparent!important;color:var(--moss)!important;text-decoration:none!important;box-shadow:none!important;filter:none!important}
+html[data-native-reading=article] #reader-view.is-reading .translation-menu-toggle:before{content:'訳';font:500 17px/1 NewspaperReader,'Yu Mincho',serif}
+html[data-native-reading=article] #reader-view.is-reading .translation-menu-label{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important}
+html[data-native-reading=article] #reader-view.is-reading .translation-menu-chevron{border-top:3px solid currentColor!important;border-left-width:3px!important;border-right-width:3px!important}
+html[data-native-reading=article] #reader-view.is-reading .article-utility button:hover{color:var(--accent)!important}
+html[data-native-reading=article] #reader-view.is-reading .article-utility .tool-icon{width:18px;height:18px;stroke-width:1.55}
+html[data-native-reading=article] #reader-view.is-reading .article-utility>.is-bookmarked{color:var(--accent)!important}
+html[data-native-reading=article] #reader-view.is-reading .article-utility>.is-bookmarked .tool-icon{fill:currentColor}
+html[data-native-reading=article] #reader-view.is-reading .reread-panel{top:calc(100% + 6px)!important;left:0!important;right:auto!important;width:100%!important;max-width:100%!important;box-sizing:border-box;background:var(--panel);color:var(--ink);border-color:var(--line);box-shadow:0 7px 22px #26312f21}
+html[data-native-reading=article] #reader-view.is-reading .reread-controls{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px}
+html[data-native-reading=article] #reader-view.is-reading .reread-controls select{width:100%;min-width:0;min-height:44px}
+html[data-native-reading=article] #reader-view.is-reading .translation-menu{top:calc(100% + 6px)!important;left:0!important;right:auto!important;width:190px!important;max-width:100%!important;padding:5px!important;border:1px solid var(--line)!important;border-radius:6px!important;background:var(--panel)!important;box-shadow:0 7px 22px #26312f21!important}
+html[data-native-reading=article] #reader-view.is-reading .translation-menu button{min-height:44px!important;height:auto!important;padding:10px 12px!important;border:0!important;border-radius:3px!important;font:400 12px/1.6 'Noto Sans JP','Noto Sans SC',sans-serif!important;color:var(--ink)!important}
+html[data-native-reading=article] #reader-view.is-reading .translation-menu button[aria-checked=true]{background:#f1e5df!important;color:var(--accent)!important}
+html[data-native-reading=article] #reader-view.is-reading button:focus-visible,html[data-native-reading=article] #reader-view.is-reading a:focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px!important}
+html[data-native-reading=article] #reader-view.is-reading .media{margin:6px 0 18px!important}
+html[data-native-reading=article] #reader-view.is-reading .media:empty{display:none!important}
+
+/* Independent notices stay at the top of the page. */
+#toast-region{top:calc(73px + env(safe-area-inset-top,0px))!important;bottom:auto!important;left:50%!important;max-width:min(360px,calc(100vw - 32px))!important;gap:4px}
+html[data-native-reading=article] #toast-region{top:calc(8px + env(safe-area-inset-top,0px))!important}
+
+/* Only the dictionary landing surface uses the preview design. */
+.dictionary-home-search-icon,.dictionary-home-submit{display:none}
+#dictionary-view[data-dictionary-home]>.section-head{display:none!important}
+#dictionary-view[data-dictionary-home] .dictionary-search-form{margin:0!important;max-width:none}
+#dictionary-view[data-dictionary-home] .dictionary-search-form>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#dictionary-view[data-dictionary-home] .dictionary-query-shell{display:flex;align-items:center;gap:9px;min-height:52px;padding-left:14px;border:1px solid #c6cebd;border-radius:6px;background:#fffefa}
+#dictionary-view[data-dictionary-home] .dictionary-home-search-icon{display:block;flex:none;width:20px;height:20px;stroke:#284943;stroke-width:1.6;fill:none}
+#dictionary-view[data-dictionary-home] #dictionary-query{flex:1;min-width:0;width:100%;min-height:50px;height:50px;margin:0;padding:10px 0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#26312f;font:15px 'Noto Sans JP','Yu Gothic UI',sans-serif}
+#dictionary-view[data-dictionary-home] .dictionary-home-submit{display:grid;place-items:center;flex:none;min-width:44px;min-height:48px;margin:0;padding:11px;border:0;background:none;color:#284943}
+#dictionary-view[data-dictionary-home] .dictionary-home-submit svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.6;fill:none}
+#dictionary-view[data-dictionary-welcome] .dictionary-workspace{display:none}

@@ -1,0 +1,224 @@
+{
+  "screens": [
+    {
+      "background": "rgb(248, 248, 243)",
+      "buttons": [
+        {
+          "height": 44,
+          "label": "訳文を表示",
+          "top": 233.84375,
+          "width": 82.33333587646484
+        },
+        {
+          "height": 44,
+          "label": "收藏",
+          "top": 233.84375,
+          "width": 82.33333587646484
+        },
+        {
+          "height": 44,
+          "label": "复制原文",
+          "top": 233.84375,
+          "width": 82.33333587646484
+        },
+        {
+          "height": 44,
+          "label": "読み返し",
+          "top": 233.84375,
+          "width": 82.33333587646484
+        }
+      ],
+      "font": "NewspaperReader, \"Noto Serif SC\", \"Yu Mincho\", serif",
+      "imprintBottom": 218.84375,
+      "imprintTop": 192.375,
+      "originHref": "https://news.web.nhk/newsweb/na/nd-20261102de69776",
+      "originText": "NHKニュース",
+      "published": "2026/11/2(月) 19:23",
+      "removed": 0,
+      "scrollWidth": 375,
+      "themePaper": "#f8f8f3",
+      "title": "中野ブロードウェイ 高級時計窃盗事件 男は新幹線で西に移動か",
+      "titleBottom": 178.375,
+      "titleScroll": 329,
+      "titleTop": 68,
+      "titleWidth": 329,
+      "utilityTop": 232.84375,
+      "width": 375,
+      "writingMode": "horizontal-tb",
+      "translation": {
+        "left": 23,
+        "right": 213
+      },
+      "reread": {
+        "left": 23,
+        "right": 352.3333435058594
+      }
+    },
+    {
+      "background": "rgb(248, 248, 243)",
+      "buttons": [
+        {
+          "height": 44,
+          "label": "訳文を表示",
+          "top": 233.84375,
+          "width": 82.33333587646484
+        },
+        {
+          "height": 44,
+          "label": "收藏",
+          "top": 233.84375,
+          "width": 82.33333587646484
+        },
+        {
+          "height": 44,
+          "label": "复制原文",
+          "top": 233.84375,
+          "width": 82.33333587646484
+        },
+        {
+          "height": 44,
+          "label": "読み返し",
+          "top": 233.84375,
+          "width": 82.33333587646484
+        }
+      ],
+      "font": "NewspaperReader, \"Noto Serif SC\", \"Yu Mincho\", serif",
+      "imprintBottom": 218.84375,
+      "imprintTop": 192.375,
+      "originHref": "https://news.yahoo.co.jp/articles/cebfa96a0736399d597d4b6e7925b1aa53b7e53b",
+      "originText": "Yahoo!ニュース",
+      "published": "2026/11/2(月) 19:00",
+      "removed": 0,
+      "scrollWidth": 375,
+      "themePaper": "#f8f8f3",
+      "title": "「謝罪響かない」「泣くくらいなら」　GMO熊谷代表会見、利用者は",
+      "titleBottom": 178.375,
+      "titleScroll": 329,
+      "titleTop": 68,
+      "titleWidth": 329,
+      "utilityTop": 232.84375,
+      "width": 375,
+      "writingMode": "horizontal-tb",
+      "translation": {
+        "left": 23,
+        "right": 213
+      },
+      "reread": {
+        "left": 23,
+        "right": 352.3333435058594
+      }
+    },
+    {
+      "background": "rgb(248, 248, 243)",
+      "buttons": [
+        {
+          "height": 44,
+          "label": "訳文を表示",
+          "top": 233.84375,
+          "width": 86
+        },
+        {
+          "height": 44,
+          "label": "收藏",
+          "top": 233.84375,
+          "width": 86
+        },
+        {
+          "height": 44,
+          "label": "复制原文",
+          "top": 233.84375,
+          "width": 86
+        },
+        {
+          "height": 44,
+          "label": "読み返し",
+          "top": 233.84375,
+          "width": 86
+        }
+      ],
+      "font": "NewspaperReader, \"Noto Serif SC\", \"Yu Mincho\", serif",
+      "imprintBottom": 218.84375,
+      "imprintTop": 192.375,
+      "originHref": "https://news.web.nhk/newsweb/na/nd-20261102de69776",
+      "originText": "NHKニュース",
+      "published": "2026/11/2(月) 19:23",
+      "removed": 0,
+      "scrollWidth": 390,
+      "themePaper": "#f8f8f3",
+      "title": "中野ブロードウェイ 高級時計窃盗事件 男は新幹線で西に移動か",
+      "titleBottom": 178.375,
+      "titleScroll": 344,
+      "titleTop": 68,
+      "titleWidth": 344,
+      "utilityTop": 232.84375,
+      "width": 390,
+      "writingMode": "horizontal-tb",
+      "translation": {
+        "left": 23,
+        "right": 213
+      },
+      "reread": {
+        "left": 23,
+        "right": 367
+      }
+    },
+    {
+      "background": "rgb(248, 248, 243)",
+      "buttons": [
+        {
+          "height": 44,
+          "label": "訳文を表示",
+          "top": 233.84375,
+          "width": 86
+        },
+        {
+          "height": 44,
+          "label": "收藏",
+          "top": 233.84375,
+          "width": 86
+        },
+        {
+          "height": 44,
+          "label": "复制原文",
+          "top": 233.84375,
+          "width": 86
+        },
+        {
+          "height": 44,
+          "label": "読み返し",
+          "top": 233.84375,
+          "width": 86
+        }
+      ],
+      "font": "NewspaperReader, \"Noto Serif SC\", \"Yu Mincho\", serif",
+      "imprintBottom": 218.84375,
+      "imprintTop": 192.375,
+      "originHref": "https://news.yahoo.co.jp/articles/cebfa96a0736399d597d4b6e7925b1aa53b7e53b",
+      "originText": "Yahoo!ニュース",
+      "published": "2026/11/2(月) 19:00",
+      "removed": 0,
+      "scrollWidth": 390,
+      "themePaper": "#f8f8f3",
+      "title": "「謝罪響かない」「泣くくらいなら」　GMO熊谷代表会見、利用者は",
+      "titleBottom": 178.375,
+      "titleScroll": 344,
+      "titleTop": 68,
+      "titleWidth": 344,
+      "utilityTop": 232.84375,
+      "width": 390,
+      "writingMode": "horizontal-tb",
+      "translation": {
+        "left": 23,
+        "right": 213
+      },
+      "reread": {
+        "left": 23,
+        "right": 367
+      }
+    }
+  ],
+  "passed": true,
+  "bookmarkRoundTrip": true,
+  "keyboardAndFocus": true,
+  "noOverflowControl": true
+}

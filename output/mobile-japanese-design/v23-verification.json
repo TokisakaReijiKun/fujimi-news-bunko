@@ -1,0 +1,215 @@
+{
+  "checks": [
+    {
+      "view": "daily",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 375,
+      "covers": 0,
+      "documentWidth": 375,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "いま起きていることを、ひとつずつ。",
+      "scrollWidth": 375,
+      "width": 375
+    },
+    {
+      "view": "reader",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 375,
+      "covers": 0,
+      "documentWidth": 375,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "ひとつの記事を、ことばから深く読む。",
+      "scrollWidth": 375,
+      "width": 375
+    },
+    {
+      "view": "library",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 375,
+      "covers": 2,
+      "documentWidth": 375,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "物語の続きを、いつでもここから。",
+      "scrollWidth": 375,
+      "width": 375
+    },
+    {
+      "view": "dictionary",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 375,
+      "covers": 0,
+      "documentWidth": 375,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "ひとつの言葉から、世界をひらく。",
+      "scrollWidth": 375,
+      "width": 375
+    },
+    {
+      "view": "settings",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 375,
+      "covers": 0,
+      "documentWidth": 375,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "読む時間を、自分らしく整える。",
+      "scrollWidth": 375,
+      "width": 375
+    },
+    {
+      "view": "bookmarks",
+      "contentWidth": 375,
+      "headerButtons": 1,
+      "pageSlogan": "心に留めた記事を、いつでもここに。",
+      "parentActive": "日刊",
+      "scrollWidth": 375,
+      "sectionActive": "收藏",
+      "width": 375
+    },
+    {
+      "view": "daily",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 390,
+      "covers": 0,
+      "documentWidth": 390,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "いま起きていることを、ひとつずつ。",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "view": "reader",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 390,
+      "covers": 0,
+      "documentWidth": 390,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "ひとつの記事を、ことばから深く読む。",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "view": "library",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 390,
+      "covers": 2,
+      "documentWidth": 390,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "物語の続きを、いつでもここから。",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "view": "dictionary",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 390,
+      "covers": 0,
+      "documentWidth": 390,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "ひとつの言葉から、世界をひらく。",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "view": "settings",
+      "brandSlogan": "ニュースを、深く読む。",
+      "contentWidth": 390,
+      "covers": 0,
+      "documentWidth": 390,
+      "headerButtons": 1,
+      "navLabels": [
+        "日刊",
+        "閲読室",
+        "書架",
+        "辞書",
+        "设置"
+      ],
+      "overlaps": false,
+      "pageSlogan": "読む時間を、自分らしく整える。",
+      "scrollWidth": 390,
+      "width": 390
+    },
+    {
+      "view": "bookmarks",
+      "contentWidth": 390,
+      "headerButtons": 1,
+      "pageSlogan": "心に留めた記事を、いつでもここに。",
+      "parentActive": "日刊",
+      "scrollWidth": 390,
+      "sectionActive": "收藏",
+      "width": 390
+    }
+  ],
+  "navigationRoundTrip": true
+}

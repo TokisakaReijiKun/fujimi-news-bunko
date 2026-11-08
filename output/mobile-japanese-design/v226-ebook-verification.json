@@ -1,0 +1,156 @@
+{
+  "metrics": [
+    {
+      "viewport": 375,
+      "scrollWidth": 375,
+      "rail": [
+        347,
+        120,
+        28,
+        560
+      ],
+      "track": "8px",
+      "trackColor": "rgba(158, 158, 158, 0.5)",
+      "railFill": "rgb(80, 99, 83)",
+      "player": [
+        0,
+        690,
+        375,
+        110
+      ],
+      "surface": "rgb(255, 255, 255)",
+      "corner": "16px",
+      "time": "14px",
+      "fill": "rgb(224, 49, 91)",
+      "fillHeight": "4px",
+      "play": [
+        167.5,
+        732.5,
+        40,
+        40
+      ],
+      "playSurface": "rgb(248, 248, 248)",
+      "gear": "4px",
+      "byline": "八目迷\n第一章　４月１日 15時（0.54%）",
+      "bylineWidth": 1,
+      "text": [
+        [
+          "rgb(58, 58, 58)",
+          "1"
+        ],
+        [
+          "rgb(172, 172, 172)",
+          "1"
+        ]
+      ],
+      "markOffset": 0.25
+    },
+    {
+      "viewport": 390,
+      "scrollWidth": 390,
+      "rail": [
+        362,
+        120,
+        28,
+        560
+      ],
+      "track": "8px",
+      "trackColor": "rgba(158, 158, 158, 0.5)",
+      "railFill": "rgb(80, 99, 83)",
+      "player": [
+        0,
+        690,
+        390,
+        110
+      ],
+      "surface": "rgb(255, 255, 255)",
+      "corner": "16px",
+      "time": "14px",
+      "fill": "rgb(224, 49, 91)",
+      "fillHeight": "4px",
+      "play": [
+        175,
+        732.5,
+        40,
+        40
+      ],
+      "playSurface": "rgb(248, 248, 248)",
+      "gear": "4px",
+      "byline": "八目迷\n第一章　４月１日 15時（0.54%）",
+      "bylineWidth": 1,
+      "text": [
+        [
+          "rgb(58, 58, 58)",
+          "1"
+        ],
+        [
+          "rgb(172, 172, 172)",
+          "1"
+        ]
+      ],
+      "markOffset": 0.25
+    },
+    {
+      "viewport": 1100,
+      "scrollWidth": 1100,
+      "rail": [
+        842,
+        120,
+        28,
+        560
+      ],
+      "track": "8px",
+      "trackColor": "rgba(158, 158, 158, 0.5)",
+      "railFill": "rgb(80, 99, 83)",
+      "player": [
+        230,
+        690,
+        640,
+        110
+      ],
+      "surface": "rgb(255, 255, 255)",
+      "corner": "16px",
+      "time": "14px",
+      "fill": "rgb(224, 49, 91)",
+      "fillHeight": "4px",
+      "play": [
+        530,
+        732.5,
+        40,
+        40
+      ],
+      "playSurface": "rgb(248, 248, 248)",
+      "gear": "4px",
+      "byline": "八目迷\n第一章　４月１日 15時（0.27%）",
+      "bylineWidth": 472,
+      "text": [
+        [
+          "rgb(58, 58, 58)",
+          "1"
+        ],
+        [
+          "rgb(172, 172, 172)",
+          "1"
+        ]
+      ],
+      "markOffset": 0.25
+    }
+  ],
+  "articleColors": [
+    [
+      "rgb(58, 58, 58)",
+      "1"
+    ],
+    [
+      "rgb(172, 172, 172)",
+      "1"
+    ]
+  ],
+  "verified": [
+    "rail pointer and keyboard",
+    "rail vertical mode",
+    "bookmark add/remove",
+    "actual audio play/pause and speed",
+    "desktop byline"
+  ]
+}

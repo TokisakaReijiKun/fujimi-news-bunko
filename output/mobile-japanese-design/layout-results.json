@@ -1,0 +1,493 @@
+[
+  {
+    "route": "daily",
+    "viewport": 375,
+    "phoneWidth": 375,
+    "documentWidth": 375,
+    "mainWidth": 375,
+    "mainScrollWidth": 375,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "daily-375.png",
+    "image_size": [
+      750,
+      1624
+    ]
+  },
+  {
+    "route": "reader",
+    "viewport": 375,
+    "phoneWidth": 375,
+    "documentWidth": 375,
+    "mainWidth": 375,
+    "mainScrollWidth": 375,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "reader-375.png",
+    "image_size": [
+      750,
+      1624
+    ]
+  },
+  {
+    "route": "bookmarks",
+    "viewport": 375,
+    "phoneWidth": 375,
+    "documentWidth": 375,
+    "mainWidth": 375,
+    "mainScrollWidth": 375,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "bookmarks-375.png",
+    "image_size": [
+      750,
+      1624
+    ]
+  },
+  {
+    "route": "library",
+    "viewport": 375,
+    "phoneWidth": 375,
+    "documentWidth": 375,
+    "mainWidth": 375,
+    "mainScrollWidth": 375,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "library-375.png",
+    "image_size": [
+      750,
+      1624
+    ]
+  },
+  {
+    "route": "dictionary",
+    "viewport": 375,
+    "phoneWidth": 375,
+    "documentWidth": 375,
+    "mainWidth": 375,
+    "mainScrollWidth": 375,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "dictionary-375.png",
+    "image_size": [
+      750,
+      1624
+    ]
+  },
+  {
+    "route": "settings",
+    "viewport": 375,
+    "phoneWidth": 375,
+    "documentWidth": 375,
+    "mainWidth": 375,
+    "mainScrollWidth": 375,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "settings-375.png",
+    "image_size": [
+      750,
+      1624
+    ]
+  },
+  {
+    "route": "article",
+    "viewport": 375,
+    "phoneWidth": 375,
+    "documentWidth": 375,
+    "mainWidth": 375,
+    "mainScrollWidth": 375,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "article-375.png",
+    "image_size": [
+      750,
+      1624
+    ]
+  },
+  {
+    "route": "book",
+    "viewport": 375,
+    "phoneWidth": 375,
+    "documentWidth": 375,
+    "mainWidth": 375,
+    "mainScrollWidth": 375,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "book-375.png",
+    "image_size": [
+      750,
+      1624
+    ]
+  },
+  {
+    "route": "more",
+    "viewport": 375,
+    "phoneWidth": 375,
+    "documentWidth": 375,
+    "mainWidth": 375,
+    "mainScrollWidth": 375,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "more-375.png",
+    "image_size": [
+      750,
+      1624
+    ]
+  },
+  {
+    "route": "daily",
+    "viewport": 390,
+    "phoneWidth": 390,
+    "documentWidth": 390,
+    "mainWidth": 390,
+    "mainScrollWidth": 390,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "daily-390.png",
+    "image_size": [
+      780,
+      1688
+    ]
+  },
+  {
+    "route": "reader",
+    "viewport": 390,
+    "phoneWidth": 390,
+    "documentWidth": 390,
+    "mainWidth": 390,
+    "mainScrollWidth": 390,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "reader-390.png",
+    "image_size": [
+      780,
+      1688
+    ],
+    "interaction_passed": true
+  },
+  {
+    "route": "bookmarks",
+    "viewport": 390,
+    "phoneWidth": 390,
+    "documentWidth": 390,
+    "mainWidth": 390,
+    "mainScrollWidth": 390,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "bookmarks-390.png",
+    "image_size": [
+      780,
+      1688
+    ]
+  },
+  {
+    "route": "library",
+    "viewport": 390,
+    "phoneWidth": 390,
+    "documentWidth": 390,
+    "mainWidth": 390,
+    "mainScrollWidth": 390,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "library-390.png",
+    "image_size": [
+      780,
+      1688
+    ]
+  },
+  {
+    "route": "dictionary",
+    "viewport": 390,
+    "phoneWidth": 390,
+    "documentWidth": 390,
+    "mainWidth": 390,
+    "mainScrollWidth": 390,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "dictionary-390.png",
+    "image_size": [
+      780,
+      1688
+    ],
+    "interaction_passed": true
+  },
+  {
+    "route": "settings",
+    "viewport": 390,
+    "phoneWidth": 390,
+    "documentWidth": 390,
+    "mainWidth": 390,
+    "mainScrollWidth": 390,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "settings-390.png",
+    "image_size": [
+      780,
+      1688
+    ],
+    "interaction_passed": true
+  },
+  {
+    "route": "article",
+    "viewport": 390,
+    "phoneWidth": 390,
+    "documentWidth": 390,
+    "mainWidth": 390,
+    "mainScrollWidth": 390,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "article-390.png",
+    "image_size": [
+      780,
+      1688
+    ],
+    "interaction_passed": true
+  },
+  {
+    "route": "book",
+    "viewport": 390,
+    "phoneWidth": 390,
+    "documentWidth": 390,
+    "mainWidth": 390,
+    "mainScrollWidth": 390,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "book-390.png",
+    "image_size": [
+      780,
+      1688
+    ]
+  },
+  {
+    "route": "more",
+    "viewport": 390,
+    "phoneWidth": 390,
+    "documentWidth": 390,
+    "mainWidth": 390,
+    "mainScrollWidth": 390,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "more-390.png",
+    "image_size": [
+      780,
+      1688
+    ],
+    "interaction_passed": true
+  },
+  {
+    "route": "daily",
+    "viewport": 1440,
+    "phoneWidth": 430,
+    "documentWidth": 1440,
+    "mainWidth": 430,
+    "mainScrollWidth": 430,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "daily-1440.png",
+    "image_size": [
+      2880,
+      2000
+    ]
+  },
+  {
+    "route": "library",
+    "viewport": 1440,
+    "phoneWidth": 430,
+    "documentWidth": 1440,
+    "mainWidth": 430,
+    "mainScrollWidth": 430,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "library-1440.png",
+    "image_size": [
+      2880,
+      2000
+    ]
+  },
+  {
+    "route": "settings",
+    "viewport": 1440,
+    "phoneWidth": 430,
+    "documentWidth": 1440,
+    "mainWidth": 430,
+    "mainScrollWidth": 430,
+    "overflow": [],
+    "smallControls": [],
+    "navigation": [
+      "#daily",
+      "#reader",
+      "#library",
+      "#dictionary"
+    ],
+    "mocked": true,
+    "image": "settings-1440.png",
+    "image_size": [
+      2880,
+      2000
+    ]
+  },
+  {
+    "route": "design-board",
+    "viewport": 375,
+    "documentWidth": 375,
+    "buttons": 9,
+    "images": true,
+    "interaction_passed": true
+  },
+  {
+    "route": "design-board",
+    "viewport": 390,
+    "documentWidth": 390,
+    "buttons": 9,
+    "images": true,
+    "interaction_passed": true
+  },
+  {
+    "route": "design-board",
+    "viewport": 1440,
+    "documentWidth": 1440,
+    "buttons": 9,
+    "images": true,
+    "interaction_passed": true
+  }
+]

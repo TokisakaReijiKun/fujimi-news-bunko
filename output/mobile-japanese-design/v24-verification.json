@@ -1,0 +1,101 @@
+{
+  "checks": [
+    {
+      "view": "daily",
+      "bookmarkRows": 0,
+      "contentWidth": 375,
+      "continuedCards": 0,
+      "covers": 0,
+      "documentWidth": 375,
+      "headerButtons": 1,
+      "mainWidth": 375,
+      "sectionTabs": 0,
+      "slogan": "いま起きていることを、ひとつずつ。",
+      "title": "本日ノニュース",
+      "width": 375
+    },
+    {
+      "view": "library",
+      "bookmarkRows": 0,
+      "contentWidth": 375,
+      "continuedCards": 0,
+      "covers": 2,
+      "documentWidth": 375,
+      "headerButtons": 1,
+      "mainWidth": 375,
+      "sectionTabs": 0,
+      "slogan": "物語の続きを、いつでもここから。",
+      "title": "書架",
+      "width": 375
+    },
+    {
+      "view": "settings",
+      "bookmarkRows": 1,
+      "contentWidth": 375,
+      "continuedCards": 0,
+      "covers": 0,
+      "documentWidth": 375,
+      "headerButtons": 1,
+      "mainWidth": 375,
+      "sectionTabs": 0,
+      "slogan": "読む時間を、自分らしく整える。",
+      "title": "設置",
+      "width": 375
+    },
+    {
+      "view": "bookmarks",
+      "active": "设置",
+      "tabs": 0,
+      "width": 375
+    },
+    {
+      "view": "daily",
+      "bookmarkRows": 0,
+      "contentWidth": 390,
+      "continuedCards": 0,
+      "covers": 0,
+      "documentWidth": 390,
+      "headerButtons": 1,
+      "mainWidth": 390,
+      "sectionTabs": 0,
+      "slogan": "いま起きていることを、ひとつずつ。",
+      "title": "本日ノニュース",
+      "width": 390
+    },
+    {
+      "view": "library",
+      "bookmarkRows": 0,
+      "contentWidth": 390,
+      "continuedCards": 0,
+      "covers": 2,
+      "documentWidth": 390,
+      "headerButtons": 1,
+      "mainWidth": 390,
+      "sectionTabs": 0,
+      "slogan": "物語の続きを、いつでもここから。",
+      "title": "書架",
+      "width": 390
+    },
+    {
+      "view": "settings",
+      "bookmarkRows": 1,
+      "contentWidth": 390,
+      "continuedCards": 0,
+      "covers": 0,
+      "documentWidth": 390,
+      "headerButtons": 1,
+      "mainWidth": 390,
+      "sectionTabs": 0,
+      "slogan": "読む時間を、自分らしく整える。",
+      "title": "設置",
+      "width": 390
+    },
+    {
+      "view": "bookmarks",
+      "active": "设置",
+      "tabs": 0,
+      "width": 390
+    }
+  ],
+  "passed": true
+}

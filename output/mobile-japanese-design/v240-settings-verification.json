@@ -1,0 +1,51 @@
+{
+  "version": "2.40",
+  "viewports": [
+    {
+      "width": 375,
+      "document": true,
+      "main": true,
+      "dialog": true,
+      "code": 189,
+      "closeReachable": true,
+      "qrLoaded": true,
+      "deviceCount": 0
+    },
+    {
+      "width": 390,
+      "document": true,
+      "main": true,
+      "dialog": true,
+      "code": 204,
+      "closeReachable": true,
+      "qrLoaded": true,
+      "deviceCount": 0
+    },
+    {
+      "width": 1100,
+      "document": true,
+      "main": true,
+      "dialog": true,
+      "code": 294,
+      "closeReachable": true,
+      "qrLoaded": true,
+      "deviceCount": 0
+    }
+  ],
+  "states": [
+    "disabled",
+    "error",
+    "request-failed",
+    "qr-failed-manual-info-retained",
+    "pairing-state-refreshed-and-stopped-on-close",
+    "settings-remains-usable-when-sync-unavailable"
+  ],
+  "deliveredDemo": true,
+  "finalChecks": [
+    "refresh-uses-one-request",
+    "entry-summary-updates",
+    "late-poll-does-not-reopen-or-replace-sheet",
+    "polling-stops-on-close",
+    "clipboard-error-visible-inside-sheet"
+  ]
+}

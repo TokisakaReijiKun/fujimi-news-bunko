@@ -1,0 +1,108 @@
+{
+  "before390": {
+    "mediaTop": 393.2916870117187,
+    "meta": 48,
+    "title": 118.78125,
+    "titleFont": "24px",
+    "titleTop": 184.5104217529297,
+    "toolbar": 81.51042175292969,
+    "width": 390
+  },
+  "checks": [
+    {
+      "barHeight": 48,
+      "buttons": [
+        {
+          "height": 44,
+          "width": 44
+        },
+        {
+          "height": 44,
+          "width": 178.6666717529297
+        },
+        {
+          "height": 44,
+          "width": 178.6666717529297
+        },
+        {
+          "height": 44,
+          "width": 178.6666717529297
+        },
+        {
+          "height": 44,
+          "width": 178.6666717529297
+        },
+        {
+          "height": 44,
+          "width": 44
+        },
+        {
+          "height": 44,
+          "width": 44
+        }
+      ],
+      "mediaTop": 273.66668701171875,
+      "metaHeight": 44,
+      "metaTop": 215,
+      "scrollWidth": 375,
+      "tag": "H1",
+      "titleBottom": 211,
+      "titleTop": 112,
+      "toolbarBottom": 104,
+      "toolbarHeight": 44,
+      "visibleExit": false,
+      "width": 375,
+      "menu": {
+        "left": 162.33334350585938,
+        "right": 352.3333435058594,
+        "width": 375
+      },
+      "reread": {
+        "left": 23,
+        "right": 352.3333435058594,
+        "width": 375
+      }
+    },
+    {
+      "barHeight": 48,
+      "buttons": [
+        {
+          "height": 44,
+          "width": 44
+        },
+        {
+          "height": 44,
+          "width": 44
+        },
+        {
+          "height": 44,
+          "width": 44
+        }
+      ],
+      "mediaTop": 240.6666717529297,
+      "metaHeight": 44,
+      "metaTop": 182,
+      "scrollWidth": 390,
+      "tag": "H1",
+      "titleBottom": 178,
+      "titleTop": 112,
+      "toolbarBottom": 104,
+      "toolbarHeight": 44,
+      "visibleExit": false,
+      "width": 390,
+      "menu": {
+        "left": 177,
+        "right": 367,
+        "width": 390
+      },
+      "reread": {
+        "left": 23,
+        "right": 367,
+        "width": 390
+      }
+    }
+  ],
+  "translationSwitch": true,
+  "keyboardMenu": true,
+  "returnToDaily": true
+}

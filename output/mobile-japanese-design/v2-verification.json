@@ -1,0 +1,392 @@
+{
+  "screens": [
+    {
+      "view": "daily",
+      "width": 375,
+      "documentWidth": 375,
+      "contentWidth": 375,
+      "contentScroll": 375,
+      "pageHeight": 1681,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 9,
+      "errors": []
+    },
+    {
+      "view": "reader",
+      "width": 375,
+      "documentWidth": 375,
+      "contentWidth": 375,
+      "contentScroll": 375,
+      "pageHeight": 839,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    },
+    {
+      "view": "reader",
+      "width": 375,
+      "documentWidth": 375,
+      "contentWidth": 375,
+      "contentScroll": 375,
+      "pageHeight": 713,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    },
+    {
+      "view": "dictionary",
+      "width": 375,
+      "documentWidth": 375,
+      "contentWidth": 375,
+      "contentScroll": 375,
+      "pageHeight": 703,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    },
+    {
+      "view": "settings",
+      "width": 375,
+      "documentWidth": 375,
+      "contentWidth": 375,
+      "contentScroll": 375,
+      "pageHeight": 982,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    },
+    {
+      "view": "settings",
+      "width": 375,
+      "documentWidth": 375,
+      "contentWidth": 375,
+      "contentScroll": 375,
+      "pageHeight": 703,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    },
+    {
+      "view": "daily",
+      "width": 390,
+      "documentWidth": 390,
+      "contentWidth": 390,
+      "contentScroll": 390,
+      "pageHeight": 1710,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 9,
+      "errors": []
+    },
+    {
+      "view": "reader",
+      "width": 390,
+      "documentWidth": 390,
+      "contentWidth": 390,
+      "contentScroll": 390,
+      "pageHeight": 824,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    },
+    {
+      "view": "library",
+      "width": 390,
+      "documentWidth": 390,
+      "contentWidth": 390,
+      "contentScroll": 390,
+      "pageHeight": 703,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    },
+    {
+      "view": "dictionary",
+      "width": 390,
+      "documentWidth": 390,
+      "contentWidth": 390,
+      "contentScroll": 390,
+      "pageHeight": 703,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    },
+    {
+      "view": "settings",
+      "width": 390,
+      "documentWidth": 390,
+      "contentWidth": 390,
+      "contentScroll": 390,
+      "pageHeight": 986,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    },
+    {
+      "view": "settings",
+      "width": 390,
+      "documentWidth": 390,
+      "contentWidth": 390,
+      "contentScroll": 390,
+      "pageHeight": 703,
+      "nav": [
+        {
+          "text": "日刊",
+          "top": 776
+        },
+        {
+          "text": "閲読室",
+          "top": 776
+        },
+        {
+          "text": "書架",
+          "top": 776
+        },
+        {
+          "text": "辞書",
+          "top": 776
+        },
+        {
+          "text": "设置",
+          "top": 776
+        }
+      ],
+      "cards": 0,
+      "errors": []
+    }
+  ],
+  "formal_data_unchanged": true,
+  "real_dictionary": true,
+  "voice_sheet": true,
+  "native_readers": true
+}

@@ -1,0 +1,204 @@
+{
+  "voice": {
+    "id": "voicevox:8",
+    "name": "春日部つむぎ"
+  },
+  "groups": {
+    "article:kyoto": [
+      {
+        "url": "demo-audio/ce948875e38b1a6f.wav",
+        "duration": 8.117333333333333,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/a2f0c3b40ee82ef2.wav",
+        "duration": 8.234666666666667,
+        "paragraph": 1
+      },
+      {
+        "url": "demo-audio/f9fcf406f78f170a.wav",
+        "duration": 8.864,
+        "paragraph": 2
+      }
+    ],
+    "article:bookshop": [
+      {
+        "url": "demo-audio/0532c73ec63f63ea.wav",
+        "duration": 7.765333333333333,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/245cc9f6015fdb40.wav",
+        "duration": 8.650666666666666,
+        "paragraph": 1
+      }
+    ],
+    "article:railway": [
+      {
+        "url": "demo-audio/8262281d8b48bd2c.wav",
+        "duration": 9.781333333333333,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/e0579b34df3bc41c.wav",
+        "duration": 9.301333333333334,
+        "paragraph": 1
+      }
+    ],
+    "article:morning": [
+      {
+        "url": "demo-audio/e7caa5196b920edd.wav",
+        "duration": 6.698666666666667,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/527e4404ec29b9f9.wav",
+        "duration": 7.242666666666667,
+        "paragraph": 1
+      }
+    ],
+    "article:rain": [
+      {
+        "url": "demo-audio/590f7507e239f081.wav",
+        "duration": 7.776,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/73701ebc56a77593.wav",
+        "duration": 7.477333333333333,
+        "paragraph": 1
+      }
+    ],
+    "book:kokoro:0": [
+      {
+        "url": "demo-audio/2071e53ce1e4a857.wav",
+        "duration": 12.064,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/f83c42870459233f.wav",
+        "duration": 12.416,
+        "paragraph": 1
+      },
+      {
+        "url": "demo-audio/9481b1127f704cab.wav",
+        "duration": 6.261333333333333,
+        "paragraph": 2
+      }
+    ],
+    "book:kokoro:1": [
+      {
+        "url": "demo-audio/0f00d063176da262.wav",
+        "duration": 6.485333333333333,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/a2332954bc431ece.wav",
+        "duration": 9.642666666666667,
+        "paragraph": 1
+      }
+    ],
+    "book:night:0": [
+      {
+        "url": "demo-audio/aa3567c4acaf9a6a.wav",
+        "duration": 8.021333333333333,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/5e64916633788fb4.wav",
+        "duration": 8.192,
+        "paragraph": 1
+      }
+    ],
+    "book:night:1": [
+      {
+        "url": "demo-audio/8ba3ac2cd7749049.wav",
+        "duration": 7.072,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/3d1111892bd8166d.wav",
+        "duration": 6.826666666666667,
+        "paragraph": 1
+      }
+    ],
+    "book:snow:0": [
+      {
+        "url": "demo-audio/0e267f331323b91f.wav",
+        "duration": 8.725333333333333,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/51baa28eed0d5479.wav",
+        "duration": 6.346666666666667,
+        "paragraph": 1
+      }
+    ],
+    "book:cafe:0": [
+      {
+        "url": "demo-audio/bc9c2d6a38aaa221.wav",
+        "duration": 7.104,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/252241fe673a8d43.wav",
+        "duration": 7.701333333333333,
+        "paragraph": 1
+      }
+    ],
+    "book:letter:0": [
+      {
+        "url": "demo-audio/442d73aa641fffa0.wav",
+        "duration": 7.776,
+        "paragraph": 0
+      },
+      {
+        "url": "demo-audio/1815c268987e1934.wav",
+        "duration": 8.0,
+        "paragraph": 1
+      }
+    ],
+    "word:komorebi": [
+      {
+        "url": "demo-audio/c5f2cd07aea31b56.wav",
+        "duration": 3.808,
+        "paragraph": 0
+      }
+    ],
+    "word:kisetsu": [
+      {
+        "url": "demo-audio/a48d0e3287a09d93.wav",
+        "duration": 3.0933333333333333,
+        "paragraph": 0
+      }
+    ],
+    "word:shiori": [
+      {
+        "url": "demo-audio/322a1191cbd6587c.wav",
+        "duration": 3.072,
+        "paragraph": 0
+      }
+    ],
+    "word:yohaku": [
+      {
+        "url": "demo-audio/4661dc80703be6a7.wav",
+        "duration": 3.3813333333333335,
+        "paragraph": 0
+      }
+    ],
+    "word:aki": [
+      {
+        "url": "demo-audio/63d6f1a4d7d0d848.wav",
+        "duration": 4.352,
+        "paragraph": 0
+      }
+    ],
+    "word:hon": [
+      {
+        "url": "demo-audio/c030bb30ded6fd22.wav",
+        "duration": 3.84,
+        "paragraph": 0
+      }
+    ]
+  }
+}

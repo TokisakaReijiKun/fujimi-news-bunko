@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>富士見新聞文庫 · 日式手机设计稿</title>
+  <link rel="icon" href="data:,">
+  <style>
+    @font-face{font-family:serif;src:local('Noto Serif SC')}@font-face{font-family:sans;src:local('Noto Sans SC')}
+    :root{font-family:sans,'Microsoft YaHei',sans-serif;color:#292c28;background:#eaece5}*{box-sizing:border-box}body{margin:0}button,a{color:inherit}a:focus-visible,button:focus-visible{outline:2px solid #a3372b;outline-offset:3px}.intro{max-width:1340px;margin:auto;padding:56px 40px 27px;display:flex;justify-content:space-between;gap:30px;align-items:flex-end}.intro h1{font:500 clamp(27px,4vw,43px) serif,'Yu Mincho',serif;letter-spacing:.04em;margin:0}.intro p{font-size:13px;color:#687260;margin:16px 0 0;line-height:1.9}.intro .seal{border:1px solid #a3372b;padding:8px;color:#a3372b;font-family:serif;writing-mode:vertical-rl;letter-spacing:5px;font-size:16px}.rule{height:1px;background:#cbd0c2;margin:0 40px}.workspace{max-width:1340px;margin:auto;padding:35px 40px 50px;display:grid;grid-template-columns:220px minmax(0,1fr) 300px;gap:40px;align-items:start}.side{padding-top:8px}.side p,.specs p{font-size:12px;line-height:1.9;color:#687260}.side button{display:block;border:0;background:none;border-bottom:1px solid #cbd0c2;width:100%;padding:14px 10px;text-align:left;cursor:pointer;font-size:14px;min-height:48px;font-family:inherit}.side button[aria-pressed=true]{color:#a3372b;background:#f5f4ed;border-left:2px solid #a3372b}.device{margin:auto;width:392px;max-width:100%;border:1px solid #c6ccbd;border-radius:20px;overflow:hidden;box-shadow:0 12px 30px #292c280a;background:#faf9f5}iframe{display:block;border:0;width:100%;height:844px;background:#faf9f5}.specs{padding:8px 0}.specs h2{font:500 22px serif,serif;margin:0 0 14px}.specs h3{font-size:12px;margin:26px 0 8px}.swatches{display:flex;gap:10px;margin-top:20px}.swatches span{width:38px;height:38px;display:block;border:1px solid #cbd0c2}.specs a{display:block;font-size:12px;line-height:1.8;text-underline-offset:4px;padding:7px 0}.note{margin-top:26px;border-top:1px solid #cbd0c2;padding-top:17px!important}.gallery{max-width:1340px;margin:auto;padding:0 40px 60px}.gallery h2{font:500 28px serif,serif}.gallery img{display:block;width:100%;height:auto;border:1px solid #cbd0c2;border-radius:5px}.width-controls{display:flex;gap:8px;justify-content:center;margin-top:16px}.width-controls button{border:1px solid #c4cbb9;background:none;padding:8px 12px;cursor:pointer;min-height:44px;border-radius:4px}.width-controls button[aria-pressed=true]{background:#dce2d3;color:#42543f}@media(max-width:1100px){.workspace{grid-template-columns:180px minmax(0,1fr)}.specs{grid-column:1/-1;display:none}}@media(max-width:650px){.intro{padding:25px 20px}.rule{margin:0 20px}.workspace{display:flex;flex-direction:column;padding:14px 15px 30px;gap:20px}.side{display:flex;gap:5px;overflow:auto;width:100%;padding:4px}.side p{display:none}.side button{flex:0 0 auto;width:auto;padding:8px 10px;font-size:12px;border:1px solid #cbd0c2}.device{border-radius:12px}.gallery{padding:0 15px 30px}.intro p{font-size:11px}.intro h1{font-size:27px}.preview{width:100%}}
+  </style>
+</head>
+<body>
+  <header class="intro"><div><h1>日々、読む。</h1><p>富士見新聞文庫 · 手机端日式设计稿<br>朱印、明朝体与留白，让新闻和书籍回到阅读本身。</p><a href="http://127.0.0.1:8499/demo.html?v=2.46" style="display:inline-flex;align-items:center;min-height:44px;margin-top:15px;padding:8px 20px;background:#a3372b;color:#fffefa;border-radius:4px;text-decoration:none;font-size:13px">体验完整交互 Demo</a></div><span class="seal">富士見文庫</span></header><div class="rule"></div>
+  <div class="workspace">
+    <nav class="side" aria-label="切换设计页面"><p>九个页面 / 同一套设计语言</p><button type="button" data-view="daily" aria-pressed="true">本日ノニュース</button><button type="button" data-view="reader" aria-pressed="false">閲読室</button><button type="button" data-view="bookmarks" aria-pressed="false">收藏</button><button type="button" data-view="library" aria-pressed="false">書架</button><button type="button" data-view="dictionary" aria-pressed="false">辞書</button><button type="button" data-view="settings" aria-pressed="false">設置</button><button type="button" data-view="article" aria-pressed="false">文章阅读</button><button type="button" data-view="book" aria-pressed="false">书籍阅读</button><button type="button" data-view="more" aria-pressed="false">更多导航</button></nav>
+    <section class="preview" aria-label="手机设计预览"><div class="device"><iframe id="screen" src="screen.html?view=daily" title="手机端可点击设计稿"></iframe></div><div class="width-controls" aria-label="手机宽度"><button type="button" data-width="375" aria-pressed="false">375 px</button><button type="button" data-width="390" aria-pressed="true">390 px</button></div></section>
+    <aside class="specs"><h2>静かな紙面。</h2><p>淡纸色铺底，朱红只标示品牌与当前操作。标题用明朝体，操作与译文用清晰的黑体。</p><div class="swatches" aria-label="设计配色"><span style="background:#faf9f5" title="淡纸 #FAF9F5"></span><span style="background:#292c28" title="墨色 #292C28"></span><span style="background:#a3372b" title="朱印 #A3372B"></span><span style="background:#4e624f" title="苔色 #4E624F"></span></div><h3>操作原型</h3><p>可切换六个主页面、展开更多导航、折叠设置详情、切换译文显示，以及查看收藏选中状态。</p><h3>设计文件</h3><a href="../../output/mobile-japanese-design/design-preview.png" target="_blank">打开核心三屏高清图</a><a href="../../output/mobile-japanese-design/all-screens.png" target="_blank">打开全部九屏总览图</a><a id="single-page" href="screen.html?view=daily" target="_blank">单独打开当前手机页面</a><p class="note">本稿使用合成文章与原创书封示意。服务操作只显示说明，未连接导入、翻译、朗读或同步，不读写真实文库。</p></aside>
+  </div>
+  <section class="gallery"><h2>纸面与屏幕之间。</h2><img src="../../output/mobile-japanese-design/design-preview.png" alt="日刊、文章阅读和书架三屏设计总览"></section>
+  <script>
+    const preview = document.querySelector('#screen');
+    document.querySelectorAll('[data-view]').forEach(button=>button.addEventListener('click',()=>{
+      document.querySelectorAll('[data-view]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+      const url = 'screen.html?view='+button.dataset.view;
+      preview.src = url; document.querySelector('#single-page').href = url;
+    }));
+    document.querySelectorAll('[data-width]').forEach(button=>button.addEventListener('click',()=>{
+      document.querySelectorAll('[data-width]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+      document.querySelector('.device').style.width=(Number(button.dataset.width)+2)+'px';
+      preview.style.height=(button.dataset.width==='375'?'812':'844')+'px';
+    }));
+  </script>
+</body>
+</html>

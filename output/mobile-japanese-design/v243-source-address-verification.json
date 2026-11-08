@@ -1,0 +1,27 @@
+{
+  "version": "2.43",
+  "viewports": [
+    {
+      "width": 375,
+      "links": 6,
+      "noHorizontalOverflow": true,
+      "quotaLimitRetained": true
+    },
+    {
+      "width": 390,
+      "links": 6,
+      "noHorizontalOverflow": true,
+      "quotaLimitRetained": true
+    },
+    {
+      "width": 1100,
+      "links": 6,
+      "noHorizontalOverflow": true,
+      "quotaLimitRetained": true
+    }
+  ],
+  "openedLinks": 6,
+  "deliveredDemo": true,
+  "sourceDataUnchanged": true,
+  "externalContentNotRequested": true
+}

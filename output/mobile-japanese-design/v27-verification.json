@@ -1,0 +1,139 @@
+{
+  "screens": [
+    {
+      "dateParts": [
+        "11.01",
+        "17:53"
+      ],
+      "font": "\"Noto Sans JP\", \"Noto Sans SC\", \"Yu Gothic\", sans-serif",
+      "headerHeight": 171.96875,
+      "imprintRight": 63,
+      "published": "2026/11/1(日) 17:53",
+      "scrollWidth": 375,
+      "sourceWriting": "vertical-rl",
+      "title": "茨城 鹿嶋 男性4人が海に転落 1人死亡 1人不明",
+      "titleBottom": 158.0729217529297,
+      "titleLeft": 77,
+      "titleScroll": 275,
+      "titleWidth": 275,
+      "utilityHeight": 44,
+      "utilityTop": 195.96875,
+      "visibleButtons": 2,
+      "width": 375,
+      "actions": {
+        "left": 137.33334350585938,
+        "right": 352.3333435058594
+      },
+      "reread": {
+        "left": 23,
+        "right": 352.3333435058594
+      },
+      "translation": {
+        "left": 23,
+        "right": 213
+      }
+    },
+    {
+      "dateParts": [
+        "11.01",
+        "19:26"
+      ],
+      "font": "\"Noto Sans JP\", \"Noto Sans SC\", \"Yu Gothic\", sans-serif",
+      "headerHeight": 185.71875,
+      "imprintRight": 63,
+      "published": "2026/11/1(日) 19:26",
+      "scrollWidth": 375,
+      "sourceWriting": "vertical-rl",
+      "title": "生命の起源巡る理論、彗星を契機とする定説が覆る可能性　新研究",
+      "titleBottom": 182,
+      "titleLeft": 77,
+      "titleScroll": 275,
+      "titleWidth": 275,
+      "utilityHeight": 44,
+      "utilityTop": 209.71875,
+      "visibleButtons": 2,
+      "width": 375,
+      "actions": {
+        "left": 137.33334350585938,
+        "right": 352.3333435058594
+      },
+      "reread": {
+        "left": 23,
+        "right": 352.3333435058594
+      },
+      "translation": {
+        "left": 23,
+        "right": 213
+      }
+    },
+    {
+      "dateParts": [
+        "11.01",
+        "17:53"
+      ],
+      "font": "\"Noto Sans JP\", \"Noto Sans SC\", \"Yu Gothic\", sans-serif",
+      "headerHeight": 171.96875,
+      "imprintRight": 63,
+      "published": "2026/11/1(日) 17:53",
+      "scrollWidth": 390,
+      "sourceWriting": "vertical-rl",
+      "title": "茨城 鹿嶋 男性4人が海に転落 1人死亡 1人不明",
+      "titleBottom": 158.0729217529297,
+      "titleLeft": 77,
+      "titleScroll": 290,
+      "titleWidth": 290,
+      "utilityHeight": 44,
+      "utilityTop": 195.96875,
+      "visibleButtons": 2,
+      "width": 390,
+      "actions": {
+        "left": 152,
+        "right": 367
+      },
+      "reread": {
+        "left": 23,
+        "right": 367
+      },
+      "translation": {
+        "left": 23,
+        "right": 213
+      }
+    },
+    {
+      "dateParts": [
+        "11.01",
+        "19:26"
+      ],
+      "font": "\"Noto Sans JP\", \"Noto Sans SC\", \"Yu Gothic\", sans-serif",
+      "headerHeight": 185.71875,
+      "imprintRight": 63,
+      "published": "2026/11/1(日) 19:26",
+      "scrollWidth": 390,
+      "sourceWriting": "vertical-rl",
+      "title": "生命の起源巡る理論、彗星を契機とする定説が覆る可能性　新研究",
+      "titleBottom": 182,
+      "titleLeft": 77,
+      "titleScroll": 290,
+      "titleWidth": 290,
+      "utilityHeight": 44,
+      "utilityTop": 209.71875,
+      "visibleButtons": 2,
+      "width": 390,
+      "actions": {
+        "left": 152,
+        "right": 367
+      },
+      "reread": {
+        "left": 23,
+        "right": 367
+      },
+      "translation": {
+        "left": 23,
+        "right": 213
+      }
+    }
+  ],
+  "passed": true,
+  "translationSwitch": true,
+  "panelsAndEscape": true
+}

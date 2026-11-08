@@ -1,0 +1,34 @@
+{
+  "version": "2.46",
+  "viewports": [
+    {
+      "width": 375,
+      "identicalDictionarySvg": true,
+      "identicalDictionaryAnimation": true,
+      "originalWavPlays": true,
+      "sameSvgAfterStop": true
+    },
+    {
+      "width": 390,
+      "identicalDictionarySvg": true,
+      "identicalDictionaryAnimation": true,
+      "originalWavPlays": true,
+      "sameSvgAfterStop": true
+    },
+    {
+      "width": 1100,
+      "identicalDictionarySvg": true,
+      "identicalDictionaryAnimation": true,
+      "originalWavPlays": true,
+      "sameSvgAfterStop": true
+    }
+  ],
+  "checks": [
+    "reduced-motion-respected",
+    "failure-clears-playing-state",
+    "play-stop-retains-speaker-shape",
+    "ended-clears-animation",
+    "compact-row-retained"
+  ],
+  "deliveredDemo": true
+}

@@ -1,0 +1,56 @@
+{
+  "version": "2.45",
+  "source": "original-reference-wav",
+  "viewports": [
+    {
+      "width": 375,
+      "rowHeight": 56,
+      "duration": 16.488,
+      "actualPlayback": true,
+      "toggleStops": true,
+      "selectorStops": true,
+      "keyboard": true
+    },
+    {
+      "width": 390,
+      "rowHeight": 56,
+      "duration": 16.488,
+      "actualPlayback": true,
+      "toggleStops": true,
+      "selectorStops": true,
+      "keyboard": true
+    },
+    {
+      "width": 1100,
+      "rowHeight": 56,
+      "duration": 16.488,
+      "actualPlayback": true,
+      "toggleStops": true,
+      "selectorStops": true,
+      "keyboard": true
+    }
+  ],
+  "synthesisRequests": 0,
+  "checks": [
+    "different-voice-uses-its-own-recording",
+    "end-resets-control",
+    "missing-file-error-visible",
+    "navigation-stops-playback",
+    "no-unrelated-sample-for-non-reference-voice",
+    "wav-bytes-match-original",
+    "decoded-non-silent-audio",
+    "playback-time-advances",
+    "speaker-does-not-open-selector",
+    "reference-files-and-formal-data-unchanged"
+  ],
+  "deliveredDemo": {
+    "version": "2.45",
+    "referenceDuration": 16.488,
+    "playbackTime": 0.314253,
+    "speakerStops": true,
+    "selectorStillWorks": true,
+    "settingsUnchanged": true,
+    "synthesisRequests": 0,
+    "apiTests": 19
+  }
+}
