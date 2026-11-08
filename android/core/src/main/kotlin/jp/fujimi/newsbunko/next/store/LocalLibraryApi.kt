@@ -21,6 +21,12 @@ class LocalLibraryApi(private val dataRoot: Path, private val taskState: () -> J
         try {
             val uri = URI("https://local$pathWithQuery")
             val path = uri.path
+            val bookmark = Regex("/api/articles/(\\d+)/bookmarks").matchEntire(path)
+            if (bookmark != null && method in setOf("POST", "DELETE")) {
+                val enabled = method == "POST"
+                ArticleStore(dataRoot).setBookmarked(bookmark.groupValues[1].toLong(), enabled)
+                return ok(JSONObject().put("ok", true).put("bookmarked", enabled))
+            }
             if (method == "POST" && Regex("/api/articles/\\d+/reread").matches(path)) {
                 val requested = JSONObject(body ?: "{}")
                 if (savedVoiceAudio.choice(requested) == null) return error(409, "请为在线朗读选择圭太或七海；PC 声线须先在 PC 生成后同步。")
@@ -48,9 +54,13 @@ class LocalLibraryApi(private val dataRoot: Path, private val taskState: () -> J
                         .put("missing_sources", if (task.optString("date") == date) task.optJSONArray("missing_sources") ?: JSONArray() else JSONArray())
                         .put("generation_running", task.optString("status") == "running" && task.optString("date") == date))
                 }
-                path == "/api/bookmarks" -> ok(JSONArray(catalog.days().flatMap(catalog::onDay)
-                    .filter { it.metadata.optBoolean("bookmarked") }
+                path == "/api/bookmarks" -> ok(JSONArray(catalog.bookmarks()
                     .map { wire(it.metadata).put("bookmark_context", true) }))
+                Regex("/api/bookmarks/\\d+").matches(path) -> {
+                    val id = path.substringAfterLast('/').toLong()
+                    val article = catalog.findBookmark(id)
+                    ok(wire(article.metadata).put("bookmark_context", true))
+                }
                 Regex("/api/articles/\\d+").matches(path) -> {
                     val id = path.substringAfterLast('/').toLong()
                     ok(wire(catalog.find(id).metadata))
@@ -63,12 +73,15 @@ class LocalLibraryApi(private val dataRoot: Path, private val taskState: () -> J
             return error(409, error.message ?: "文章文件格式无效。")
         } catch (error: IllegalArgumentException) {
             return error(400, error.message ?: "请求格式无效。")
+        } catch (error: Exception) {
+            return error(409, error.message ?: "文章状态未能保存。")
         }
     }
 
     private fun wire(metadata: JSONObject, selection: JSONObject? = null): JSONObject {
         val article = savedVoiceAudio.article(JSONObject(metadata.toString()), selection)
-        val prefix = "/api/articles/${article.getLong("id")}/media/"
+        val collection = if (article.optString("_storage_directory").startsWith("bookmarks/")) "bookmarks" else "articles"
+        val prefix = "/api/$collection/${article.getLong("id")}/media/"
         val images = article.optJSONArray("image_paths") ?: JSONArray()
         article.put("image_paths", JSONArray((0 until images.length()).map { prefix + encodeMediaPath(images.getString(it).removePrefix("media/")) }))
         val videos = article.optJSONArray("video_urls") ?: JSONArray()
@@ -78,7 +91,7 @@ class LocalLibraryApi(private val dataRoot: Path, private val taskState: () -> J
         }))
         val audioPath = article.optString("audio_path")
         if (audioPath.startsWith("audio/")) {
-            article.put("audio_path", "/api/articles/${article.getLong("id")}/assets/${encodeMediaPath(audioPath)}")
+            article.put("audio_path", "/api/$collection/${article.getLong("id")}/assets/${encodeMediaPath(audioPath)}")
         }
         if (article.optString("audio_path").isEmpty() && !article.has("audio_unavailable_detail")) {
             val disabled = article.optString("source_voice_mode") == "none" || article.optString("voice_mode") == "none" ||

@@ -3,24 +3,27 @@ package jp.fujimi.newsbunko.next.settings
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 import java.nio.file.Files
 import java.nio.file.Path
-import java.security.MessageDigest
 
-/** All cleartext connections are restricted to a user-selected RFC1918 literal by PcEndpoint. */
-class PcSyncClient(value: String, private val token: String = "") {
+/** Connections stay restricted to a user-selected RFC1918 or Tailscale IPv4 literal by PcEndpoint. */
+class PcSyncClient(value: String, private val token: String = "", private val timeoutMs: Int? = null) {
     private val endpoint = PcEndpoint.normalize(value)
 
-    fun json(path: String, body: JSONObject? = null): JSONObject {
-        val client = open(path, if (body == null) "GET" else "POST")
+    fun json(path: String, body: JSONObject? = null, method: String = if (body == null) "GET" else "POST"): JSONObject {
+        val client = open(path, method)
         try {
+            if (path.startsWith("/api/sync/v2/tts/")) client.readTimeout = timeoutMs ?: 600000
             if (body != null) {
                 val bytes = body.toString().toByteArray(Charsets.UTF_8)
                 client.doOutput = true
                 client.setRequestProperty("Content-Type", "application/json")
                 client.setFixedLengthStreamingMode(bytes.size)
                 client.outputStream.use { it.write(bytes) }
+            }
+            if (path.startsWith("/api/sync/v2/tts/") && client.responseCode !in 200..299) {
+                val detail = runCatching { client.errorStream?.bufferedReader(Charsets.UTF_8)?.use { JSONObject(it.readText().take(8192)).optString("detail") } }.getOrNull()
+                throw java.io.IOException(detail?.takeIf { it.isNotBlank() }?.take(500) ?: "PC 朗读请求失败（HTTP ${client.responseCode}）。")
             }
             requireSuccess(client)
             val bytes = client.inputStream.use { input ->
@@ -37,25 +40,31 @@ class PcSyncClient(value: String, private val token: String = "") {
         } finally { client.disconnect() }
     }
 
-    fun download(key: String, destination: Path) {
-        val client = open("/api/sync/v2/bundle?key=${URLEncoder.encode(key, "UTF-8")}", "GET")
+    fun download(key: String, destination: Path, knownFiles: JSONObject = JSONObject()) {
+        val client = open("/api/sync/v2/pull", "POST")
+        var received = 0L
         try {
+            val payload = JSONObject().put("key", key).put("known_files", knownFiles).toString().toByteArray(Charsets.UTF_8)
+            client.doOutput = true
+            client.setRequestProperty("Content-Type", "application/json")
+            client.setRequestProperty("Accept", "application/zip")
+            client.setFixedLengthStreamingMode(payload.size)
+            client.outputStream.use { it.write(payload) }
             requireSuccess(client)
-            val expected = client.getHeaderField("X-Content-SHA256") ?: error("PC 未提供同步包校验值。")
-            require(Regex("[a-f0-9]{64}").matches(expected)) { "PC 同步包校验值无效。" }
-            val digest = MessageDigest.getInstance("SHA-256")
+            val expectedSize = client.contentLengthLong
             client.inputStream.use { input -> Files.newOutputStream(destination).use { output ->
                 val buffer = ByteArray(65536)
-                var total = 0L
                 while (true) {
                     val count = input.read(buffer); if (count < 0) break
-                    total += count
-                    require(total <= 512L * 1024 * 1024) { "单个同步项目超过 512 MiB。" }
+                    received += count
+                    require(received <= 512L * 1024 * 1024) { "单个同步项目超过 512 MiB。" }
                     output.write(buffer, 0, count)
-                    digest.update(buffer, 0, count)
                 }
+                require(expectedSize < 0 || received == expectedSize) { "同步包传输未完成，请重试。" }
             } }
-            require(hex(digest.digest()) == expected) { "同步包校验失败，未导入。" }
+        } catch (failure: java.io.IOException) {
+            android.util.Log.w("FujimiSync", "Bundle body ended after $received of ${client.contentLengthLong} bytes", failure)
+            throw failure
         } finally { client.disconnect() }
     }
 
@@ -66,12 +75,6 @@ class PcSyncClient(value: String, private val token: String = "") {
             client.doOutput = true
             client.readTimeout = 120000
             client.setRequestProperty("Content-Type", "application/zip")
-            val digest = MessageDigest.getInstance("SHA-256")
-            Files.newInputStream(source).use { input ->
-                val buffer = ByteArray(65536)
-                while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
-            }
-            client.setRequestProperty("X-Content-SHA256", hex(digest.digest()))
             client.setFixedLengthStreamingMode(Files.size(source))
             client.outputStream.use { output -> Files.newInputStream(source).use { it.copyTo(output) } }
             requireSuccess(client)
@@ -79,11 +82,9 @@ class PcSyncClient(value: String, private val token: String = "") {
         } finally { client.disconnect() }
     }
 
-    private fun hex(bytes: ByteArray) = bytes.joinToString("") { "%02x".format(it) }
-
     private fun open(path: String, method: String): HttpURLConnection = (URL("$endpoint$path").openConnection() as HttpURLConnection).apply {
-        connectTimeout = 8000
-        readTimeout = 30000
+        connectTimeout = timeoutMs ?: 8000
+        readTimeout = timeoutMs ?: 30000
         instanceFollowRedirects = false
         requestMethod = method
         setRequestProperty("Accept", "application/json")

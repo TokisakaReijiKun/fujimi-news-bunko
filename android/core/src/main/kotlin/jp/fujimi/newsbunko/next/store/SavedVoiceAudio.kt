@@ -25,13 +25,17 @@ internal class SavedVoiceAudio(private val root: Path, private val settings: () 
             val voice = (0 until catalog.length()).map { catalog.getJSONObject(it) }.firstOrNull { it.optString("id") == name }
             if (name in setOf("ja-JP-KeitaNeural", "ja-JP-NanamiNeural")) return Choice("browser", null, name,
                 if (name == "ja-JP-KeitaNeural") "圭太" else "七海", savedOnly = false)
+            if (name == "android:system" && voice?.optBoolean("available") == true) return Choice("browser", null, name, "システム音声", savedOnly = false)
             if (name.isNotEmpty()) return Choice("browser", null, name, voice?.optString("name", name) ?: name)
         }
         return null
     }
 
     fun article(article: JSONObject, override: JSONObject? = null): JSONObject {
-        val directory = "articles/${article.getString("_directory")}/audio"
+        val contentDirectory = article.optString("_storage_directory").ifEmpty {
+            article.getString("_directory").let { if (it.startsWith("bookmarks/")) it else "articles/$it" }
+        }
+        val directory = "$contentDirectory/audio"
         val audio = SyncFiles.path(root, directory)
         val current = article.optString("audio_path").removePrefix("audio/")
         fun readable(filename: String) = SyncFiles.completeAudio(filename) && runCatching {

@@ -17,10 +17,12 @@ data class ArticleSnapshot(
 )
 
 /** Reads the file format written by the PC ArticleStore; SQLite is never a text fallback. */
-class ArticleReader(private val dataRoot: Path) {
+class ArticleReader(private val dataRoot: Path, private val verifyContent: Boolean = true) {
     fun load(relativeDirectory: String): ArticleSnapshot {
         val parts = relativeDirectory.split('/')
-        if (parts.size != 3 || parts[0] != "articles" || !Regex("\\d{4}-\\d{2}-\\d{2}").matches(parts[1])) {
+        val daily = parts.size == 3 && parts[0] == "articles" && Regex("\\d{4}-\\d{2}-\\d{2}").matches(parts[1])
+        val bookmark = parts.size == 2 && parts[0] == "bookmarks"
+        if (!daily && !bookmark) {
             throw ArticleFormatException("文章目录格式无效。")
         }
         val folder = PreservedPathStore(dataRoot).resolveContentPath("$relativeDirectory/article.json").parent
@@ -42,7 +44,7 @@ class ArticleReader(private val dataRoot: Path) {
             for (name in listOf("original.txt", "translation.txt", "furigana.html")) {
                 val blob = Files.readAllBytes(folder.resolve(name))
                 val spec = files.getJSONObject(name)
-                if (sha256(blob) != spec.getString("sha256")) {
+                if (verifyContent && sha256(blob) != spec.getString("sha256")) {
                     throw ArticleFormatException("$name 校验失败；原文或译文被外部修改。")
                 }
                 val text = String(blob, StandardCharsets.UTF_8)
@@ -56,6 +58,7 @@ class ArticleReader(private val dataRoot: Path) {
             }
             article.put("_revision", manifest.getInt("revision"))
             article.put("_directory", relativeDirectory.removePrefix("articles/"))
+            article.put("_storage_directory", relativeDirectory)
             val assets = manifest.optJSONArray("assets") ?: JSONArray()
             val registered = (0 until assets.length()).map { assets.getJSONObject(it).getString("path") }.toSet()
             for (path in localReferences(article)) {

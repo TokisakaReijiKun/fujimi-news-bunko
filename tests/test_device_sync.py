@@ -251,7 +251,30 @@ class DeviceSyncTests(unittest.TestCase):
         self.assertEqual(self.lan_request('/api/sync/v2/info',
                          headers={'Origin': 'https://unrelated.example'}).status_code, 403)
 
-    def test_authenticated_bundle_transfers_real_example_and_rejects_bad_hash(self):
+    def test_incremental_pull_passes_path_sizes_without_content_hashing(self):
+        from unittest.mock import Mock
+        library = Mock()
+        library.export_bundle.return_value = b'zip-fixture'
+        library.import_bundle.return_value = {'status': 'created'}
+        self.runtime.library = library
+        auth = {'Authorization': 'Bearer ' + self.pair()['token']}
+        known = {'audio/七海.mp3': 12000000, 'original.txt': 24}
+        response = self.lan_request('/api/sync/v2/pull', 'POST', headers=auth,
+                                    json={'key': 'article:fixture', 'known_files': known})
+        self.assertEqual(response.status_code, 200, response.get_json())
+        self.assertEqual(response.data, b'zip-fixture')
+        self.assertNotIn('X-Content-SHA256', response.headers)
+        library.export_bundle.assert_called_once_with('article:fixture', known_files=known)
+        uploaded = self.lan_request('/api/sync/v2/bundle', 'POST', data=b'zip-fixture',
+                                   content_type='application/zip', headers={**auth, 'X-Content-SHA256': 'ignored-old-header'})
+        self.assertEqual(uploaded.status_code, 200)
+        library.import_bundle.assert_called_once_with(b'zip-fixture')
+        for known_files in [[], {'audio/a.mp3': -1}, {'a': True}, {'a': '123'}]:
+            response = self.lan_request('/api/sync/v2/pull', 'POST', headers=auth,
+                                        json={'key': 'article:fixture', 'known_files': known_files})
+            self.assertEqual(response.status_code, 400)
+
+    def test_authenticated_bundle_transfers_real_example_without_hash_header(self):
         from article_store import ArticleStore
         from book_store import BookStore
         from example_store import ExampleStore
@@ -272,15 +295,14 @@ class DeviceSyncTests(unittest.TestCase):
             bundle = self.lan_request('/api/sync/v2/bundle', headers=auth, query_string={'key': item['key']})
             self.assertEqual(bundle.status_code, 200, bundle.get_json())
             self.assertEqual(bundle.mimetype, 'application/zip')
-            checksum = hashlib.sha256(bundle.data).hexdigest()
-            self.assertEqual(bundle.headers['X-Content-SHA256'], checksum)
+            self.assertNotIn('X-Content-SHA256', bundle.headers)
             self.runtime.library = LibrarySync(article_target, BookStore(target), examples_target)
-            invalid = self.lan_request('/api/sync/v2/bundle', 'POST', data=bundle.data,
-                content_type='application/zip', headers={**auth, 'X-Content-SHA256': '0' * 64})
+            invalid = self.lan_request('/api/sync/v2/bundle', 'POST', data=b'not a zip',
+                content_type='application/zip', headers=auth)
             self.assertEqual(invalid.status_code, 400)
             self.assertFalse(any(item['title'] == '端末同期' for item in examples_target.list()))
             imported = self.lan_request('/api/sync/v2/bundle', 'POST', data=bundle.data,
-                content_type='application/zip', headers={**auth, 'X-Content-SHA256': checksum})
+                content_type='application/zip', headers=auth)
             self.assertEqual(imported.status_code, 200, imported.get_json())
             self.assertEqual(imported.json['status'], 'created')
             saved = next(item for item in examples_target.list() if item['title'] == '端末同期')

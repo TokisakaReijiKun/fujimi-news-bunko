@@ -6,9 +6,10 @@ import java.security.MessageDigest
 
 /** Resolve only manifest-registered media, and verify bytes before streaming to WebView. */
 class ArticleMediaAccess(private val dataRoot: Path) {
-    fun resolve(articleId: Long, relativeName: String): Path {
+    fun resolve(articleId: Long, relativeName: String, bookmarkContext: Boolean = false): Path {
         require(relativeName.isNotBlank() && !relativeName.startsWith('/') && '\\' !in relativeName)
-        val article = ArticleCatalog(dataRoot).find(articleId)
+        val catalog = ArticleCatalog(dataRoot)
+        val article = if (bookmarkContext) catalog.findBookmark(articleId) else catalog.find(articleId)
         val name = "media/$relativeName"
         val assets = article.manifest.getJSONArray("assets")
         val asset = (0 until assets.length()).map { assets.getJSONObject(it) }.firstOrNull { it.getString("path") == name }

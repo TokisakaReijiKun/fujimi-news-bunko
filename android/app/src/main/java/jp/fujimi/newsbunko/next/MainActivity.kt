@@ -6,7 +6,6 @@ import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
@@ -41,6 +40,7 @@ class MainActivity : Activity() {
     private var initialState: Bundle? = null
     private var storagePromptVisible = false
     private var playerBottomInset = 0
+    private var appTopInset = 0
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
@@ -55,11 +55,12 @@ class MainActivity : Activity() {
         container.addView(webView, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         container.setOnApplyWindowInsetsListener { _, insets ->
             playerBottomInset = playerBottomInset(insets)
+            appTopInset = if (Build.VERSION.SDK_INT >= 30) insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()).top
+                else maxOf(insets.stableInsetTop, insets.displayCutout?.safeInsetTop ?: 0)
             applyPlayerInsets()
             insets
         }
-        val dark = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-        container.setBackgroundColor(if (dark) Color.rgb(24, 30, 27) else Color.rgb(244, 245, 240))
+        container.setBackgroundColor(Color.rgb(248, 248, 243))
         setContentView(container)
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
@@ -68,19 +69,15 @@ class MainActivity : Activity() {
             window.isStatusBarContrastEnforced = false
         }
         if (Build.VERSION.SDK_INT >= 30) {
-            // The original APK renders its WebView edge-to-edge.  The drawer then
-            // paints through the status/navigation areas instead of exposing the
-            // activity's light background as two white bands.  Keep status icons
-            // dark on the paper page, while the navigation gesture bar remains
-            // light over the dark drawer just like the original.
+            // The app uses a paper palette in both system appearance modes.
             window.setDecorFitsSystemWindows(false)
-            val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
-            window.insetsController?.setSystemBarsAppearance(if (dark) 0 else mask, mask)
+            val mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            window.insetsController?.setSystemBarsAppearance(mask, mask)
         } else {
             window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                 View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                 View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                (if (dark) 0 else View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR)
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
         }
         webView.settings.apply {
             javaScriptEnabled = true
@@ -98,6 +95,15 @@ class MainActivity : Activity() {
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 if (trusted(request.url)) {
+                    val referenceAudio = Regex("^/api/settings/voices/(\\d+)/reference$").matchEntire(request.url.path.orEmpty())
+                    if (referenceAudio != null) return try {
+                        val path = jp.fujimi.newsbunko.next.store.LocalVoiceStore(DataDirectory.root().toPath())
+                            .reference(referenceAudio.groupValues[1].toLong())
+                        ArticleAudioResponse(DataDirectory.root().toPath()).openFile(path,
+                            request.requestHeaders.entries.firstOrNull { it.key.equals("Range", true) }?.value)
+                    } catch (_: Exception) {
+                        WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), "参考音声が見つからないか、ファイルを検証できません。".byteInputStream())
+                    }
                     val bookAudio = Regex("^/api/books/(\\d+)/audio/(.+)$").matchEntire(request.url.path.orEmpty())
                     if (bookAudio != null) return try {
                         val path = jp.fujimi.newsbunko.next.store.LocalSyncedLibraryApi(DataDirectory.root().toPath())
@@ -119,20 +125,20 @@ class MainActivity : Activity() {
                         WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), "书籍资源缺失或校验失败。".byteInputStream())
                     }
                 }
-                if (trusted(request.url) && request.url.path?.startsWith("/api/articles/") == true) {
-                    val audio = Regex("^/api/articles/(\\d+)/assets/audio/(.+)$").matchEntire(request.url.path.orEmpty())
+                if (trusted(request.url) && (request.url.path?.startsWith("/api/articles/") == true || request.url.path?.startsWith("/api/bookmarks/") == true)) {
+                    val audio = Regex("^/api/(articles|bookmarks)/(\\d+)/assets/audio/(.+)$").matchEntire(request.url.path.orEmpty())
                     if (audio != null) {
                         return try {
-                            ArticleAudioResponse(DataDirectory.root().toPath()).open(audio.groupValues[1].toLong(), audio.groupValues[2],
-                                request.requestHeaders.entries.firstOrNull { it.key.equals("Range", true) }?.value)
+                            ArticleAudioResponse(DataDirectory.root().toPath()).open(audio.groupValues[2].toLong(), audio.groupValues[3],
+                                request.requestHeaders.entries.firstOrNull { it.key.equals("Range", true) }?.value, audio.groupValues[1] == "bookmarks")
                         } catch (_: Exception) {
                             WebResourceResponse("text/plain", "UTF-8", 404, "Not Found", emptyMap(), "完整音频缺失或正文校验失败。".byteInputStream())
                         }
                     }
-                    val media = Regex("^/api/articles/(\\d+)/media/(.+)$").matchEntire(request.url.path.orEmpty())
+                    val media = Regex("^/api/(articles|bookmarks)/(\\d+)/media/(.+)$").matchEntire(request.url.path.orEmpty())
                     if (media != null) {
                         return try {
-                            val path = ArticleMediaAccess(DataDirectory.root().toPath()).resolve(media.groupValues[1].toLong(), media.groupValues[2])
+                            val path = ArticleMediaAccess(DataDirectory.root().toPath()).resolve(media.groupValues[2].toLong(), media.groupValues[3], media.groupValues[1] == "bookmarks")
                             val extension = path.fileName.toString().substringAfterLast('.', "").lowercase()
                             val type = mapOf("jpg" to "image/jpeg", "jpeg" to "image/jpeg", "png" to "image/png", "webp" to "image/webp", "gif" to "image/gif", "mp4" to "video/mp4", "m4v" to "video/mp4")[extension] ?: "application/octet-stream"
                             WebResourceResponse(type, null, FileInputStream(path.toFile())).apply { responseHeaders = mapOf("X-Content-Type-Options" to "nosniff", "Cache-Control" to "no-store") }
@@ -197,7 +203,9 @@ class MainActivity : Activity() {
         if (!::webView.isInitialized || !trusted(Uri.parse(webView.url ?: ""))) return
         val density = resources.displayMetrics.density
         val properties = "style.setProperty('--player-native-safe-area-bottom','${playerBottomInset / density}px');" +
-            "style.setProperty('--player-native-font-scale','${webView.settings.textZoom / 100.0}');"
+            "style.setProperty('--player-native-font-scale','${webView.settings.textZoom / 100.0}');" +
+            "style.setProperty('--app-native-safe-area-top','${appTopInset / density}px');" +
+            "style.setProperty('--app-native-safe-area-bottom','${playerBottomInset / density}px');"
         // Only the fixed audio player uses these values; the surrounding UI keeps its existing layout.
         webView.evaluateJavascript("(()=>{const root=document.documentElement;if(!root)return;const style=root.style;$properties})()", null)
     }
@@ -218,6 +226,10 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1004 && ::bridge.isInitialized) {
+            bridge.completeVoiceFileSelection(if (resultCode == RESULT_OK) data?.data else null)
+            return
+        }
         if (requestCode == 1003 && ::bridge.isInitialized) {
             bridge.completeWindowsScan(IntentIntegrator.parseActivityResult(resultCode, data).contents)
             return
@@ -246,7 +258,13 @@ class MainActivity : Activity() {
         try { DailyRuntime.get(applicationContext).schedule.reconcile() } catch (_: Exception) {
             getSharedPreferences("mobile-settings", MODE_PRIVATE).edit().putString("alarm-error", "日刊定时未能安排，请在设置页重新选择生成方式。").commit()
         }
+        if (::bridge.isInitialized) bridge.onResume()
         if (::webView.isInitialized) webView.evaluateJavascript("window.__fujimiRefreshNativeSettings?.()", null)
+    }
+
+    override fun onPause() {
+        if (::bridge.isInitialized) bridge.onPause()
+        super.onPause()
     }
 
     private fun requestStorageAccess() {

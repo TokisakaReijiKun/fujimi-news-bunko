@@ -2,6 +2,7 @@ package jp.fujimi.newsbunko.next.daily
 
 import android.content.Context
 import androidx.work.ExistingWorkPolicy
+import androidx.work.BackoffPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
@@ -10,6 +11,7 @@ import androidx.work.workDataOf
 import jp.fujimi.newsbunko.next.news.NewsProviders
 import jp.fujimi.newsbunko.next.settings.CstSchedule
 import jp.fujimi.newsbunko.next.store.ApiResponse
+import jp.fujimi.newsbunko.next.store.ArticleCatalog
 import jp.fujimi.newsbunko.next.storage.DataDirectory
 import org.json.JSONArray
 import org.json.JSONObject
@@ -18,6 +20,7 @@ import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.CancellationException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ConcurrentHashMap
 
 /** Survives Activity destruction. Task identity is unrelated to content filenames. */
 class DailyRuntime private constructor(private val context: Context) {
@@ -26,6 +29,8 @@ class DailyRuntime private constructor(private val context: Context) {
     private val lock = Any()
     private val dataRoot = DataDirectory.root()
     private val index = AndroidArticleIndex(dataRoot)
+    private class AudioPhase(val collection: JSONObject, var checkpoint: () -> Unit) { lateinit var speech: DailySpeech }
+    private val audioPhases = ConcurrentHashMap<String, AudioPhase>()
     val schedule = AndroidDailySchedule(context)
     init {
         val previous = snapshot()
@@ -53,6 +58,7 @@ class DailyRuntime private constructor(private val context: Context) {
         val token = UUID.randomUUID().toString()
         val job = OneTimeWorkRequestBuilder<DailyWorker>()
             .setInputData(workDataOf("token" to token, "date" to date, "expected" to expected, "scheduleGeneration" to (generation ?: "")))
+            .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
             .addTag("fujimi-daily").build()
         save(JSONObject().put("id", token).put("work_id", job.id.toString()).put("status", "running").put("stage", "starting")
             .put("date", date).put("percent", 0).put("total", 0).put("completed", 0)
@@ -76,6 +82,9 @@ class DailyRuntime private constructor(private val context: Context) {
             value.put("status", "cancelled").put("stage", "cancelled").put("message", "已中止；当前请求返回后退出，已保存文章保留。")
             save(value)
             value.optString("work_id").takeIf { it.isNotEmpty() }?.let { WorkManager.getInstance(context).cancelWorkById(UUID.fromString(it)) }
+            audioPhases[value.optString("id")]?.let { phase ->
+                Thread({ phase.speech.cancel() }, "daily-speech-cancel").start()
+            }
         }
         value
     }
@@ -87,18 +96,23 @@ class DailyRuntime private constructor(private val context: Context) {
             if (isStopped() || current.optString("id") != token || current.optString("status") != "running") throw CancellationException("日刊任务已中止。")
             if (expected > 0 && (preferences.getString("daily-schedule-generation", "") != generation ||
                     JSONObject(preferences.getString("setting:daily-schedule", "{}")!!).optString("mode") != "automatic")) throw CancellationException("自动更新设置已变更。")
-            if (expected > 0 && !CstSchedule.accept(Instant.ofEpochMilli(expected), Instant.now())) throw MissedScheduleWindow()
+            if (expected > 0 && !audioPhases.containsKey(token) && !CstSchedule.accept(Instant.ofEpochMilli(expected), Instant.now())) throw MissedScheduleWindow()
         }
         try {
-            if (expected > 0 && !CstSchedule.accept(Instant.ofEpochMilli(expected), Instant.now())) {
+            if (expected > 0 && !audioPhases.containsKey(token) && !CstSchedule.accept(Instant.ofEpochMilli(expected), Instant.now())) {
                 update(token, JSONObject().put("status", "interrupted").put("stage", "interrupted").put("message", "系统错过本次更新窗口；不补跑旧日刊。"))
                 return
             }
             check()
             PublicHttpClient.requireNetwork(context)
+            audioPhases[token]?.let { phase ->
+                phase.checkpoint = check
+                processAudio(token, phase)
+                return
+            }
             val sourceJson = preferences.getString("setting:news-sources", null)?.let(::JSONArray)
-            val browserVoiceName = JSONObject(preferences.getString("setting:voice-mode", "{\"browser_voice_name\":\"ja-JP-KeitaNeural\"}")!!)
-                .optString("browser_voice_name", "ja-JP-KeitaNeural")
+            val selectedVoice = JSONObject(preferences.getString("setting:voice-mode", "{\"mode\":\"browser\",\"browser_voice_name\":\"ja-JP-KeitaNeural\"}")!!)
+            val browserVoiceName = selectedVoice.optString("browser_voice_name", "ja-JP-KeitaNeural")
             val homepages = listOf("https://news.web.nhk/newsweb/", "https://www.asahi.com/", "https://www.yomiuri.co.jp/", "https://www.nikkei.com/", "https://www.sankei.com/", "https://news.yahoo.co.jp/")
             val sources = if (sourceJson != null) (0 until sourceJson.length()).map { index -> sourceJson.getJSONObject(index).let {
                 DailySource(it.getInt("id"), it.getString("name"), it.getString("homepage"), it.getInt("minimum_count"),
@@ -126,9 +140,16 @@ class DailyRuntime private constructor(private val context: Context) {
                     if (progress.optString("status") == "completed") progress.put("status", "partial").put("stage", "partial").put("percent", 99)
                     progress.put("message", progress.optString("message") + " " + detail)
                 }
-                update(token, progress)
+                val collecting = JSONObject(progress.toString())
+                if (collecting.optString("status") != "running") collecting.put("status", "running").put("percent", 99)
+                update(token, collecting)
             }
-            update(token, result)
+            val phase = AudioPhase(result, check)
+            phase.speech = DailySpeech(context, dataRoot.toPath(), ArticleCatalog(dataRoot.toPath()).onDay(date)
+                .filter { it.metadata.optString("status", "ready") == "ready" }.map { it.metadata }, selectedVoice) { phase.checkpoint() }
+            check()
+            audioPhases[token] = phase
+            processAudio(token, phase)
         } catch (_: MissedScheduleWindow) {
             update(token, JSONObject().put("status", "interrupted").put("stage", "interrupted").put("message", "系统错过本次更新窗口；已保存内容保留，不补跑旧日刊。"))
         } catch (_: CancellationException) {
@@ -137,10 +158,35 @@ class DailyRuntime private constructor(private val context: Context) {
             update(token, JSONObject().put("status", "failed").put("stage", "failed").put("percent", 0)
                 .put("message", failure.message ?: "日刊未完成，请检查网络和可用空间。"))
         } finally {
+            if (snapshot().optString("id") != token || snapshot().optString("status") != "running") {
+                audioPhases.remove(token)?.speech?.cancel()
+            }
             // Retain allocation gaps even when cancellation occurs before file commit.
             try { index.rebuild(); preferences.edit().remove("article-index-error").commit() }
             catch (_: Exception) { preferences.edit().putString("article-index-error", "文章文件已保留，但索引重建失败；请检查可用空间。").commit() }
         }
+    }
+
+    private fun processAudio(token: String, phase: AudioPhase) {
+        val queue = phase.speech.queue
+        val deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(2)
+        while (!queue.finished) {
+            update(token, queue.progress())
+            val advanced = phase.speech.advance()
+            if (System.nanoTime() >= deadline) return
+            if (!advanced) {
+                Thread.sleep(1500)
+                phase.checkpoint()
+            }
+        }
+        val result = phase.collection
+        val errors = result.optJSONArray("errors") ?: JSONArray().also { result.put("errors", it) }
+        for (i in 0 until queue.errors.length()) errors.put(queue.errors.getString(i))
+        result.put("audio_completed", queue.progress().getInt("audio_completed")).put("audio_total", queue.progress().getInt("audio_total"))
+        if (queue.errors.length() > 0 && result.optString("status") == "completed") result.put("status", "partial").put("stage", "partial").put("percent", 99)
+        if (queue.progress().getInt("audio_total") > 0) result.put("message", result.optString("message") + " " + queue.progress().getString("message"))
+        update(token, result)
+        audioPhases.remove(token)
     }
 
     private fun update(token: String, progress: JSONObject) = synchronized(lock) {
@@ -166,6 +212,12 @@ class DailyWorker(context: Context, params: WorkerParameters) : Worker(context, 
         val token = inputData.getString("token") ?: return Result.failure()
         val date = inputData.getString("date") ?: return Result.failure()
         DailyRuntime.get(applicationContext).run(token, date, inputData.getLong("expected", 0), inputData.getString("scheduleGeneration") ?: "") { isStopped }
-        return if (DailyRuntime.get(applicationContext).snapshot().optString("status") == "failed") Result.failure() else Result.success()
+        val state = DailyRuntime.get(applicationContext).snapshot()
+        if (state.optString("id") != token) return Result.success()
+        return when (state.optString("status")) {
+            "running" -> Result.retry()
+            "failed" -> Result.failure()
+            else -> Result.success()
+        }
     }
 }

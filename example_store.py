@@ -135,7 +135,7 @@ class ExampleStore:
             self._commit(dict(id=stable_id, title=title, text=text, builtin=bool(manifest.get("builtin")), directory=self._directory_for(title, stable_id), **voice))
         shutil.rmtree(self.legacy_root)
 
-    def _commit(self, item):
+    def _commit(self, item, *, verify_content=True):
         target = safe_path(self.root, item["directory"])
         job = self.transactions / uuid.uuid4().hex
         stage = job / "new"
@@ -175,7 +175,9 @@ class ExampleStore:
                         continue
                     relative = staged.relative_to(stage).as_posix()
                     destination = safe_path(target, relative)
-                    if not destination.is_file() or digest(staged.read_bytes()) != digest(destination.read_bytes()):
+                    if not destination.is_file() or (not verify_content and (
+                            relative in ('original.txt', 'translation.txt') or staged.stat().st_size != destination.stat().st_size)) or (
+                            verify_content and digest(staged.read_bytes()) != digest(destination.read_bytes())):
                         changed.append(relative)
                 if (target / "translation.txt").is_file() and not (stage / "translation.txt").exists():
                     changed.append("translation.txt")
@@ -209,22 +211,22 @@ class ExampleStore:
             elif job.exists():
                 shutil.rmtree(job)
             raise
-        return self._load_folder(target)
+        return self._load_folder(target, verify_content=verify_content)
 
-    def _load_folder(self, folder):
+    def _load_folder(self, folder, *, verify_content=True):
         safe_path(self.root, folder.name)
         manifest = json.loads(safe_path(folder, "example.json").read_text(encoding="utf-8"))
         content = safe_path(folder, "original.txt").read_bytes()
         if not isinstance(manifest, dict) or not manifest.get("id"):
             raise ValueError("示例标识与目录不一致。")
-        if manifest.get("text_sha256") and digest(content) != manifest["text_sha256"]:
+        if verify_content and manifest.get("text_sha256") and digest(content) != manifest["text_sha256"]:
             raise ValueError("示例正文校验失败。")
         translated = []
         translation_path = folder / "translation.txt"
         if translation_path.exists():
             translation_content = translation_path.read_text(encoding="utf-8")
             translated = translation_content.split("\n\n") if translation_content.strip() else []
-            if manifest.get("translation_sha256") and digest(translation_path.read_bytes()) != manifest["translation_sha256"]:
+            if verify_content and manifest.get("translation_sha256") and digest(translation_path.read_bytes()) != manifest["translation_sha256"]:
                 raise ValueError("示例译文校验失败。")
         return dict(id=str(manifest['id']), directory=folder.name,
                     title=self._clean_text(manifest.get("title"), "标题", _MAX_TITLE),
@@ -268,12 +270,19 @@ class ExampleStore:
                     return item
         raise LookupError("示例不存在。")
 
-    def import_content(self, item, audio_files=None):
+    def import_content(self, item, audio_files=None, *, verify_content=True):
         """Install validated paired-device content with the normal example transaction."""
         with self.locks.locked():
             title = self._clean_text(item.get('title'), '标题', _MAX_TITLE)
             text = self._clean_text(item.get('text'), '正文', _MAX_TEXT)
-            existing = next((value for value in self.list() if value['title'] == title), None)
+            if verify_content:
+                existing = next((value for value in self.list() if value['title'] == title), None)
+            else:
+                # Sync already selected this entity by its title identity. Avoid
+                # reopening and validating every other example during a commit.
+                existing = self._load_folder(safe_path(self.root, item['directory']), verify_content=False) if item.get('directory') else None
+                if existing and existing['title'] != title:
+                    raise ValueError('示例标识与标题不一致。')
             identifier = existing['id'] if existing else 'custom-' + uuid.uuid4().hex
             voice = self.validate_voice(item.get('voice_mode', 'inherit'), item.get('voice_id'), item.get('browser_voice_name', ''))
             saved = dict(item, id=identifier, title=title, text=text,
@@ -283,7 +292,7 @@ class ExampleStore:
             for version in saved['audio_versions']:
                 if version['path'] in (audio_files or {}):
                     version['_source'] = str(audio_files[version['path']])
-            return self._commit(saved)
+            return self._commit(saved, verify_content=verify_content)
 
     def save_translation(self, example_id, translations):
         with self.locks.locked():

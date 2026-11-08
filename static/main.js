@@ -150,6 +150,7 @@ let mobileNodeStatus = null;
 let mobileWindowsCheck = null;
 let deviceSyncPollTimer = null;
 let deviceSyncStatus = null;
+const redesignedReadingUi = document.documentElement.dataset.redesignApp === "true";
 
 function syncMobileViewHeading(view) {
   const meta = MOBILE_VIEW_META[view] || { kicker: "PRIVATE NEWS LIBRARY", title: "富士見新聞文庫", description: "ニュースを、深く読む。" };
@@ -227,7 +228,7 @@ function initializeSettingsLayout() {
     actions.append($("#active-voice-badge"), $("#add-voice"));
     $(".voice-panel > .panel-heading").append(actions);
     $(".daily-content-settings").append($("#daily-content-summary"));
-    document.querySelectorAll(".settings-section-number, .voice-heading-copy > p, .voice-settings-actions, .daily-source-stat, .settings-reading-note, .settings-storage-note")
+    document.querySelectorAll(".settings-section-number, .voice-settings-actions, .daily-source-stat")
       .forEach(element => { element.hidden = true; });
     return;
   }
@@ -265,7 +266,16 @@ window.__fujimiCloseMobileDictionaryDetail = () => {
 };
 window.__fujimiHandleBack = () => {
   if (closeAndroidSelect()) return true;
-  const playerMenu = document.querySelector('.audio-rate-menu:not([hidden]), .audio-listen-menu:not([hidden])');
+  if (redesignedReadingUi && $("#selection-lookup").classList.contains("is-mobile-article") && (!$("#selection-lookup").hidden || state.selectionLookupController)) {
+    if ($("#selection-lookup").classList.contains("is-mobile-expanded")) {
+      $("#selection-lookup").classList.remove("is-mobile-expanded");
+      renderMobileLookupCard(mobileArticleLookupWord);
+      return true;
+    }
+    hideSelectionLookup({ clearSelection: true, restoreFocus: true });
+    return true;
+  }
+  const playerMenu = redesignedReadingUi ? document.querySelector('.audio-rate-menu:not([hidden]), .audio-listen-menu:not([hidden])') : null;
   if (playerMenu) {
     playerMenu.hidden = true;
     const trigger = playerMenu.closest('.article-audio-player').querySelector(playerMenu.classList.contains('audio-rate-menu') ? '.audio-rate-toggle' : '.audio-listen-toggle');
@@ -591,7 +601,7 @@ function mobileApiRequest(path, method, body, multipart = null) {
     const timer = window.setTimeout(() => {
       mobileCallbacks.delete(callbackId);
       reject(new Error("本机请求超时，请重试。"));
-    }, /^\/api\/articles\/\d+\/edge-tts$/.test(path) ? 600000 : path.startsWith("/api/dictionary/") ? 120000 : 30000);
+    }, /^\/api\/articles\/\d+\/edge-tts$/.test(path) || path.startsWith("/api/pc-speech/") ? 600000 : path === "/api/settings/voice-file" ? 300000 : path.startsWith("/api/dictionary/") ? 120000 : 30000);
     mobileCallbacks.set(callbackId, result => { window.clearTimeout(timer); resolve(result); });
     try { window.FujimiMobile.request(JSON.stringify({ path, method, body, multipart }), callbackId); }
     catch (_error) {
@@ -723,6 +733,81 @@ function panelError(selector, message = "") {
   element.hidden = !message;
 }
 
+let mobileArticleLookupTrigger = null;
+let mobileArticleLookupWord = null;
+// The native word card owns a transparent full-screen click layer behind its content.
+const mobileLookupBackdrop = redesignedReadingUi ? document.createElement("div") : null;
+if (mobileLookupBackdrop) {
+  mobileLookupBackdrop.id = "mobile-lookup-backdrop";
+  mobileLookupBackdrop.hidden = true;
+  mobileLookupBackdrop.setAttribute("aria-hidden", "true");
+  $("#selection-lookup").before(mobileLookupBackdrop);
+  mobileLookupBackdrop.addEventListener("pointerdown", event => event.stopPropagation());
+  mobileLookupBackdrop.addEventListener("click", event => {
+    event.stopPropagation();
+    // A second tap while the first query is pending does not start or cancel a query.
+    if ($("#selection-lookup").hidden && state.selectionLookupController) return;
+    hideSelectionLookup({ clearSelection: true });
+  });
+}
+
+async function prepareMobileReadingLookup(root, contentSelector, textSelector) {
+  if (!redesignedReadingUi) return;
+  const content = root.querySelector(contentSelector);
+  content.id = contentSelector === ".parallel" ? "moji-article-content" : "moji-book-content";
+  content.dataset.mojiLookupRoot = "";
+  const mark = (element, text) => {
+    element.dataset.lookupQuery = text;
+    element.tabIndex = 0;
+    element.setAttribute("role", "button");
+    element.setAttribute("aria-label", `「${text}」を調べる`);
+  };
+  const texts = [];
+  content.querySelectorAll(textSelector).forEach(paragraph => {
+    paragraph.removeAttribute("role");
+    paragraph.removeAttribute("tabindex");
+    paragraph.removeAttribute("aria-label");
+    paragraph.closest(".paragraph").classList.add("moji-article-srt");
+    paragraph.querySelectorAll("ruby").forEach(ruby => {
+      if (ruby.closest("a, button") || ruby.parentElement.closest("ruby")) return;
+      if (!ruby.querySelector("rb")) {
+        const base = document.createElement("rb");
+        Array.from(ruby.childNodes).filter(child => !child.matches?.("rt, rp")).forEach(child => base.append(child));
+        ruby.prepend(base);
+      }
+      mark(ruby, ruby.querySelector("rb").textContent);
+    });
+    const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT, {
+      acceptNode: text => text.parentElement.closest("ruby, rt, rp, a, button, .moji-toolkit-org") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    while (walker.nextNode()) texts.push(walker.currentNode);
+  });
+  await new Promise(requestAnimationFrame);
+  if (!content.isConnected) return;
+  window.MojiArticleLookup.mount(content, (text, word) => {
+    // ArticleWebView.A strips the parenthesized suffix before calling the word dialog.
+    const query = text.split("(")[0];
+    if (query && word) showSelectionLookup(query, word.getBoundingClientRect(), null, word);
+  }, () => root.querySelector(".article-audio-player")?.dataset.playing === "true");
+  content.addEventListener("keydown", event => {
+    if (!["Enter", " "].includes(event.key) || !event.target.matches("[data-lookup-query]")) return;
+    event.preventDefault(); event.target.click();
+  });
+  try {
+    const payload = await api("/api/dictionary/tokenize", { method: "POST", body: JSON.stringify({ texts: texts.map(text => text.textContent) }) });
+    if (!content.isConnected) return;
+    texts.forEach((text, index) => {
+      const fragment = document.createDocumentFragment();
+      (payload.tokens[index] || []).forEach(surface => {
+        if (!/[\p{L}\p{N}]/u.test(surface)) { fragment.append(document.createTextNode(surface)); return; }
+        const word = document.createElement("span"); word.className = "moji-toolkit-org";
+        word.textContent = surface; mark(word, surface); fragment.append(word);
+      });
+      text.replaceWith(fragment);
+    });
+  } catch (error) { if (content.isConnected) toast(error.message, true); }
+}
+
 function selectionTextWithoutRuby(selection) {
   if (!selection || selection.isCollapsed || selection.rangeCount === 0) return "";
   const fragment = selection.getRangeAt(0).cloneContents();
@@ -744,7 +829,10 @@ function selectionLookupEligible(selection, eventTarget) {
   return Boolean(element?.closest(".article-detail, .dictionary-detail, .news-card, .book-chapter-body"));
 }
 
-function hideSelectionLookup({ clearSelection = false } = {}) {
+function hideSelectionLookup({ clearSelection = false, restoreFocus = false } = {}) {
+  const trigger = mobileArticleLookupTrigger;
+  mobileArticleLookupTrigger = null;
+  mobileArticleLookupWord = null;
   if (state.selectionLookupController) state.selectionLookupController.abort();
   state.selectionLookupController = null;
   state.selectionLookupToken += 1;
@@ -754,16 +842,22 @@ function hideSelectionLookup({ clearSelection = false } = {}) {
   state.selectionLookupResults = [];
   state.selectionLookupActiveId = "";
   const popover = $("#selection-lookup");
-  popover.classList.remove("is-detail", "is-size-locked");
+  popover.classList.remove("is-detail", "is-size-locked", "is-mobile-article", "is-mobile-expanded");
+  $("#selection-lookup-close").textContent = "×";
+  delete popover.dataset.singleResult;
   popover.style.height = "";
   popover.hidden = true;
+  popover.removeAttribute("aria-modal");
+  if (mobileLookupBackdrop) mobileLookupBackdrop.hidden = true;
   if (clearSelection) window.getSelection()?.removeAllRanges();
+  if (restoreFocus && trigger?.isConnected) trigger.focus({ preventScroll: true });
 }
 
 function positionSelectionLookup() {
   const popover = $("#selection-lookup");
   const rect = state.selectionLookupRect;
   if (popover.hidden || !rect) return;
+  if (popover.classList.contains("is-mobile-article")) return;
   const margin = 12;
   const gap = 9;
   const width = Math.min(360, window.innerWidth - margin * 2);
@@ -825,7 +919,89 @@ function renderSelectionLookupResults(results = state.selectionLookupResults) {
   requestAnimationFrame(positionSelectionLookup);
 }
 
+function mobileLookupIcon(name) {
+  const image = document.createElement("img");
+  image.src = `/static/lookup_assets/${name}.png`;
+  image.alt = "";
+  return image;
+}
+
+function renderMobileLookupCard(word) {
+  mobileArticleLookupWord = word;
+  const panel = $("#selection-lookup");
+  panel.classList.add("is-detail");
+  $("#selection-lookup-close").replaceChildren(mobileLookupIcon("nav_icon_close"));
+  const card = document.createElement("article");
+  card.className = "selection-lookup-detail moji-lookup-card";
+  const title = document.createElement("header");
+  title.className = "moji-lookup-title";
+  const spell = document.createElement("strong"); spell.textContent = word.spell;
+  const pron = word.pron || (word.sections || []).find(section => section.pron)?.pron
+    || (mobileArticleLookupTrigger?.dataset.lookupQuery === word.spell
+      ? [...mobileArticleLookupTrigger.querySelectorAll("rt")].map(rt => rt.textContent).join("") : "");
+  const reading = document.createElement("span");
+  reading.textContent = pron ? ` | ${pron}` : "";
+  const accent = document.createElement("span");
+  accent.textContent = String(word.accent ?? "").replace(/\d+/g, value => Number(value) === 0 ? "⓪" : Number(value) <= 20 ? String.fromCodePoint(0x2460 + Number(value) - 1) : value);
+  title.append(spell, reading, accent);
+  const originalCard = word.moji_card;
+  if (originalCard) title.textContent = originalCard.title;
+  const meta = document.createElement("div"); meta.className = "moji-lookup-meta";
+  const part = document.createElement("span"); part.className = "moji-lookup-part";
+  part.textContent = [...new Set((word.details || []).flatMap(item => item.partOfSpeech || []))].join("・");
+  if (originalCard) part.textContent = originalCard.partOfSpeech;
+  if (originalCard?.partOfSpeechColor) part.style.setProperty('--moji-part-color', '#' + (originalCard.partOfSpeechColor >>> 0).toString(16).padStart(8, '0').slice(2));
+  part.hidden = !part.textContent;
+  const tools = document.createElement("div"); tools.className = "moji-lookup-tools";
+  const favorite = document.createElement("button"); favorite.type = "button"; favorite.className = "moji-lookup-favorite";
+  const key = "fujimi-dictionary-favorites";
+  let favorites;
+  const updateFavorite = () => {
+    const saved = favorites.includes(String(word.id));
+    favorite.setAttribute("aria-pressed", String(saved));
+    favorite.setAttribute("aria-label", saved ? "取消收藏词语" : "收藏词语");
+    favorite.replaceChildren(mobileLookupIcon(saved ? "ic_common_collected" : "ic_common_collect"));
+  };
+  try {
+    favorites = JSON.parse(localStorage.getItem(key) || "[]");
+    if (!Array.isArray(favorites)) throw new Error("收藏记录无法读取");
+    updateFavorite();
+  } catch (_) { favorite.disabled = true; favorite.setAttribute("aria-label", "收藏记录无法读取"); favorite.append(mobileLookupIcon("ic_common_collect")); }
+  favorite.onclick = () => {
+    const next = favorites.includes(String(word.id)) ? favorites.filter(id => id !== String(word.id)) : [...favorites, String(word.id)];
+    try { localStorage.setItem(key, JSON.stringify(next)); favorites = next; updateFavorite(); }
+    catch (_) { toast("收藏保存失败。", true); }
+  };
+  const speech = dictionarySpeechButton(originalCard?.speechText || pron || word.spell, "单词发音");
+  speech.replaceChildren(mobileLookupIcon("ic_voice_high_red"));
+  tools.append(favorite, speech); meta.append(part, tools);
+  const meaning = document.createElement("div"); meaning.className = "moji-lookup-meaning"; meaning.tabIndex = 0;
+  // Moji's WordExpandView joins Chinese and Japanese Subdetails; examples stay in the detail view.
+  const meanings = dictionaryDefinitionGroups(word.definitions || []).map(group => {
+    const zh = group.zh.map(item => item.title || "").join("\n");
+    const ja = group.ja.map(item => item.title || "").join("\n");
+    return zh + (ja ? `（${ja}）` : "");
+  }).filter(Boolean);
+  meaning.textContent = meanings.join("\n\n") || word.excerpt || "释义未收录";
+  if (originalCard) meaning.textContent = originalCard.meaning;
+  const actions = document.createElement("footer"); actions.className = "moji-lookup-actions";
+  const action = (text, icon, run) => {
+    const button = document.createElement("button"); button.type = "button";
+    button.append(mobileLookupIcon(icon), document.createTextNode(text)); button.onclick = run; return button;
+  };
+  actions.append(action("详情", "ic_common_display", () => {
+    panel.classList.add("is-mobile-expanded");
+    $("#selection-lookup-close").textContent = "×";
+    renderSelectionLookupDetail(word);
+  }), action("MOJi辞書", "ic_common_search", () => {
+    if (!window.FujimiMobile?.openMojiDictionary?.(state.selectionLookupQuery)) toast("未能打开 MOJi辞書，请确认已安装。", true);
+  }));
+  card.append(title, meta, meaning, actions);
+  $("#selection-lookup-results").replaceChildren(card);
+}
+
 function renderSelectionLookupDetail(word) {
+  if ($("#selection-lookup").classList.contains("is-mobile-article") && !$("#selection-lookup").classList.contains("is-mobile-expanded")) return renderMobileLookupCard(word);
   $("#selection-lookup").classList.add("is-detail");
   const target = $("#selection-lookup-results");
   const article = document.createElement("article");
@@ -835,6 +1011,10 @@ function renderSelectionLookupDetail(word) {
   back.className = "selection-lookup-back";
   back.textContent = "← 検索結果";
   back.onclick = returnSelectionLookupResults;
+  if ($("#selection-lookup").classList.contains("is-mobile-expanded")) {
+    back.textContent = "返回";
+    back.onclick = () => { $("#selection-lookup").classList.remove("is-mobile-expanded"); renderMobileLookupCard(word); };
+  }
   const header = document.createElement("header");
   const title = document.createElement("strong");
   title.textContent = word.spell || "";
@@ -901,6 +1081,7 @@ function renderSelectionLookupDetail(word) {
 
 function lockSelectionLookupSize() {
   const popover = $("#selection-lookup");
+  if (popover.classList.contains("is-mobile-article")) return;
   if (popover.hidden || popover.classList.contains("is-size-locked")) return;
   const height = Math.min(popover.getBoundingClientRect().height, window.innerHeight - 24);
   popover.style.height = `${Math.round(height)}px`;
@@ -961,8 +1142,15 @@ async function openSelectionLookupInDictionary(id = "") {
   if (activeId) await loadDictionaryDetail(activeId);
 }
 
-async function showSelectionLookup(query, rect, range = null) {
+async function showSelectionLookup(query, rect, range = null, mobileTrigger = null) {
+  if (mobileTrigger && mobileLookupBackdrop && !mobileLookupBackdrop.hidden) return;
   hideSelectionLookup();
+  mobileArticleLookupTrigger = mobileTrigger;
+  $("#selection-lookup").classList.toggle("is-mobile-article", Boolean(mobileTrigger));
+  if (mobileTrigger && mobileLookupBackdrop) {
+    mobileLookupBackdrop.hidden = false;
+    $("#selection-lookup").setAttribute("aria-modal", "true");
+  }
   state.selectionLookupQuery = query;
   state.selectionLookupRect = rect;
   state.selectionLookupRange = range;
@@ -973,13 +1161,26 @@ async function showSelectionLookup(query, rect, range = null) {
   state.selectionLookupController = controller;
   $("#selection-lookup-query").textContent = query;
   const resultsElement = $("#selection-lookup-results");
-  const loading = document.createElement("p");
-  loading.className = "selection-lookup-status";
-  loading.textContent = "検索中…";
-  resultsElement.replaceChildren(loading);
-  $("#selection-lookup").hidden = false;
-  requestAnimationFrame(positionSelectionLookup);
+  if (!mobileTrigger) {
+    const loading = document.createElement("p");
+    loading.className = "selection-lookup-status";
+    loading.textContent = "検索中…";
+    resultsElement.replaceChildren(loading);
+    $("#selection-lookup").hidden = false;
+    requestAnimationFrame(positionSelectionLookup);
+  }
   try {
+    if (mobileTrigger) {
+      const word = await api(`/api/dictionary/clickDetail?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+      if (token !== state.selectionLookupToken) return;
+      if (word.moji_card === null) { hideSelectionLookup(); return; }
+      state.selectionLookupActiveId = word.id;
+      state.selectionLookupResults = [word];
+      $("#selection-lookup").dataset.singleResult = "true";
+      renderMobileLookupCard(word);
+      $("#selection-lookup").hidden = false;
+      return;
+    }
     const payload = await api(`/api/dictionary/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
     if (token !== state.selectionLookupToken) return;
     const results = (payload.results || []).slice(0, 4);
@@ -987,6 +1188,11 @@ async function showSelectionLookup(query, rect, range = null) {
     renderSelectionLookupResults(results);
   } catch (error) {
     if (error.name === "AbortError" || token !== state.selectionLookupToken) return;
+    if (mobileTrigger) {
+      hideSelectionLookup();
+      if (error.status !== 404) toast(error.message, true);
+      return;
+    }
     const failed = document.createElement("p");
     failed.className = "selection-lookup-status error";
     failed.textContent = error.message;
@@ -999,6 +1205,8 @@ async function showSelectionLookup(query, rect, range = null) {
 
 function handleSelectionLookup(event) {
   if (event.button !== 0 || $("#selection-lookup").contains(event.target)) return;
+  if (event.target === mobileLookupBackdrop) return;
+  if (redesignedReadingUi && event.target.closest("[data-moji-lookup-root]")) return;
   setTimeout(() => {
     const selection = window.getSelection();
     if (!selectionLookupEligible(selection, event.target)) {
@@ -1157,7 +1365,12 @@ function exitReaderRoom() {
 
 async function restoreReaderArticle() {
   if (state.article) {
-    resumeArticlePlayback();
+    if (!redesignedReadingUi) { resumeArticlePlayback(); return true; }
+    const root = $("#reader-result .article-detail");
+    if (root?.classList.contains("has-audio-player") && !resumeArticlePlayback(root)) {
+      resetReaderAudio(root);
+      setupArticleAudio(state.article, root);
+    }
     return true;
   }
   const remembered = rememberedReaderArticle();
@@ -1226,7 +1439,7 @@ function restoreReaderImportTask() {
   if (taskId) trackReaderImport(taskId);
 }
 
-async function showView(view, { historyMode = "push", resetReader = false } = {}) {
+async function showView(view, { historyMode = "push", resetReader = false, restoreReader = true } = {}) {
   setMobileNavOpen(false, { restoreFocus: false });
   hideSelectionLookup();
   if (state.currentView === "library" && view !== "library" && state.libraryChapter && !$("#book-reader").hidden) {
@@ -1237,7 +1450,7 @@ async function showView(view, { historyMode = "push", resetReader = false } = {}
     }
   }
   if (view !== "dictionary") stopDictionarySpeech();
-  if (view !== "reader" && view !== "library") {
+  if (redesignedReadingUi ? (view !== state.currentView || (view !== "reader" && view !== "library")) : (view !== "reader" && view !== "library")) {
     suspendArticlePlayback();
     stopRereadTracking();
   }
@@ -1257,7 +1470,7 @@ async function showView(view, { historyMode = "push", resetReader = false } = {}
   const routeHash = view === "library" ? (existingLibraryRoute ? location.hash : rememberedBookRoute || "#library") : `#${view}`;
   if (historyMode === "push" && (history.state?.view !== view || location.hash !== routeHash)) history.pushState({ view }, "", routeHash);
   if (historyMode === "replace") history.replaceState({ view }, "", routeHash);
-  if (view === "reader") {
+  if (view === "reader" && (!redesignedReadingUi || restoreReader)) {
     const restored = await restoreReaderArticle();
     if (!restored) restoreReaderImportTask();
   }
@@ -1403,19 +1616,21 @@ async function speakDictionaryText(text, button) {
     if (token !== state.dictionarySpeechToken) return;
   }
   if (window.FujimiMobile?.speak) {
-    if (mobileVoiceNeedsPc()) return toast("所选声线由 PC 合成，手机可播放已同步音频；词典即时朗读请选择圭太或七海。", true);
+    const dictionaryVoice = edgeVoiceId(state.browserVoiceName);
+    // Dictionary speech uses the configured browser voice independently of article/reference mode.
+    if (localBrowserVoice(dictionaryVoice)?.saved_audio_only) return toast("当前系统声线仅可播放已保存音频；词典即时朗读请选择圭太或七海。", true);
     button.classList.add("is-speaking");
     button.setAttribute("aria-label", "停止朗读");
     button.title = "停止朗读";
     state.dictionarySpeech = { button, token, utterance: null };
     mobileSpeak(spokenText, 1, event => {
       if (state.dictionarySpeech?.token !== token) return;
-      if (event === "error") toast("Edge 在线朗读失败，请检查网络后重试。", true);
+      if (event === "error") toast(state.browserVoiceName === 'android:system' ? "系统朗读失败，请检查手机文字转语音设置及日语音声。" : "Edge 在线朗读失败，请检查网络后重试。", true);
       if (["done", "error", "stop"].includes(event)) {
         resetDictionarySpeechButton(button);
         state.dictionarySpeech = null;
       }
-    });
+    }, dictionaryVoice);
     return;
   }
   const voice = await resolveJapaneseBrowserVoice({ persistDefault: true });
@@ -1816,6 +2031,7 @@ function closeMobileDictionaryDetail({ restoreFocus = true } = {}) {
   const wasOpen = view.classList.contains("dictionary-detail-open");
   view.classList.remove("dictionary-detail-open");
   if (!wasOpen || !isMobileDrawerLayout()) return;
+  if (redesignedReadingUi) window.dispatchEvent(new Event("fujimi:dictionary-detail-close"));
   const selector = '.dictionary-result[data-id="' + CSS.escape(String(state.dictionaryActiveId || "")) + '"]';
   const active = document.querySelector(selector);
   requestAnimationFrame(() => {
@@ -2178,7 +2394,7 @@ async function populateRereadVoices(select, article) {
   const [voices, modeSettings] = await Promise.all([api("/api/settings/voices"), api("/api/settings/voice-mode")]);
   applyBrowserVoiceSettings(modeSettings);
   const selectedBrowserName = browserVoiceShortName(state.browserVoiceName);
-  const browserLabel = selectedBrowserName ? `ブラウザー音声（${selectedBrowserName}）` : "ブラウザー音声";
+  const browserLabel = redesignedReadingUi ? (localBrowserVoice(state.browserVoiceName)?.name || selectedBrowserName || "音声") : selectedBrowserName ? `ブラウザー音声（${selectedBrowserName}）` : "ブラウザー音声";
   select.replaceChildren(
     new Option(browserLabel, "browser"),
     ...voices.map(voice => new Option(voice.name, `voice:${voice.id}`)),
@@ -2332,7 +2548,7 @@ function articleDetail(article) {
     const figure = document.createElement("figure");
     figure.className = "media-item";
     const image = document.createElement("img");
-    image.src = path.startsWith("/api/articles/") ? path : `/api/media/${path}`;
+    image.src = (redesignedReadingUi ? /^\/api\/(?:articles|bookmarks)\//.test(path) : path.startsWith("/api/articles/")) ? path : `/api/media/${path}`;
     image.alt = (article.image_captions || [])[index] || article.title;
     const link = imageLinks[index];
     if (link) {
@@ -2358,7 +2574,7 @@ function articleDetail(article) {
     .filter(index => !hasImagePositions || Number(imagePositions[index]) < 0);
   if (["nhk", "nikkei"].includes(article.source_key) && videoDescriptors.some(item => item.isLocal || item.poster) && topImageIndexes.length === 1) {
     const posterPath = imagePaths[topImageIndexes[0]];
-    videoDescriptors.forEach(item => { item.poster = posterPath.startsWith("/api/articles/") ? posterPath : `/api/media/${posterPath}`; });
+    videoDescriptors.forEach(item => { item.poster = (redesignedReadingUi ? /^\/api\/(?:articles|bookmarks)\//.test(posterPath) : posterPath.startsWith("/api/articles/")) ? posterPath : `/api/media/${posterPath}`; });
     topImageIndexes = [];
   }
   media.classList.toggle("media-single", topImageIndexes.length === 1 && !videoUrls.length);
@@ -2454,12 +2670,10 @@ function articleDetail(article) {
     parallel.append(section);
   });
   appendInlineImages((article.paragraphs || []).length);
+  prepareMobileReadingLookup(root, ".parallel", ".japanese");
   $(".full-translation", root).textContent = article.full_translation || "全文訳はまだ生成されていません。";
   setArticleTranslationView(root, "show");
 
-  const audio = $(".audio", root);
-  const hasAudio = Boolean(article.audio_path) && !["browser", "disabled", "unavailable"].includes(article.audio_status);
-  if (hasAudio) audio.src = mobileMediaUrl(article.audio_path, "/api/audio/");
   const bookmarkButton = $(".bookmark", root);
   renderBookmarkButton(bookmarkButton, Boolean(article.bookmarked));
   bookmarkButton.onclick = () => toggleBookmark(article, bookmarkButton);
@@ -2472,8 +2686,7 @@ function articleDetail(article) {
     }
   };
   $(".exit-reader", root).onclick = exitReaderRoom;
-  if (hasAudio) setupNativeArticlePlayer(article, root, audio);
-  else if (article.audio_status === "browser" && !article.audio_unavailable_detail) setupBrowserArticlePlayer(article, root);
+  setupArticleAudio(article, root);
   const voiceSelect = $(".reread-voice", root);
   populateRereadVoices(voiceSelect, article).catch(error => setRereadTask(root, "failed", "声線を読み込めませんでした。", "", error.message));
   const rereadLink = $(".reread-link", root);
@@ -2581,21 +2794,21 @@ function openArticle(article, target) {
     startRereadTracking(article, target, root, "reread");
   } else if (root && ["failed", "replace_failed"].includes(article.audio_status)) {
     setRereadTask(root, "failed", article.audio_task_detail || "朗読生成に失敗しました。再試行してください。");
-  } else if (root && article.audio_unavailable_detail) {
+  } else if (root && article.audio_unavailable_detail && !redesignedReadingUi) {
     setRereadTask(root, "failed", article.audio_unavailable_detail);
   }
   target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function openArticleInReader(article) {
-  await showView("reader", { resetReader: false });
+  await showView("reader", redesignedReadingUi ? { resetReader: false, restoreReader: false } : { resetReader: false });
   openArticle(article, $("#reader-result"));
 }
 
 function setRereadTask(root, status, label, count = "", detail = "", current = 0, total = 1, { cancellable = false } = {}) {
   const task = $(".reread-task", root);
   if (!task) return;
-  task.hidden = false;
+  task.hidden = redesignedReadingUi && status === "failed";
   task.classList.toggle("is-failed", status === "failed");
   $(".reread-task-label", task).textContent = status === "failed" && detail ? `${label} ${detail}` : label;
   const taskCancelButton = $(".reread-task-cancel", task);
@@ -2620,6 +2833,58 @@ function setRereadTask(root, status, label, count = "", detail = "", current = 0
     taskCancelButton.disabled = isCancelling;
   }
   if (voiceSelect) voiceSelect.disabled = isRunning;
+  if (redesignedReadingUi && status === "failed") toast(detail || label, true);
+}
+
+async function generateMobilePcSpeech(root, selection, { autoplay = false, paragraph = 0 } = {}) {
+  if (root.pcSpeechJob) return;
+  const book = root.id === "book-reader" ? state.libraryChapter : null;
+  const article = book ? null : state.article;
+  if (!book && !article) throw new Error("朗读正文不可用。");
+  const body = { kind: book ? "book" : "article", id: book ? book.book.id : article.id,
+    chapter_id: book?.chapter.id, selection };
+  const job = { id: "", cancelled: false }; root.pcSpeechJob = job;
+  const toggle = $(".audio-player-toggle", root);
+  if (toggle) { toggle.disabled = true; toggle.setAttribute("aria-busy", "true"); }
+  try {
+    setRereadTask(root, "running", "PCで朗読を準備しています…", "", "", 0, 1);
+    let result = await api("/api/pc-speech/start", { method: "POST", body: JSON.stringify(body) });
+    job.id = result.task_id || "";
+    while (!["ready", "completed"].includes(result.status)) {
+      if (["failed", "interrupted", "cancelled"].includes(result.status)) {
+        if (result.status === "cancelled") return;
+        throw new Error(result.message || "PC 朗读生成失败，请重试。");
+      }
+      if (!job.id) throw new Error("PC 未返回朗读任务。");
+      if (job.cancelled) return;
+      setRereadTask(root, "running", result.message || "PCで朗読を生成しています…", "", "",
+        Number(result.completed || 0), Number(result.total || 1), { cancellable: true });
+      await new Promise(resolve => setTimeout(resolve, 800));
+      result = await api(`/api/pc-speech/tasks/${job.id}`);
+    }
+    if (job.cancelled || !root.isConnected
+        || (book ? state.libraryChapter !== book || !isBookReaderActive(root) : state.article !== article || document.documentElement.dataset.nativeReading !== "article")) return;
+    if (book) await navigateBookChapter(book.book.id, book.chapter.id, { historyMode: "replace" });
+    else openArticle(result.article || await api(articleApiPath(article)), root.parentElement);
+    if (autoplay && state.articleAudio?.root.isConnected) state.articleAudio.seekParagraph(paragraph);
+  } finally {
+    if (root.pcSpeechJob === job) root.pcSpeechJob = null;
+    if (toggle?.isConnected) { toggle.disabled = false; toggle.removeAttribute("aria-busy"); }
+    if (root.isConnected && $(".reread-task", root)) $(".reread-task", root).hidden = true;
+  }
+}
+
+function mobileSpeechSelection(voiceValue = "") {
+  if (voiceValue.startsWith("voice:")) return { mode: "voice", voice_id: Number(voiceValue.slice(6)) };
+  if (voiceValue === "browser") return { mode: "browser", browser_voice_name: state.browserVoiceName };
+  return { mode: voiceValue || "model" };
+}
+
+function mobileSelectionNeedsPc(selection) {
+  if (!window.FujimiMobile?.request) return false;
+  if (selection.mode === "voice") return true;
+  if (selection.mode === "browser") return Boolean(localBrowserVoice(selection.browser_voice_name)?.saved_audio_only);
+  return ["model", "inherit"].includes(selection.mode) && mobileVoiceNeedsPc();
 }
 
 function reportArticleAudioError(controller, error) {
@@ -2649,6 +2914,11 @@ async function rereadArticle(article, voiceValue, target, root) {
     }
     const mode = voiceValue.startsWith("voice:") ? "voice" : voiceValue;
     const voiceId = mode === "voice" ? Number(voiceValue.split(":", 2)[1]) : null;
+    const selection = { mode, voice_id: voiceId, browser_voice_name: browserName };
+    if (mobileSelectionNeedsPc(selection)) {
+      await generateMobilePcSpeech(root, selection);
+      return;
+    }
     setRereadTask(root, "running", window.FujimiMobile ? "保存済みの朗読を確認しています…" : "音声生成を準備しています…", "", "", 0, 1, { cancellable: !window.FujimiMobile });
     const result = await api(articleApiPath(article, "/reread"), { method: "POST", body: JSON.stringify({ mode, voice_id: voiceId, browser_voice_name: browserName }) });
     if (result.status === "ready") {
@@ -2669,6 +2939,12 @@ async function rereadArticle(article, voiceValue, target, root) {
 }
 
 async function cancelReread(article, target, root, mode = "reread") {
+  if (root.pcSpeechJob) {
+    const job = root.pcSpeechJob;
+    if (job.id) await api(`/api/pc-speech/tasks/${job.id}`, { method: "DELETE" });
+    job.cancelled = true;
+    return;
+  }
   if (root.dataset.rereadCancelling === "true") return;
   root.dataset.rereadCancelling = "true";
   const button = $(".cancel-reread", root);
@@ -2928,9 +3204,42 @@ function setActiveAudioParagraph(root, index = -1) {
   root.querySelectorAll(".paragraph[data-audio-index]").forEach(section => {
     const active = Number(section.dataset.audioIndex) === index;
     section.classList.toggle("is-audio-active", active);
+    if (redesignedReadingUi) section.classList.toggle("--active", active);
     if (active) section.setAttribute("aria-current", "true");
     else section.removeAttribute("aria-current");
   });
+}
+
+function prepareAudioPlayer(root) {
+  if (!redesignedReadingUi) return $(".article-audio-player", root);
+  root.audioPlayerBindings?.abort();
+  root.audioPlayerBindings = new AbortController();
+  return $(".article-audio-player", root);
+}
+
+function resetReaderAudio(root) {
+  stopArticlePlayback();
+  // Replace only audio controls; keep the reading content and its UI state.
+  const oldPlayer = $(".article-audio-player", root);
+  const player = $("#article-template").content.querySelector(".article-audio-player").cloneNode(true);
+  player.setAttribute("aria-label", oldPlayer.getAttribute("aria-label"));
+  oldPlayer.replaceWith(player);
+  const audio = $("audio.audio, audio.book-audio", root);
+  const replacement = audio.cloneNode(false);
+  replacement.removeAttribute("src");
+  audio.replaceWith(replacement);
+}
+
+function setupArticleAudio(article, root) {
+  const audio = $(".audio", root);
+  const hasAudio = Boolean(article.audio_path) && !["browser", "disabled", "unavailable"].includes(article.audio_status);
+  if (hasAudio) {
+    audio.src = mobileMediaUrl(article.audio_path, "/api/audio/");
+    setupNativeArticlePlayer(article, root, audio);
+  } else if (article.audio_status === "browser" && !article.audio_unavailable_detail
+      || window.FujimiMobile?.request && article.audio_unavailable_detail) {
+    setupBrowserArticlePlayer(article, root);
+  }
 }
 
 function bindParagraphSeeking(root, seek) {
@@ -2938,18 +3247,54 @@ function bindParagraphSeeking(root, seek) {
     const seekTarget = section.querySelector(".japanese") || section;
     const jump = event => {
       if (event.target.closest('a[href]')) return;
+      if (redesignedReadingUi && (root.querySelector(".article-audio-player")?.dataset.playing !== "true" || section.classList.contains("is-audio-active"))) return;
       if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
       if (event.type === "click" && !window.getSelection()?.isCollapsed) return;
       event.preventDefault();
       event.stopPropagation();
       seek(Number(section.dataset.audioIndex));
     };
-    seekTarget.addEventListener("click", jump);
-    seekTarget.addEventListener("keydown", jump);
+    const options = redesignedReadingUi ? { signal: root.audioPlayerBindings.signal } : undefined;
+    seekTarget.addEventListener("click", jump, options);
+    seekTarget.addEventListener("keydown", jump, options);
   });
 }
 
+function configureOriginalPlaybackRate(root, initialRate, onChange) {
+  const toggle = $(".audio-rate-toggle", root);
+  const value = $(".audio-rate-value", toggle);
+  const menu = $(".audio-rate-menu", root);
+  const render = rate => {
+    toggle.setAttribute("aria-label", `播放速度，当前 ${rate} 倍`);
+    value.textContent = `${Number.isInteger(rate) ? rate.toFixed(1) : rate}x`;
+    menu.querySelectorAll("button[data-rate]").forEach(button => {
+      button.setAttribute("aria-checked", String(Number(button.dataset.rate) === rate));
+    });
+  };
+  const close = () => {
+    menu.hidden = true;
+    toggle.setAttribute("aria-expanded", "false");
+  };
+  toggle.onclick = event => {
+    event.stopPropagation();
+    menu.hidden = !menu.hidden;
+    toggle.setAttribute("aria-expanded", String(!menu.hidden));
+  };
+  menu.querySelectorAll("button[data-rate]").forEach(button => {
+    button.onclick = () => {
+      const rate = Number(button.dataset.rate);
+      rememberPlaybackRate(rate);
+      render(rate);
+      close();
+      onChange(rate);
+    };
+  });
+  root.addEventListener("click", event => { if (!event.target.closest(".audio-rate-control")) close(); });
+  render(initialRate);
+}
+
 function configurePlaybackRate(root, initialRate, onChange) {
+  if (!redesignedReadingUi) return configureOriginalPlaybackRate(root, initialRate, onChange);
   const toggle = $(".audio-rate-toggle", root);
   const value = $(".audio-rate-value", toggle);
   const menu = $(".audio-rate-menu", root);
@@ -2981,7 +3326,7 @@ function configurePlaybackRate(root, initialRate, onChange) {
       onChange(rate);
     };
   });
-  root.addEventListener("click", event => { if (!event.target.closest(".audio-rate-control")) close(); });
+  root.addEventListener("click", event => { if (!event.target.closest(".audio-rate-control")) close(); }, { signal: root.audioPlayerBindings.signal });
   toggle.addEventListener("keydown", event => {
     if (event.key !== "ArrowDown") return;
     event.preventDefault();
@@ -3008,6 +3353,7 @@ function configurePlaybackRate(root, initialRate, onChange) {
 }
 
 function bindPlayerParagraphButtons(player, seekParagraph) {
+  if (!redesignedReadingUi) return;
   for (const [selector, step] of [[".audio-player-previous", -1], [".audio-player-next", 1]]) {
     $(selector, player).onclick = () => {
       const target = Number(player.dataset.paragraphIndex || 0) + step;
@@ -3067,7 +3413,21 @@ function playbackParagraphIndex(segments, position) {
   return 0;
 }
 
+function renderOriginalAudioPlayerChrome(player, { playing, current, duration, progress, maximum }) {
+  const toggle = $(".audio-player-toggle", player);
+  const icon = $(".audio-player-toggle-icon", toggle);
+  const safeMaximum = Math.max(1, Number(maximum) || 1);
+  const safeProgress = Math.max(0, Math.min(safeMaximum, Number(progress) || 0));
+  toggle.setAttribute("aria-label", playing ? "暂停朗读" : "播放朗读");
+  toggle.title = playing ? "暂停朗读" : "播放朗读";
+  icon.src = `/static/player_assets/ic_player_${playing ? "play" : "stop"}.png`;
+  $(".audio-player-current", player).textContent = formatSpeechTime(current);
+  $(".audio-player-duration", player).textContent = formatSpeechTime(duration);
+  $(".audio-player-progress-fill", player).style.width = `${safeProgress / safeMaximum * 100}%`;
+}
+
 function renderAudioPlayerChrome(player, { playing, current, duration, progress, maximum, paragraphIndex = 0, paragraphCount = 0 }) {
+  if (!redesignedReadingUi) return renderOriginalAudioPlayerChrome(player, { playing, current, duration, progress, maximum });
   const toggle = $(".audio-player-toggle", player);
   const safeMaximum = Math.max(1, Number(maximum) || 1);
   const safeProgress = Math.max(0, Math.min(safeMaximum, Number(progress) || 0));
@@ -3149,7 +3509,7 @@ function renderNativeArticleAudio(controller) {
 }
 
 function setupMobileMediaPlayer(article, root, audio) {
-  const player = $(".article-audio-player", root);
+  const player = prepareAudioPlayer(root);
   // Media3 owns native playback on Android. Keep the WebView from opening the
   // same WAV in a second decoder, which can exhaust memory during long reads.
   const mediaSource = audio.currentSrc || audio.src;
@@ -3223,7 +3583,7 @@ function setupMobileMediaPlayer(article, root, audio) {
     controller.mobileStatus.playing = true;
     controller.mobileStatus.ended = false;
     controller.started = true;
-    renderNativeArticleAudio(controller);
+    if (redesignedReadingUi) renderNativeArticleAudio(controller);
   };
   bindParagraphSeeking(root, seekParagraph);
   bindPlayerParagraphButtons(player, seekParagraph);
@@ -3232,8 +3592,8 @@ function setupMobileMediaPlayer(article, root, audio) {
 }
 
 function setupNativeArticlePlayer(article, root, audio) {
-  if (window.FujimiMobile?.playMedia && /\/api\/(?:articles\/\d+\/assets|books\/\d+)\/audio\//.test(audio.src)) return setupMobileMediaPlayer(article, root, audio);
-  const player = $(".article-audio-player", root);
+  if (window.FujimiMobile?.playMedia && /\/api\/(?:(?:articles|bookmarks)\/\d+\/assets|books\/\d+)\/audio\//.test(audio.src)) return setupMobileMediaPlayer(article, root, audio);
+  const player = prepareAudioPlayer(root);
   const controller = { root, player, audio, timeline: [], paragraphCount: (article.paragraphs || []).length, started: false, pendingParagraph: null, rate: savedPlaybackRate() };
   state.articleAudio = controller;
   root.classList.add("has-audio-player");
@@ -3285,7 +3645,7 @@ function setupNativeArticlePlayer(article, root, audio) {
       controller.started = true;
     }
     audio.play().catch(error => reportArticleAudioError(controller, error));
-    renderNativeArticleAudio(controller);
+    if (redesignedReadingUi) renderNativeArticleAudio(controller);
   };
   bindParagraphSeeking(root, seekParagraph);
   bindPlayerParagraphButtons(player, seekParagraph);
@@ -3366,7 +3726,10 @@ function stopArticlePlayback(hidePlayer = true) {
 function suspendArticlePlayback() {
   const nativeController = state.articleAudio;
   if (nativeController) {
-    if (nativeController.mobileNative) window.FujimiMobile.pauseMedia();
+    if (nativeController.mobileNative) {
+      window.FujimiMobile.pauseMedia();
+      nativeController.mobileStatus.playing = false;
+    }
     else nativeController.audio.pause();
     nativeController.started = false;
     setActiveAudioParagraph(nativeController.root);
@@ -3388,17 +3751,21 @@ function suspendArticlePlayback() {
   }
 }
 
-function resumeArticlePlayback() {
+function resumeArticlePlayback(root) {
+  let restored = false;
   const nativeController = state.articleAudio;
-  if (nativeController?.root.isConnected) {
+  if (nativeController?.root.isConnected && (!redesignedReadingUi || nativeController.root === root)) {
     nativeController.player.hidden = false;
     renderNativeArticleAudio(nativeController);
+    restored = true;
   }
   const browserController = state.browserSpeech;
-  if (browserController?.root.isConnected) {
+  if (browserController?.root.isConnected && (!redesignedReadingUi || browserController.root === root)) {
     $(".article-audio-player", browserController.root).hidden = false;
     renderBrowserSpeech(browserController);
+    restored = true;
   }
+  return restored;
 }
 
 function startBrowserSpeechTimer(controller) {
@@ -3535,8 +3902,14 @@ async function speakDesktopOnlineChunk(controller, voice, token) {
 }
 
 async function speakBrowserSpeech(controller, startIndex = 0) {
-  if (mobileVoiceNeedsPc(controller.browserVoiceName || state.browserVoiceName)) {
-    return notice("所选声线尚无已同步音频，请先在 PC 生成后同步。", true);
+  const bookVoice = controller.root.id === "book-reader" ? $(".book-voice", controller.root)?.value : "";
+  if (bookVoice ? mobileSelectionNeedsPc(mobileSpeechSelection(bookVoice)) : mobileVoiceNeedsPc(controller.browserVoiceName || state.browserVoiceName)) {
+    try {
+      const selection = await api("/api/settings/voice-mode");
+      const paragraph = Math.max(0, controller.segments.findIndex(segment => startIndex >= segment.start && startIndex < segment.end));
+      await generateMobilePcSpeech(controller.root, bookVoice ? mobileSpeechSelection(bookVoice) : selection, { autoplay: true, paragraph });
+    } catch (error) { setRereadTask(controller.root, "failed", error.message || "PC 朗读失败。"); }
+    return;
   }
   if (window.FujimiMobile?.request && controller.article?.id) {
     if (controller.savingAudio) return;
@@ -3676,7 +4049,7 @@ function setupBrowserArticlePlayer(article, root) {
   if (!window.FujimiMobile?.speak && !window.speechSynthesis && !(typeof localBrowserVoice === "function" && localBrowserVoice(state.browserVoiceName))) return notice("当前设备不支持语音朗读", true);
   const model = browserSpeechModel(article.paragraphs || []);
   if (!model.text) return notice("没有可朗读的正文", true);
-  const player = $(".article-audio-player", root);
+  const player = prepareAudioPlayer(root);
   root.classList.add("has-audio-player");
   player.hidden = false;
   const charactersPerSecond = 6.4;
@@ -4551,6 +4924,10 @@ async function loadLibrary({ forceHome = false } = {}) {
       reader.hidden = false;
       $("#library-home").hidden = true;
       $("#library-series-detail").hidden = true;
+      if (redesignedReadingUi && reader.classList.contains("has-audio-player") && !resumeArticlePlayback(reader)) {
+        resetReaderAudio(reader);
+        setupBookAudio(current, reader);
+      }
       const position = rememberedBookPosition(route.bookId, route.chapterId);
       if (position && Number.isFinite(Number(position.scrollY))) {
         requestAnimationFrame(() => window.scrollTo({ top: Math.max(0, Number(position.scrollY)), behavior: "auto" }));
@@ -4584,14 +4961,19 @@ async function openBook(bookId) {
   });
 }
 
+function originalBookAudioPlayerMarkup() {
+  return `<div class="article-audio-player" role="group" aria-label="章の朗読プレーヤー" hidden><div class="audio-player-timeline"><div class="audio-player-seek"><span class="audio-player-progress-fill"></span><input class="audio-player-progress" type="range" min="0" max="1" value="0" step="0.1" aria-label="朗読進度"></div><time class="audio-player-current">0:00</time><time class="audio-player-duration">0:00</time></div><button class="audio-player-toggle audio-icon-button" type="button" aria-label="朗読を再生" title="再生または一時停止"><img class="audio-player-toggle-icon" src="/static/player_assets/ic_player_stop.png" alt=""></button><div class="audio-rate-control"><button class="audio-rate-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="再生速度" title="再生速度"><img src="/static/player_assets/ic_player_set.png" alt=""><span class="audio-rate-value" aria-hidden="true">1.0x</span></button><div class="audio-rate-menu" role="menu" hidden>${PLAYBACK_RATES.map(rate => `<button type="button" role="menuitemradio" data-rate="${rate}">${rate}×</button>`).join("")}</div></div></div>`;
+}
+
 function bookAudioPlayerMarkup() {
+  if (!redesignedReadingUi) return originalBookAudioPlayerMarkup();
   const player = $("#article-template").content.querySelector(".article-audio-player").cloneNode(true);
   player.setAttribute("aria-label", "章の朗読プレーヤー");
   return player.outerHTML;
 }
 
 function bookVoiceOptions(chapter) {
-  const options = [new Option("默认声线", "model"), new Option(`ブラウザー音声（${state.browserVoiceLabel || "ブラウザー"}）`, "browser")];
+  const options = [new Option("默认声线", "model"), new Option(redesignedReadingUi ? (localBrowserVoice(state.browserVoiceName)?.name || browserVoiceShortName(state.browserVoiceName) || "音声") : `ブラウザー音声（${state.browserVoiceLabel || "ブラウザー"}）`, "browser")];
   state.voices.forEach(voice => options.push(new Option(voice.name, `voice:${voice.id}`)));
   const selected = chapter.voice_mode === "voice" ? `voice:${chapter.voice_id}` : chapter.voice_mode;
   options.forEach(option => { option.selected = option.value === selected; });
@@ -4696,8 +5078,24 @@ function renderDeviceSyncSettings(status) {
     delete qr.dataset.version;
   }
   const count = Array.isArray(status.paired_devices) ? status.paired_devices.length : Number(status.paired_devices) || 0;
-  $("#device-sync-state").textContent = status.enabled ? (count ? `已配对 ${count} 台设备` : "等待手机配对") : "未开启";
+  const inactive = status.status === "connecting" ? "正在连接 Tailscale…"
+    : status.tailscale_status === "login_required" ? "等待 Tailscale 登录"
+    : status.tailscale_status === "error" ? "Tailscale 连接失败" : "未开启";
+  $("#device-sync-state").textContent = status.enabled ? (count ? `已配对 ${count} 台设备` : "等待手机配对") : inactive;
   $("#device-sync-state").dataset.enabled = String(Boolean(status.enabled));
+  const login = $("#device-sync-login");
+  if (login) {
+    login.hidden = true; login.removeAttribute("href");
+    if (status.tailscale_status === "login_required" && status.login_url) {
+      try {
+        const url = new URL(status.login_url);
+        if (url.protocol === "https:" && url.hostname === "login.tailscale.com" && !url.port &&
+            !url.username && !url.password && !url.search && !url.hash && url.pathname.startsWith("/a/")) {
+          login.href = url.href; login.hidden = false;
+        }
+      } catch (_error) { /* Login can still be completed in the Tailscale app. */ }
+    }
+  }
   $("#device-sync-detail").textContent = status.detail || (status.enabled
     ? "在 Android 的 Windows 同步中扫码，或输入以上地址和配对码。配对后由手机点击“立即同步”。"
     : "开启后，在 Android 的 Windows 同步中连接。");
@@ -4713,7 +5111,7 @@ async function loadDeviceSyncSettings() {
     const status = await api("/api/settings/device-sync");
     renderDeviceSyncSettings(status);
     panelError("#device-sync-error");
-    if (status.enabled && state.currentView === "settings") {
+    if ((status.enabled || status.status === "connecting") && state.currentView === "settings") {
       deviceSyncPollTimer = window.setTimeout(() => {
         if (state.currentView === "settings") loadDeviceSyncSettings();
       }, 3000);
@@ -4723,17 +5121,25 @@ async function loadDeviceSyncSettings() {
 
 async function toggleDeviceSync() {
   const toggle = $("#device-sync-enabled");
+  const enabled = toggle.checked;
   toggle.disabled = true;
+  toggle.setAttribute("aria-busy", "true");
   window.clearTimeout(deviceSyncPollTimer);
+  $("#device-sync-state").textContent = enabled ? "正在准备配对…" : "正在关闭配对…";
+  $("#device-sync-state").dataset.enabled = "false";
+  if (!enabled) $("#device-sync-details").hidden = true;
+  const login = $("#device-sync-login"); if (login) login.hidden = true;
+  panelError("#device-sync-error");
   try {
-    const status = await api("/api/settings/device-sync", { method: "PUT", body: JSON.stringify({ enabled: toggle.checked }) });
+    const status = await api("/api/settings/device-sync", { method: "PUT", body: JSON.stringify({ enabled }) });
     renderDeviceSyncSettings(status);
     panelError("#device-sync-error");
-    if (status.enabled) deviceSyncPollTimer = window.setTimeout(loadDeviceSyncSettings, 3000);
+    if (status.enabled || status.status === "connecting") deviceSyncPollTimer = window.setTimeout(loadDeviceSyncSettings, 3000);
   } catch (error) {
-    toggle.checked = Boolean(deviceSyncStatus?.enabled);
+    try { renderDeviceSyncSettings(await api("/api/settings/device-sync")); }
+    catch (_statusError) { toggle.checked = Boolean(deviceSyncStatus?.enabled); }
     panelError("#device-sync-error", error.message || "同步服务未能启动，请重试。");
-  } finally { toggle.disabled = false; }
+  } finally { toggle.disabled = false; toggle.removeAttribute("aria-busy"); }
 }
 
 async function copyDeviceSyncValue(selector) {
@@ -4990,6 +5396,12 @@ function beginMobilePairing(scan, address = "", code = "") {
     } catch (_error) { $("#mobile-sync-now").disabled = true; }
   };
   mobileWindowsCheck = { id: callbackId, finish, timer: scan ? null : window.setTimeout(() => finish(false, "连接超时，请检查 PC 服务和网络后重试。"), 45000) };
+  window.__fujimiWindowsCheckPhase = (id, phase) => {
+    if (mobileWindowsCheck?.id !== id) return;
+    window.clearTimeout(mobileWindowsCheck.timer);
+    mobileWindowsCheck.timer = phase === 'connecting' ? window.setTimeout(() => finish(false, "连接超时，请检查 PC 服务和网络后重试。"), 45000) : null;
+    window.dispatchEvent(new CustomEvent('fujimi-pairing-phase', { detail: { phase } }));
+  };
   window.__fujimiWindowsCheckResult = (id, success, message) => {
     if (mobileWindowsCheck?.id === id) finish(Boolean(success), message || (success ? "配对成功。" : "配对失败。"));
   };
@@ -5357,13 +5769,15 @@ function renderBookBlocks(payload, root) {
     link.href = `#library/book/${payload.book.id}/chapter/${target.id}${fragment ? `?anchor=${encodeURIComponent(fragment)}` : ""}`;
     link.onclick = event => { event.preventDefault(); navigateBookChapter(payload.book.id, target.id, { anchor: fragment || "" }); };
   });
+  prepareMobileReadingLookup(root, ".book-chapter-body", ".book-block-ja");
 }
 
 function setupBookAudio(payload, root) {
   const paragraphs = payload.chapter.blocks.filter(block => block.text_ja).map(block => block.text_ja);
   const audio = $(".book-audio", root);
   if (payload.chapter.audio_unavailable_detail) {
-    setRereadTask(root, "failed", payload.chapter.audio_unavailable_detail);
+    if (window.FujimiMobile?.request) setupBrowserArticlePlayer({ paragraphs }, root);
+    else setRereadTask(root, "failed", payload.chapter.audio_unavailable_detail);
     return;
   }
   if (payload.chapter.audio?.url && payload.chapter.voice_mode !== "none"
@@ -5403,6 +5817,7 @@ async function startBookTaskTracking(taskId, root) {
           toast("処理が完了しました。");
           await navigateBookChapter(state.libraryChapter.book.id, state.libraryChapter.chapter.id, { historyMode: "replace" });
         } else if (["failed", "interrupted"].includes(task.status)) {
+          if (redesignedReadingUi) taskBox.hidden = true;
           toast(task.message, true);
         } else if (task.status === "cancelled") {
           taskBox.hidden = true;
@@ -5430,6 +5845,10 @@ async function generateBookChapterAudio(root) {
       const selected = await resolveJapaneseBrowserVoice({ persistDefault: true });
       browserName = selected?.id || selected?.name || "";
       if (!browserName) throw new Error("利用できる日本語のブラウザー音声がありません。");
+    }
+    if (mobileSelectionNeedsPc({ mode, browser_voice_name: browserName })) {
+      await generateMobilePcSpeech(root, { mode, voice_id: rawId ? Number(rawId) : null, browser_voice_name: browserName });
+      return;
     }
     const taskBox = $(".book-task", root);
     taskBox.hidden = false;
@@ -5656,6 +6075,12 @@ async function renderBookReader(payload, { blockId = null, blockIndex = null, an
     } catch (error) { toast(error.message, true); }
   };
   $(".cancel-book-task", root).onclick = async () => {
+    if (root.pcSpeechJob) {
+      const job = root.pcSpeechJob;
+      if (job.id) await api(`/api/pc-speech/tasks/${job.id}`, { method: "DELETE" });
+      job.cancelled = true;
+      return;
+    }
     const cancelButton = $(".cancel-book-task", root);
     let taskId = bookTask.dataset.taskId || state.libraryTaskId;
     if (!taskId) {
@@ -5693,9 +6118,10 @@ async function renderBookReader(payload, { blockId = null, blockIndex = null, an
   $(".book-chapter-body", root).addEventListener("scroll", state.libraryScrollHandler, {passive:true});
   setupBookAudio(payload, root);
   if (["failed", "interrupted"].includes(payload.chapter.audio_task?.status)) {
-    bookTask.hidden = false;
+    bookTask.hidden = redesignedReadingUi;
     $(".reread-task-label", bookTask).textContent = payload.chapter.audio_task.message;
     $(".cancel-book-task", bookTask).hidden = true;
+    if (redesignedReadingUi) toast(payload.chapter.audio_task.message, true);
   }
   api("/api/books/tasks").then(tasks => {
     const running = (tasks.tasks || []).find(task => Number(task.book_id) === Number(payload.book.id) && Number(task.chapter_id) === Number(payload.chapter.id) && ["queued", "running", "cancelling"].includes(task.status));
@@ -5890,10 +6316,10 @@ document.addEventListener("pointerdown", event => {
   if (!$("#selection-lookup").contains(event.target)) hideSelectionLookup();
 });
 document.addEventListener("mouseup", handleSelectionLookup);
-$("#selection-lookup-close").onclick = () => hideSelectionLookup({ clearSelection: true });
+$("#selection-lookup-close").onclick = () => hideSelectionLookup({ clearSelection: true, restoreFocus: true });
 $("#selection-lookup-more").onclick = () => openSelectionLookupInDictionary();
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape" && !$("#selection-lookup").hidden) hideSelectionLookup({ clearSelection: true });
+  if (event.key === "Escape" && !$("#selection-lookup").hidden) hideSelectionLookup({ clearSelection: true, restoreFocus: true });
 });
 document.addEventListener("scroll", event => {
   if (!$("#selection-lookup").contains(event.target)) requestAnimationFrame(repositionSelectionLookup);
@@ -6264,7 +6690,6 @@ showView(initialView, { historyMode: "replace", resetReader: false });
   const addVoice = document.querySelector('#add-voice');
   addVoice.disabled = !window.FujimiMobile;
   addVoice.title = window.FujimiMobile ? '选择日语声线' : '正在检查 Irodori 服务…';
-  document.querySelector('.refresh-panel .panel-heading p').textContent = '校验文章文件并重建新闻、收藏索引；同步书架，备份后清理已删除书籍目录的记录。不会删除现有文件。';
   document.querySelector('.refresh-panel .status-badge').textContent = 'FILES → INDEX';
   api('/api/health').then(health => {
     addVoice.disabled = !window.FujimiMobile && !health.tts_details?.enabled;

@@ -12,8 +12,9 @@ android {
         applicationId = "jp.fujimi.newsbunko.next"
         minSdk = 29
         targetSdk = 35
-        versionCode = 17
-        versionName = "1.0.16"
+        // Preserve the release application ID and signing key for in-place updates.
+        versionCode = 51
+        versionName = "1.1.28"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

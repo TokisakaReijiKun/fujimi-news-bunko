@@ -45,6 +45,41 @@ class LocalSyncedLibraryApiTest {
         assertArrayEquals(byteArrayOf(1, 2, 3), Files.readAllBytes(api.asset(4, "cover.png")))
         assertThrows(IllegalArgumentException::class.java) { api.asset(4, "../original.epub") }
     }
+
+    @Test fun progressAndSingleBookmarkPersistWithoutRewritingBookOrChapter() {
+        val folder = fixture()
+        val beforeBook = Files.readAllBytes(folder.resolve("book.json"))
+        val beforeChapter = Files.readAllBytes(folder.resolve("chapters/0001.json"))
+        val api = LocalSyncedLibraryApi(data)
+        assertEquals(200, api.request("PUT", "/api/books/4/progress", """{"chapter_id":1,"block_index":80,"scroll_offset":-12.5,"scroll_left":-328.5,"audio_time":2.5,"reading_mode":"vertical","language_mode":"click"}""")!!.status)
+        val state = SyncFiles.json(folder.resolve("state.json"))
+        assertEquals(0, state.getJSONObject("progress").getInt("block_index"))
+        assertEquals(-12.5, state.getJSONObject("progress").getDouble("scroll_offset"))
+        assertEquals(-328.5, state.getJSONObject("progress").getDouble("scroll_left"))
+        assertFalse(state.getString("last_read_at").isEmpty())
+        assertEquals(1, state.getInt("revision"))
+        assertTrue(JSONObject(api.request("POST", "/api/books/4/chapters/1/bookmarks", "{\"block_index\":0}")!!.body).getBoolean("bookmarked"))
+        val reloaded = JSONObject(LocalSyncedLibraryApi(data).request("GET", "/api/books/4")!!.body)
+        assertEquals("vertical", reloaded.getJSONObject("progress").getString("reading_mode"))
+        assertEquals(-328.5, reloaded.getJSONObject("progress").getDouble("scroll_left"))
+        assertEquals("本文です。", reloaded.getJSONArray("bookmarks").getJSONObject(0).getString("excerpt"))
+        assertFalse(JSONObject(api.request("POST", "/api/books/4/chapters/1/bookmarks", "{\"block_index\":0}")!!.body).getBoolean("bookmarked"))
+        assertEquals(0, SyncFiles.json(folder.resolve("state.json")).getJSONArray("bookmarks").length())
+        assertArrayEquals(beforeBook, Files.readAllBytes(folder.resolve("book.json")))
+        assertArrayEquals(beforeChapter, Files.readAllBytes(folder.resolve("chapters/0001.json")))
+    }
+
+    @Test fun invalidReadingLocationsPreserveThePreviousState() {
+        val folder = fixture()
+        val before = Files.readAllBytes(folder.resolve("state.json"))
+        val api = LocalSyncedLibraryApi(data)
+        for (payload in listOf("""{"chapter_id":99,"block_index":0}""", """{"chapter_id":1,"block_index":1.5}""", """{"chapter_id":1,"audio_time":-1}""", """{"chapter_id":1,"reading_mode":"fake"}""")) {
+            assertTrue(api.request("PUT", "/api/books/4/progress", payload)!!.status in setOf(400, 404))
+            assertArrayEquals(before, Files.readAllBytes(folder.resolve("state.json")))
+        }
+        assertEquals(400, api.request("POST", "/api/books/4/chapters/1/bookmarks", "{\"block_index\":4294967296}")!!.status)
+        assertArrayEquals(before, Files.readAllBytes(folder.resolve("state.json")))
+    }
     @Test fun changedChapterAndMissingOriginalAreReported() {
         val folder = fixture()
         val api = LocalSyncedLibraryApi(data)

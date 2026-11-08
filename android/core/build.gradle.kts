@@ -15,6 +15,7 @@ java {
 }
 
 dependencies {
+    implementation("com.atilika.kuromoji:kuromoji-ipadic:0.9.0")
     implementation("org.jsoup:jsoup:1.21.2")
     implementation("org.json:json:20250517")
     testImplementation(kotlin("test"))

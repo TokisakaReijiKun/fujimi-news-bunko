@@ -20,6 +20,14 @@ def runtime_options(model):
                 codec_device='cuda:0', codec_precision='bf16')
 
 
+def model_load_error(error):
+    if (getattr(error, 'winerror', None) == 1455
+            or re.search(r'(?:os error|WinError)\s+1455\b', str(error), re.I)):
+        return ('模型加载失败：Windows 虚拟内存不足（错误 1455）；'
+                '请关闭占用内存的程序，或增大系统页面文件后重试。')
+    return f'模型加载失败：{type(error).__name__}；请检查 TTS 日志和本地模型依赖。'
+
+
 def sampling_options(text, reference, seed):
     return dict(text=text, ref_wav=reference, no_ref=False, num_steps=40,
                 cfg_scale_text=3.0, cfg_scale_speaker=5.0, max_seconds=30.0, seed=seed)
@@ -152,12 +160,12 @@ def main():
     os.environ['HF_HUB_OFFLINE'] = '1'
     os.environ['TRANSFORMERS_OFFLINE'] = '1'
     sys.path.insert(0, str(model.parent.parent))
-    import numpy as np
-    import soundfile as sf
-    import torch
-    from irodori_tts.inference_runtime import InferenceRuntime, RuntimeKey, SamplingRequest
-
     try:
+        import numpy as np
+        import soundfile as sf
+        import torch
+        from irodori_tts.inference_runtime import InferenceRuntime, RuntimeKey, SamplingRequest
+
         if not torch.cuda.is_available() or not torch.cuda.is_bf16_supported():
             raise RuntimeError('Irodori 需要支持 BF16 的 CUDA GPU。')
         options = runtime_options(model)
@@ -171,7 +179,7 @@ def main():
         torch.cuda.empty_cache()
         write_json(workspace/'ready.json', {'ready': True})
     except Exception as error:
-        write_json(workspace/'ready.json', {'error': f'模型加载失败：{type(error).__name__}；请检查 TTS 日志和本地模型依赖。'})
+        write_json(workspace/'ready.json', {'error': model_load_error(error)})
         raise
 
     while not (workspace/'stop').exists():

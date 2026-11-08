@@ -24,26 +24,50 @@ class DictionaryRepository(private val context: Context) {
         databaseFile.parentFile?.mkdirs()
         val projection = SQLiteDatabase.openOrCreateDatabase(databaseFile, null)
         try {
-            if (projection.version != 1) {
+            projection.execSQL("PRAGMA case_sensitive_like=ON")
+            if (projection.version != 2) {
                 projection.beginTransaction()
                 try {
-                    projection.execSQL("CREATE TABLE IF NOT EXISTS search_entries (record_id INTEGER PRIMARY KEY,spell TEXT,normalized TEXT,pron TEXT,excerpt TEXT)")
-                    projection.execSQL("DELETE FROM search_entries")
-                    val insert = projection.compileStatement("INSERT INTO search_entries VALUES (?,?,?,?,?)")
+                    projection.execSQL("DROP TABLE IF EXISTS search_entries")
+                    projection.execSQL("DROP TABLE IF EXISTS search_subdetails")
+                    projection.execSQL("CREATE TABLE search_entries (record_id INTEGER PRIMARY KEY,spell TEXT,normalized TEXT,pron TEXT,excerpt TEXT,romaji_hepburn_CN TEXT)")
+                    projection.execSQL("CREATE TABLE search_subdetails (pk TEXT PRIMARY KEY,word_id INTEGER,title TEXT,ordinal INTEGER)")
+                    val insert = projection.compileStatement("INSERT INTO search_entries VALUES (?,?,?,?,?,?)")
+                    val subInsert = projection.compileStatement("INSERT INTO search_subdetails VALUES (?,?,?,?)")
                     insert.use { statement ->
-                        originalDb().rawQuery("SELECT record_id,spell,normalized,pron,excerpt FROM entries", null).use { cursor ->
+                      subInsert.use { definition ->
+                        var ordinal = 0L
+                        originalDb().rawQuery("SELECT record_id,spell,normalized,pron,excerpt,detail_json FROM entries ORDER BY record_id", null).use { cursor ->
                             while (cursor.moveToNext()) {
                                 statement.clearBindings()
-                                statement.bindLong(1, cursor.getLong(0))
+                                val id = cursor.getLong(0)
+                                val word = JSONObject(cursor.getString(5))
+                                statement.bindLong(1, id)
                                 for (column in 1..4) statement.bindString(column + 1, cursor.getString(column) ?: "")
+                                statement.bindString(6, word.optString("romaji"))
                                 statement.executeInsert()
+                                val meanings = word.optJSONArray("definitions") ?: JSONArray()
+                                for (index in 0 until meanings.length()) {
+                                    val meaning = meanings.getJSONObject(index)
+                                    definition.clearBindings()
+                                    definition.bindString(1, "$id:${meaning.optString("id", index.toString())}")
+                                    definition.bindLong(2, id)
+                                    definition.bindString(3, meaning.optString("title"))
+                                    definition.bindLong(4, ordinal++)
+                                    definition.executeInsert()
+                                }
                             }
                         }
+                      }
                     }
                     projection.execSQL("CREATE INDEX IF NOT EXISTS search_spell ON search_entries(spell COLLATE NOCASE)")
                     projection.execSQL("CREATE INDEX IF NOT EXISTS search_normalized ON search_entries(normalized COLLATE NOCASE)")
                     projection.execSQL("CREATE INDEX IF NOT EXISTS search_pron ON search_entries(pron COLLATE NOCASE)")
-                    projection.version = 1
+                    projection.execSQL("CREATE INDEX search_spell_exact ON search_entries(spell)")
+                    projection.execSQL("CREATE INDEX search_pron_exact ON search_entries(pron)")
+                    projection.execSQL("CREATE INDEX search_romaji ON search_entries(romaji_hepburn_CN)")
+                    projection.execSQL("CREATE INDEX search_subdetail_title ON search_subdetails(title)")
+                    projection.version = 2
                     projection.setTransactionSuccessful()
                 } finally { projection.endTransaction() }
             }
@@ -79,15 +103,28 @@ class DictionaryRepository(private val context: Context) {
     }
 
     @Synchronized
-    fun request(method: String, pathWithQuery: String): ApiResponse? {
-        if (method != "GET") return null
+    fun request(method: String, pathWithQuery: String, body: String? = null): ApiResponse? {
         val path = pathWithQuery.substringBefore('?')
+        if (method == "POST" && path == "/api/dictionary/tokenize") {
+            return try {
+                val texts = JSONObject(body ?: "{}").getJSONArray("texts")
+                require(texts.length() <= 10000)
+                val tokens = JSONArray()
+                for (index in 0 until texts.length()) {
+                    val text = texts.getString(index); require(text.length <= 100000)
+                    tokens.put(JSONArray(MojiLookupTokenizer.surfaces(text)))
+                }
+                ApiResponse(200, JSONObject().put("tokens", tokens).toString())
+            } catch (_: Exception) { ApiResponse(400, "{\"detail\":\"文章分词失败。\"}") }
+        }
+        if (method != "GET") return null
         return try {
             when {
                 path == "/api/dictionary/stats" -> ApiResponse(200, JSONObject()
                     .put("entries", db().rawQuery("SELECT count(*) FROM search_entries", null).use { it.moveToFirst(); it.getLong(0) })
                     .put("dictionary", "日中辞典").toString())
                 path == "/api/dictionary/search" -> search(pathWithQuery)
+                path == "/api/dictionary/clickDetail" -> clickDetail(pathWithQuery)
                 Regex("/api/dictionary/words/\\d+").matches(path) -> detail(path.substringAfterLast('/').toLong())
                 else -> null
             }
@@ -122,7 +159,39 @@ class DictionaryRepository(private val context: Context) {
     private fun detail(id: Long): ApiResponse {
         originalDb().rawQuery("SELECT detail_json FROM entries WHERE record_id=?", arrayOf(id.toString())).use { cursor ->
             if (!cursor.moveToFirst()) return ApiResponse(404, JSONObject().put("detail", "词条不存在。").toString())
-            return ApiResponse(200, cursor.getString(0))
+            return ApiResponse(200, MojiLocalDictionaryAdapter.response(JSONObject(cursor.getString(0))).toString())
+        }
+    }
+
+    private fun clickDetail(pathWithQuery: String): ApiResponse {
+        val query = URLDecoder.decode(pathWithQuery.substringAfter("q=", "").substringBefore('&'), "UTF-8")
+            .substringBefore('(')
+        val match = MojiOfflineSearch.search(query, ::queryRows)
+            ?: return ApiResponse(404, "{\"detail\":\"无查询结果\"}")
+        return detail((match.row.ownerPk ?: match.row.pk).toLong())
+    }
+
+    /** Only Realm's storage operations are adapted; query generation/ranking is the original port. */
+    private fun queryRows(query: MojiOfflineSearch.Query, limit: Int): List<MojiOfflineSearch.Row> {
+        require(!query.ignoreCase && query.operation in setOf("EQUAL", "LIKE"))
+        val subdetails = query.model == "Subdetails"
+        require(if (subdetails) query.field == "title" else query.model == "Wort" && query.field in setOf("spell", "pron", "romaji_hepburn_CN"))
+        val field = if (subdetails) "s.title" else "w.${query.field}"
+        val expression = if (query.operation == "EQUAL") "$field = ? COLLATE BINARY" else "$field LIKE ? ESCAPE '\\'"
+        val value = if (query.operation == "EQUAL") query.value else query.value.replace("\\", "\\\\")
+            .replace("%", "\\%").replace("_", "\\_").replace("*", "%").replace("?", "_")
+        val sql = if (subdetails) "SELECT s.pk,w.record_id,w.spell,w.pron,w.excerpt,s.ordinal FROM search_subdetails s JOIN search_entries w ON w.record_id=s.word_id WHERE $expression ORDER BY s.ordinal LIMIT ?"
+            else "SELECT CAST(w.record_id AS TEXT),w.record_id,w.spell,w.pron,w.excerpt,w.record_id FROM search_entries w WHERE $expression ORDER BY w.record_id LIMIT ?"
+        return db().rawQuery(sql, arrayOf(value, limit.toString())).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    val spell = cursor.getString(2).orEmpty()
+                    val pron = cursor.getString(3).orEmpty()
+                    add(MojiOfflineSearch.Row(cursor.getString(0), query.model,
+                        if (subdetails) cursor.getLong(1).toString() else null,
+                        spell.ifEmpty { pron }, cursor.getString(4).orEmpty(), cursor.getLong(5)))
+                }
+            }
         }
     }
 

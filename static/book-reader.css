@@ -1,5 +1,5 @@
 /* Scoped reading refinements. Preserve application brand and native EPUB text. */
-#book-reader[data-parser-version="2"] .book-block-ja { font-size:var(--book-font-size,var(--reader-text-size));line-height:var(--book-line-height,var(--reader-text-leading));overflow-wrap:anywhere; }
+#book-reader[data-parser-version="2"] .book-block-ja { font-size:var(--book-font-size,19px);line-height:var(--book-line-height,1.9);overflow-wrap:anywhere; }
 #book-reader[data-parser-version="2"] .book-block { cursor:default; }
 #book-reader[data-parser-version="2"] .book-block-spacer { min-height:1em;margin-bottom:.7em; }
 #book-reader[data-parser-version="2"] .book-block-image { padding:0; }
@@ -7,7 +7,7 @@
 #book-reader[data-parser-version="2"] .book-block-image img { display:block;max-width:100%;max-height:80vh;width:auto;height:auto;object-fit:contain;margin:16px auto; }
 #book-reader[data-parser-version="2"] .book-block-ja ruby { display:ruby;ruby-align:center;ruby-position:over;vertical-align:baseline;line-height:inherit;max-width:none; }
 #book-reader[data-parser-version="2"] .book-block-ja ruby > rb { display:ruby-base;line-height:inherit; }
-#book-reader[data-parser-version="2"] .book-block-ja ruby > rt { display:ruby-text;font-size:var(--reader-ruby-size);line-height:1;white-space:normal; }
+#book-reader[data-parser-version="2"] .book-block-ja ruby > rt { display:ruby-text;font-size:.55em;line-height:1;white-space:normal; }
 #book-reader[data-parser-version="2"] .book-block-ja [data-book-href] { cursor:pointer;text-decoration:underline; }
 .book-source-anchor { display:inline;scroll-margin-top:150px; }
 #book-reader .book-toc { max-height:min(75vh,760px);overflow:auto; }
@@ -19,14 +19,14 @@
 /* Show the Japanese original before its Chinese translation. */
 #book-reader[data-language-mode="parallel"] .book-block-zh,
 #book-reader[data-language-mode="click"] .book-block-zh {
-  color:var(--ink);font-size:var(--reader-translation-size);line-height:var(--reader-translation-leading);
+  color:var(--ink);font-size:17px;line-height:1.9;
   margin:.1em 0 0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;
 }
 #book-reader[data-language-mode="parallel"] .book-block-zh .translation-main,
 #book-reader[data-language-mode="click"] .book-block-zh.is-revealed .translation-main { opacity:.4; }
 #book-reader[data-language-mode="click"] .book-block-zh .translation-placeholder {
   inset:0;justify-content:center;align-items:center;
-  font-size:var(--reader-translation-size);line-height:var(--reader-translation-leading);text-align:center;text-indent:0;
+  font-size:17px;line-height:1.9;text-align:center;text-indent:0;
 }
 #book-reader[data-language-mode="parallel"] .book-source-pair { display:block; }
 #book-reader.is-frontmatter:not(.is-vertical) .book-block { padding:0;margin-bottom:1.2em;border:0; }

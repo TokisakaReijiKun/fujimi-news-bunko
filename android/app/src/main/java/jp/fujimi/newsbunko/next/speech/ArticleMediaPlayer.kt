@@ -65,8 +65,8 @@ class ArticleMediaPlayer(context: Context, private val data: Path,
             val uri = Uri.parse(url)
             require(uri.scheme == "https" && uri.host == "appassets.androidplatform.net" && uri.port == -1)
             val route = uri.path.orEmpty()
-            val article = Regex("/api/articles/(\\d+)/assets/audio/(.+)").matchEntire(route)
-            if (article != null) ArticleAudioAccess(data).resolve(article.groupValues[1].toLong(), article.groupValues[2])
+            val article = Regex("/api/(articles|bookmarks)/(\\d+)/assets/audio/(.+)").matchEntire(route)
+            if (article != null) ArticleAudioAccess(data).resolve(article.groupValues[2].toLong(), article.groupValues[3], article.groupValues[1] == "bookmarks")
             else {
                 val book = Regex("/api/books/(\\d+)/audio/(.+)").matchEntire(route) ?: return false
                 LocalSyncedLibraryApi(data).audioAsset(book.groupValues[1].toLong(), book.groupValues[2])

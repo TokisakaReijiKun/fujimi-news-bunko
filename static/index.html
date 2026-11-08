@@ -15,8 +15,19 @@
       if (isMobileApp) root.classList.add("mobile-app-booting");
     })();
   </script>
-  <link rel="stylesheet" href="/static/static.css?v=20261024-player-only">
-  <link rel="stylesheet" href="/static/book-reader.css?v=20261023-reading-type">
+  <link rel="stylesheet" href="/static/static.css?v=20261105-pc-restore">
+  <link rel="stylesheet" href="/static/book-reader.css?v=20261105-pc-restore">
+  <script>
+    (() => {
+      if (!window.FujimiMobile && new URLSearchParams(location.search).get('mobile-redesign') !== '1') return;
+      document.documentElement.dataset.redesignApp = 'true';
+      const theme = getComputedStyle(document.documentElement);
+      window.__nativeDictionaryTheme = Object.fromEntries(['--paper', '--panel', '--ink', '--muted', '--line', '--moss', '--accent'].map(name => [name, theme.getPropertyValue(name)]));
+      for (const name of ['mobile-reader', 'mobile-epub']) {
+        const sheet = document.createElement('link'); sheet.rel = 'stylesheet'; sheet.href = '/static/' + name + '.css?v=20261108-article-spacing'; document.head.append(sheet);
+      }
+    })();
+  </script>
 </head>
 <body>
   <header class="mobile-app-bar" aria-label="应用导航">
@@ -129,11 +140,11 @@
       </section>
 
       <section id="settings-view" class="view" hidden>
-        <div class="section-head"><div><p class="section-kicker">PREFERENCES</p><h2>設置</h2><p>読む時間を、自分らしく整える。</p></div></div>
+        <div class="section-head"><div><p class="section-kicker">PREFERENCES</p><h2>設置</h2></div></div>
         <div class="settings-stack">
           <section class="settings-panel voice-panel">
             <div class="panel-heading">
-              <div class="voice-heading-copy"><span class="settings-section-number">01 / VOICE</span><h3>声の形</h3><p>选择文章、书籍与词典的即时朗读声线。</p></div>
+              <div class="voice-heading-copy"><span class="settings-section-number">01 / VOICE</span><h3>声の形</h3></div>
               <span id="active-voice-badge" class="status-badge">未选择声线</span>
             </div>
             <p id="voice-error" class="panel-notice error" role="alert" hidden></p>
@@ -143,7 +154,7 @@
 
           <section class="settings-panel daily-settings-panel schedule-panel">
             <div class="panel-heading">
-              <div><span class="settings-section-number">02 / DAILY</span><h3>日刊設定</h3><p>统一管理新闻来源、每日构成与 CST 更新方式。</p></div>
+              <div><span class="settings-section-number">02 / DAILY</span><h3>日刊設定</h3></div>
               <span id="schedule-state" class="status-badge">读取中</span>
             </div>
             <p id="source-error" class="panel-notice error" role="alert" hidden></p>
@@ -153,12 +164,12 @@
             </div>
             <p id="daily-content-summary" class="muted">正在读取日刊构成…</p>
             <div class="settings-subheading">
-              <div><h4>ニュースソース</h4><p>每个来源可以分别设置每日最低收录数。</p></div>
+              <div><h4>ニュースソース</h4></div>
               <div class="panel-actions"><span id="source-count" class="status-badge">读取中</span><button id="add-source" type="button">添加来源</button></div>
             </div>
             <div id="source-list" class="source-list"></div>
             <div class="schedule-section">
-              <div class="settings-subheading"><div><h4>生成方式</h4><p>选择手动生成，或按 CST 指定时间自动更新。</p></div></div>
+              <div class="settings-subheading"><div><h4>生成方式</h4></div></div>
               <p id="schedule-error" class="panel-notice error" role="alert" hidden></p>
               <div class="schedule-workspace">
                 <div class="schedule-controls">
@@ -187,15 +198,14 @@
           </section>
 
           <section class="settings-panel library-settings-panel">
-            <div class="panel-heading"><div><span class="settings-section-number">03 / LIBRARY</span><h3>書架表示</h3><p>書架首页的书籍排列方式。</p></div></div>
+            <div class="panel-heading"><div><span class="settings-section-number">03 / LIBRARY</span><h3>書架表示</h3></div></div>
             <p id="library-settings-error" class="panel-notice error" role="alert" hidden></p>
             <label class="library-sort-setting">並び順<select id="library-sort-setting"><option value="recent">最近読んだ順</option><option value="series">シリーズ・巻順</option><option value="imported">最近追加した順</option></select></label>
-            <p class="settings-reading-note">打开书籍时，有书签优先定位书签，否则恢复本机自动进度。</p>
           </section>
 
           <section id="desktop-settings-panel" class="settings-panel desktop-settings-panel" hidden>
             <div class="panel-heading">
-              <div><h3>桌面应用</h3><p>本机数据与运行位置。</p></div>
+              <div><h3>桌面应用</h3></div>
               <span class="status-badge">WINDOWS</span>
             </div>
             <p id="desktop-settings-error" class="panel-notice error" role="alert" hidden></p>
@@ -214,10 +224,11 @@
 
           <section id="device-sync-panel" class="settings-panel device-sync-panel" hidden>
             <div class="panel-heading device-sync-heading">
-              <div><h3>文庫互联</h3><p>在同一网络中连接 Android 文庫</p></div>
+              <div><h3>文庫互联</h3></div>
               <div class="device-sync-controls"><span id="device-sync-state" role="status">未开启</span><input id="device-sync-enabled" type="checkbox" role="switch" aria-label="开启文庫同步"></div>
             </div>
             <p id="device-sync-error" class="panel-notice error" role="alert" hidden></p>
+            <a id="device-sync-login" class="device-sync-login" target="_blank" rel="noopener noreferrer" hidden>登录 Tailscale</a>
             <div id="device-sync-details" class="device-sync-details" hidden>
               <img id="device-sync-qr" width="220" height="220" alt="在 Android 文庫中扫描此二维码配对">
               <dl class="device-sync-values">
@@ -302,7 +313,7 @@
             </div>
           </section>
           <section id="mobile-app-settings-panel" class="settings-panel" hidden>
-            <div class="panel-heading"><div><span class="settings-section-number">05 / APP</span><h3>应用信息</h3><p>版本与本机文庫位置。</p></div><span id="mobile-app-version-badge" class="status-badge"></span></div>
+            <div class="panel-heading"><div><span class="settings-section-number">05 / APP</span><h3>应用信息</h3></div><span id="mobile-app-version-badge" class="status-badge"></span></div>
             <dl id="mobile-app-info" class="desktop-paths" hidden>
               <div><dt>APP 版本</dt><dd id="mobile-app-version"></dd></div>
               <div><dt>包名</dt><dd>jp.fujimi.newsbunko.next</dd></div>
@@ -310,9 +321,8 @@
             <details class="settings-path-disclosure"><summary>本机文庫路径</summary><code id="mobile-data-path"></code></details>
           </section>
           <section class="settings-panel refresh-panel">
-            <div class="panel-heading"><div><span class="settings-section-number">06 / STORAGE</span><h3>文庫刷新</h3><p>以本地文章与收藏文件夹为准，重新整理 SQLite 索引。</p></div><span class="status-badge">FILES → INDEX</span></div>
+            <div class="panel-heading"><div><span class="settings-section-number">06 / STORAGE</span><h3>文庫刷新</h3></div><span class="status-badge">FILES → INDEX</span></div>
             <p id="refresh-error" class="panel-notice error" role="alert" hidden></p>
-            <div class="settings-storage-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.8-3M4 5v4h4M4 13a8 8 0 0 0 14.8 3M20 19v-4h-4"/></svg><span>检查文章、收藏与书架文件，备份后刷新索引。</span></div>
             <div class="refresh-workspace">
               <button id="refresh-storage" type="button">存储を反映</button>
               <p id="refresh-result" class="refresh-result">尚未刷新</p>
@@ -455,6 +465,31 @@
           <time class="audio-player-current">0:00</time>
           <time class="audio-player-duration">0:00</time>
         </div>
+        <button class="audio-player-toggle audio-icon-button" type="button" aria-label="播放朗读" title="播放或暂停"><img class="audio-player-toggle-icon" src="/static/player_assets/ic_player_stop.png" alt=""></button>
+        <div class="audio-rate-control">
+          <button class="audio-rate-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="播放速度" title="播放速度"><img src="/static/player_assets/ic_player_set.png" alt=""><span class="audio-rate-value" aria-hidden="true">1.0x</span></button>
+          <div class="audio-rate-menu" role="menu" hidden>
+            <button type="button" role="menuitemradio" data-rate="0.5">0.5×</button>
+            <button type="button" role="menuitemradio" data-rate="0.75">0.75×</button>
+            <button type="button" role="menuitemradio" data-rate="1">1×</button>
+            <button type="button" role="menuitemradio" data-rate="1.25">1.25×</button>
+            <button type="button" role="menuitemradio" data-rate="1.5">1.5×</button>
+            <button type="button" role="menuitemradio" data-rate="2">2×</button>
+          </div>
+        </div>
+      </div>
+    </article>
+  </template>
+  <template id="mobile-audio-player-template">
+      <div class="article-audio-player" role="group" aria-label="文章朗读播放器" hidden>
+        <div class="audio-player-timeline">
+          <div class="audio-player-seek">
+            <span class="audio-player-progress-fill"></span>
+            <input class="audio-player-progress" type="range" min="0" max="1" value="0" step="0.1" aria-label="朗读进度">
+          </div>
+          <time class="audio-player-current">0:00</time>
+          <time class="audio-player-duration">0:00</time>
+        </div>
         <button class="audio-listen-toggle" type="button" aria-label="听读设置" title="听读设置" aria-haspopup="menu" aria-expanded="false"><img src="/static/player_assets/ic_common_listen_read.png" alt=""></button>
         <div class="audio-listen-menu" role="menu" aria-label="听读设置" hidden>
           <button type="button" role="menuitemradio" data-listening-mode="original">听原文</button>
@@ -478,10 +513,20 @@
           </div>
         </div>
       </div>
-    </article>
   </template>
-  <script src="/static/book-reader.js?v=4"></script>
-  <script src="/static/browser-speech.js?v=1"></script>
-  <script src="/static/main.js?v=20261023-moji-player"></script>
+  <script>
+    (() => {
+      if (document.documentElement.dataset.redesignApp !== 'true') return;
+      const article = document.querySelector('#article-template').content;
+      const player = document.querySelector('#mobile-audio-player-template').content.firstElementChild;
+      article.querySelector('.article-audio-player').replaceWith(player.cloneNode(true));
+    })();
+  </script>
+  <script src="/static/book-reader.js?v=20261105-pc-restore"></script>
+  <script src="/static/browser-speech.js?v=20261105-pc-restore"></script>
+  <script src="/static/moji-article-lookup.js?v=20261108-original"></script>
+  <script src="/static/main.js?v=20261108-word-card-touch"></script>
+  <script src="/static/mobile-settings.js?v=20261108-sync-status"></script>
+  <script src="/static/mobile-app.js?v=20261108-voice-playback"></script>
 </body>
 </html>

@@ -173,7 +173,9 @@ def run_desktop(*, data_dir=None, webview_module=None, tray_factory=None,
             from tts_service import ProcessBackend
             tts_root, python = tts_runtime
             tts_backend = ProcessBackend(tts_root, data_dir, python_executable=python)
-        app = create_app(data_dir, enable_tts=tts_enabled, tts_backend=tts_backend, tts_root=tts_root)
+        from tailscale_link import TailscaleConnector
+        app = create_app(data_dir, enable_tts=tts_enabled, tts_backend=tts_backend, tts_root=tts_root,
+                         sync_connector=TailscaleConnector())
         from desktop_edge_speech import register_edge_speech
         register_edge_speech(app)
         pid_file.write_text(str(os.getpid()), encoding='utf-8')

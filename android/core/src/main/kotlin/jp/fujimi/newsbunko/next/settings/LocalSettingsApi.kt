@@ -5,6 +5,7 @@ import jp.fujimi.newsbunko.next.store.LocalVoiceStore
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
+import java.nio.file.Path
 
 interface SettingsBackend {
     fun read(key: String): String?
@@ -27,7 +28,8 @@ class LocalSettingsApi(
     @Synchronized
     fun value(key: String): JSONObject = JSONObject(backend.read(key) ?: defaults.getValue(key))
 
-    fun browserVoices(): JSONArray {
+    fun browserVoices(): JSONArray = browserVoices(false)
+    fun browserVoices(includeHidden: Boolean): JSONArray {
         val result = JSONArray(voices().toString())
         val known = (0 until result.length()).map { result.getJSONObject(it).getString("id") }.toMutableSet()
         val remote = runCatching { JSONArray(backend.read("pc-browser-voices") ?: "[]") }.getOrDefault(JSONArray())
@@ -38,7 +40,83 @@ class LocalSettingsApi(
             result.put(JSONObject().put("id", id).put("name", name).put("provider", voice.optString("provider"))
                 .put("lang", voice.optString("lang", "ja-JP")).put("available", true).put("saved_audio_only", true).put("local", false))
         }
-        return result
+        val edits = customizations().optJSONObject("browser") ?: JSONObject()
+        return JSONArray((0 until result.length()).map { result.getJSONObject(it) }.filter { voice ->
+            if (voice.optBoolean("read_only")) return@filter true
+            val edit = edits.optJSONObject(voice.getString("id"))
+            edit?.optString("name")?.takeIf { it.isNotBlank() }?.let { voice.put("name", it) }
+            voice.put("hidden", edit?.optBoolean("hidden") ?: false)
+            includeHidden || !voice.getBoolean("hidden")
+        })
+    }
+
+    private fun customizations() = JSONObject(backend.read("voice-customizations") ?: "{}")
+    private fun label(payload: JSONObject): String = payload.getString("name").trim().also {
+        require(it.isNotBlank() && it.length <= 80 && it.none(Char::isISOControl)) { "声线名称须为 1–80 个字符。" }
+    }
+    private fun voiceRows(): JSONArray {
+        val labels = customizations().optJSONObject("reference") ?: JSONObject()
+        val mode = value("voice-mode")
+        val rows = referenceVoices?.list(mode.takeIf { it.optString("mode") == "voice" }?.optLong("voice_id")) ?: JSONArray()
+        for (i in 0 until rows.length()) {
+            val row = rows.getJSONObject(i)
+            labels.optString(row.getLong("id").toString()).takeIf { it.isNotBlank() }?.let { row.put("name", it) }
+        }
+        return rows
+    }
+
+    private fun manageBrowser(method: String, payload: JSONObject, file: Path?): ApiResponse {
+        val id = payload.getString("id")
+        val catalog = browserVoices(true)
+        require((0 until catalog.length()).any { catalog.getJSONObject(it).getString("id") == id }) { "声线不存在。" }
+        require((0 until catalog.length()).none { catalog.getJSONObject(it).let { row -> row.getString("id") == id && row.optBoolean("read_only") } }) { "系统音声不能修改或删除。" }
+        val edits = customizations()
+        val browser = edits.optJSONObject("browser") ?: JSONObject().also { edits.put("browser", it) }
+        val entry = browser.optJSONObject(id) ?: JSONObject()
+        if (file != null && method in setOf("POST", "PUT")) {
+            val title = label(payload)
+            val row = (referenceVoices ?: return error(501, "此设备不能管理声线文件。")).saveFile(title, file)
+            val labels = edits.optJSONObject("reference") ?: JSONObject().also { edits.put("reference", it) }
+            labels.put(row.getLong("id").toString(), title)
+            browser.put(id, entry.put("hidden", true))
+            backend.write("voice-customizations", edits.toString())
+            val mode = value("voice-mode")
+            if (mode.optString("mode") == "browser" && mode.optString("browser_voice_name") == id) {
+                save("voice-mode", mode.put("mode", "voice").put("voice_id", row.getLong("id")))
+            }
+            return ok(JSONObject().put("ok", true).put("voice_id", row.getLong("id")))
+        }
+        when (method) {
+            "POST", "PUT" -> entry.put("name", label(payload)).put("hidden", false)
+            "DELETE" -> entry.put("hidden", true)
+            else -> return error(405, "不支持此请求方式。")
+        }
+        browser.put(id, entry); backend.write("voice-customizations", edits.toString())
+        val mode = value("voice-mode")
+        if (mode.optString("browser_voice_name") == id) {
+            if (method == "DELETE" && mode.optString("mode") == "browser") mode.put("mode", "none")
+            else if (entry.has("name")) mode.put("browser_voice_label", entry.getString("name"))
+            save("voice-mode", mode)
+        }
+        return ok(JSONObject().put("ok", true))
+    }
+
+    private fun manageReference(method: String, id: Long?, payload: JSONObject, file: Path?): ApiResponse {
+        val store = referenceVoices ?: return error(501, "此设备不能管理声线文件。")
+        val edits = customizations()
+        val labels = edits.optJSONObject("reference") ?: JSONObject().also { edits.put("reference", it) }
+        if (method == "DELETE" && id != null) {
+            store.delete(id); labels.remove(id.toString())
+            val mode = value("voice-mode")
+            if (mode.optString("mode") == "voice" && mode.optLong("voice_id") == id) save("voice-mode", mode.put("mode", "none").put("voice_id", JSONObject.NULL))
+        } else if (method in setOf("POST", "PUT")) {
+            val name = label(payload)
+            val row = if (file != null) store.saveFile(name, file, id)
+                else id?.let { store.find(it) } ?: return error(400, "请选择 WAV 音频文件。")
+            labels.put(row.getLong("id").toString(), name)
+        } else return error(405, "不支持此请求方式。")
+        backend.write("voice-customizations", edits.toString())
+        return ok(JSONObject().put("ok", true))
     }
 
     fun savePcBrowserVoices(voices: JSONArray) {
@@ -55,7 +133,7 @@ class LocalSettingsApi(
     }
 
     @Synchronized
-    fun request(method: String, path: String, body: String?): ApiResponse? {
+    fun request(method: String, path: String, body: String?, voiceFile: Path? = null): ApiResponse? {
         if (!path.startsWith("/api/settings/") && path != "/api/browser-voices") return null
         return try {
             val payload = if (body.isNullOrBlank()) JSONObject() else JSONObject(body)
@@ -71,7 +149,10 @@ class LocalSettingsApi(
                     } else error(405, "不支持此请求方式。")
                 }
                 path == "/api/browser-voices" && method == "GET" -> ok(browserVoices())
-                path == "/api/settings/voices" && method == "GET" -> ok(referenceVoices?.list(value("voice-mode").takeIf { it.optString("mode") == "voice" }?.optLong("voice_id")) ?: JSONArray())
+                path == "/api/settings/voice-catalog" && method == "GET" -> ok(browserVoices(true))
+                path == "/api/settings/browser-voices" -> manageBrowser(method, payload, voiceFile)
+                path == "/api/settings/voices" -> if (method == "GET") ok(voiceRows()) else manageReference(method, null, payload, voiceFile)
+                Regex("/api/settings/voices/\\d+").matches(path) -> manageReference(method, path.substringAfterLast('/').toLong(), payload, voiceFile)
                 path == "/api/settings/browser-voice" && method == "PUT" -> {
                     val name = payload.getString("name")
                     val catalog = browserVoices()
@@ -88,7 +169,8 @@ class LocalSettingsApi(
                 }
                 path == "/api/settings/active-voice" && method == "PUT" -> {
                     val mode = value("voice-mode")
-                    if (payload.optBoolean("browser")) mode.put("mode", "browser")
+                    if (payload.optBoolean("disabled")) mode.put("mode", "none")
+                    else if (payload.optBoolean("browser")) mode.put("mode", "browser")
                     else {
                         val id = payload.getLong("voice_id")
                         require(referenceVoices?.find(id) != null) { "所选参考声线尚未同步或文件无效。" }
@@ -110,7 +192,11 @@ class LocalSettingsApi(
                                 if (payload.has("lookup_chinese_translations")) require(payload.get("lookup_chinese_translations") is Boolean) { "查词选项须为布尔值。" }
                                 result.put("sort", sort).put("lookup_chinese_translations", payload.optBoolean("lookup_chinese_translations", result.getBoolean("lookup_chinese_translations")))
                             }
-                            "daily-content" -> result.put("target_count", integer(payload, "target_count", 1, 500))
+                            "daily-content" -> {
+                                val target = integer(payload, "target_count", 1, 500)
+                                require(target >= sourceMinimumTotal(sources())) { "記事数は各ソースの最低合計以上にしてください。" }
+                                result.put("target_count", target)
+                            }
                             "daily-schedule" -> {
                                 require(payload.optString("mode") in setOf("manual", "automatic")) { "更新模式不正确。" }
                                 require(Regex("(?:[01]\\d|2[0-3]):[0-5]\\d").matches(payload.optString("time"))) { "更新时间不正确。" }
@@ -130,6 +216,10 @@ class LocalSettingsApi(
                 }
                 else -> error(501, "此设置操作尚未接入 Android；未更改数据。")
             }
+        } catch (_: NoSuchElementException) {
+            error(404, "声线不存在。")
+        } catch (_: java.io.IOException) {
+            error(503, "声线文件无法读写，请检查存储空间。")
         } catch (error: IllegalArgumentException) {
             error(400, error.message ?: "设置格式无效。")
         } catch (error: org.json.JSONException) {
@@ -156,8 +246,9 @@ class LocalSettingsApi(
         val source = validateSource(payload)
         val lastId = (backend.read("news-source-sequence")?.toIntOrNull() ?: 6).coerceAtLeast((0 until sources.length()).maxOfOrNull { sources.getJSONObject(it).getInt("id") } ?: 0)
         source.put("id", lastId + 1)
-        backend.write("news-source-sequence", (lastId + 1).toString())
         sources.put(source)
+        validateSourceTotal(sources)
+        backend.write("news-source-sequence", (lastId + 1).toString())
         backend.write("news-sources", sources.toString())
         return ok(source)
     }
@@ -174,8 +265,14 @@ class LocalSettingsApi(
             }
             else -> return error(405, "不支持此请求方式。")
         }
+        validateSourceTotal(sources)
         backend.write("news-sources", sources.toString())
         return ok(result)
+    }
+
+    private fun sourceMinimumTotal(sources: JSONArray): Int = (0 until sources.length()).sumOf { sources.getJSONObject(it).optInt("minimum_count") }
+    private fun validateSourceTotal(sources: JSONArray) {
+        require(sourceMinimumTotal(sources) <= value("daily-content").getInt("target_count")) { "各ソースの最低合計は記事数を超えられません。" }
     }
 
     private fun validateSource(payload: JSONObject): JSONObject {

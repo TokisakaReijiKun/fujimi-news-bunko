@@ -12,6 +12,34 @@ class LocalSettingsApiTest {
         override fun write(key: String, value: String) { data[key] = value }
     }
     private fun api() = LocalSettingsApi(backend) { EdgeVoiceCatalog.voices() }
+    @Test fun `system speech stays visible and cannot be renamed or hidden`() {
+        val system = JSONObject().put("id", "android:system").put("name", "システム音声")
+            .put("available", true).put("read_only", true)
+        data["voice-customizations"] = """{"browser":{"android:system":{"name":"wrong","hidden":true}}}"""
+        val api = LocalSettingsApi(backend) { JSONArray().put(system) }
+        val rows = api.browserVoices()
+        assertEquals(1, rows.length())
+        assertEquals("システム音声", rows.getJSONObject(0).getString("name"))
+        val before = data.toMap()
+        assertEquals(400, api.request("DELETE", "/api/settings/browser-voices", """{"id":"android:system"}""")!!.status)
+        assertEquals(400, api.request("PUT", "/api/settings/browser-voices", """{"id":"android:system","name":"wrong"}""")!!.status)
+        assertEquals(before, data)
+        assertEquals(200, api.request("PUT", "/api/settings/browser-voice", """{"name":"android:system","label":"システム音声"}""")!!.status)
+        assertEquals("android:system", api.value("voice-mode").getString("browser_voice_name"))
+    }
+    @Test fun `voice management edits removes and restores catalog choices with stable IDs`() {
+        val api = api()
+        val body = """{"id":"ja-JP-KeitaNeural","name":"我的声线"}"""
+        assertEquals(200, api.request("PUT", "/api/settings/browser-voices", body)!!.status)
+        var list = JSONArray(api.request("GET", "/api/browser-voices", null)!!.body)
+        assertEquals("我的声线", list.getJSONObject(0).getString("name"))
+        assertEquals(200, api.request("DELETE", "/api/settings/browser-voices", body)!!.status)
+        list = JSONArray(api.request("GET", "/api/browser-voices", null)!!.body)
+        assertTrue((0 until list.length()).none { list.getJSONObject(it).getString("id") == "ja-JP-KeitaNeural" })
+        assertEquals("none", api.value("voice-mode").getString("mode"))
+        assertEquals(200, api.request("POST", "/api/settings/browser-voices", body)!!.status)
+        assertEquals(2, JSONArray(api.request("GET", "/api/browser-voices", null)!!.body).length())
+    }
 
     @Test fun `settings survive a new API instance without changing content paths`() {
         assertEquals(200, api().request("PUT", "/api/settings/library", "{\"sort\":\"series\",\"lookup_chinese_translations\":false}")!!.status)
@@ -47,5 +75,26 @@ class LocalSettingsApiTest {
         for (url in listOf("http://8.8.8.8", "http://127.0.0.1", "https://8.8.8.8", "https://192.168.1.20/api", "https://name:secret@192.168.1.20", "https://192.168.1.20?x=1", "https://172.32.0.1", "https://192.168.1.20:0")) {
             assertThrows(IllegalArgumentException::class.java) { PcEndpoint.normalize(url) }
         }
+    }
+
+    @Test fun `source quotas and daily target enforce the same total without changing rejected settings`() {
+        val api = api()
+        assertEquals(200, api.request("PUT", "/api/settings/news-sources/1", "{\"minimum_count\":5}")!!.status)
+        val saved = data.toMap()
+        assertEquals(400, api.request("PUT", "/api/settings/news-sources/2", "{\"minimum_count\":2}")!!.status)
+        assertEquals(400, api.request("PUT", "/api/settings/daily-content", "{\"target_count\":9}")!!.status)
+        assertEquals(saved, data)
+        assertEquals(200, api.request("PUT", "/api/settings/news-sources/1", "{\"minimum_count\":4}")!!.status)
+        assertEquals(200, api.request("PUT", "/api/settings/news-sources/2", "{\"minimum_count\":2}")!!.status)
+        assertEquals(200, api.request("PUT", "/api/settings/daily-content", "{\"target_count\":10}")!!.status)
+    }
+
+    @Test fun `new source cannot consume more than the remaining article count`() {
+        val api = api()
+        val source = """{"name":"New source","homepage":"https://example.com/","minimum_count":5,"voice_mode":"inherit"}"""
+        assertEquals(400, api.request("POST", "/api/settings/news-sources", source)!!.status)
+        assertTrue(data.isEmpty())
+        assertEquals(200, api.request("POST", "/api/settings/news-sources", source.replace(":5", ":4"))!!.status)
+        assertEquals(10, JSONObject(api.request("GET", "/api/settings/daily-content", null)!!.body).getInt("required_count"))
     }
 }

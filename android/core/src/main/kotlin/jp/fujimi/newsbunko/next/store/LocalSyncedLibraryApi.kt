@@ -6,6 +6,12 @@ import java.nio.file.LinkOption
 import java.net.URI
 import java.net.URLEncoder
 import java.security.MessageDigest
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
+import java.nio.file.StandardCopyOption
+import java.nio.file.AtomicMoveNotSupportedException
+import java.time.Instant
 import org.json.JSONObject
 import org.json.JSONArray
 import org.jsoup.Jsoup
@@ -23,6 +29,7 @@ class LocalSyncedLibraryApi(private val dataRoot: Path, voiceSettings: () -> JSO
     fun request(method: String, path: String, body: String? = null): ApiResponse? {
         val uri = URI("https://local$path")
         val route = uri.path
+        stateRequest(method, route, body)?.let { return it }
         if (method == "POST" && Regex("/api/books/\\d+/chapters/\\d+/reread").matches(route)) {
             val selection = runCatching { JSONObject(body ?: "{}") }.getOrNull() ?: return error(400, "声线选择无效。")
             if (savedVoiceAudio.choice(selection) == null) return error(409, "PC 声线须先在 PC 生成完整朗读后同步。")
@@ -77,6 +84,82 @@ class LocalSyncedLibraryApi(private val dataRoot: Path, voiceSettings: () -> JSO
             ApiResponse(200, value.toString())
         } catch (failure: NoSuchElementException) { error(404, failure.message ?: "内容不存在。") }
         catch (failure: Exception) { error(409, failure.message ?: "文庫文件校验失败。") }
+    }
+
+    private fun stateRequest(method: String, route: String, body: String?): ApiResponse? {
+        val progress = Regex("/api/books/(\\d+)/progress").matchEntire(route)?.takeIf { method == "PUT" }
+        val bookmark = Regex("/api/books/(\\d+)/chapters/(\\d+)/bookmarks").matchEntire(route)?.takeIf { method == "POST" }
+        val matched = progress ?: bookmark ?: return null
+        return try {
+            ArticleStore(root).withSyncLock {
+                val payload = JSONObject(body ?: "{}")
+                val id = matched.groupValues[1].toLong()
+                val folder = bookFolder(id)
+                val metadata = book(folder)
+                val chapterId = if (progress != null) integer(payload, "chapter_id") else bookmark!!.groupValues[2].toLong()
+                val summaries = metadata.getJSONArray("chapters")
+                val summary = (0 until summaries.length()).map { summaries.getJSONObject(it) }
+                    .firstOrNull { it.getLong("id") == chapterId } ?: throw NoSuchElementException("章节不存在。")
+                val chapter = JSONObject(String(verified(folder, summary.getString("file"), summary.getString("sha256")), Charsets.UTF_8))
+                val blocks = chapter.optJSONArray("blocks") ?: JSONArray()
+                val state = json(folder, "state.json")
+                val result: Any
+                if (progress != null) {
+                    val saved = state.optJSONObject("progress") ?: JSONObject()
+                    saved.put("chapter_id", chapterId).put("block_index", integer(payload, "block_index", 0).coerceIn(0, maxOf(0, blocks.length() - 1).toLong()))
+                    for (key in listOf("audio_time", "scroll_left", "scroll_offset")) if (payload.has(key)) {
+                        val raw = payload.get(key)
+                        require(raw is Number && raw.toDouble().isFinite() && (key != "audio_time" || raw.toDouble() >= 0)) { "阅读位置无效。" }
+                        saved.put(key, raw)
+                    }
+                    for ((key, allowed) in listOf("reading_mode" to setOf("horizontal", "vertical"), "language_mode" to setOf("parallel", "click", "ja", "zh"))) if (payload.has(key)) {
+                        val value = payload.getString(key); require(value in allowed) { "阅读模式无效。" }; saved.put(key, value)
+                    }
+                    state.put("progress", saved).put("last_read_at", Instant.now().toString())
+                    writeState(folder, state)
+                    result = book(folder)
+                } else {
+                    val position = integer(payload, "block_index")
+                    require(position >= 0 && position < blocks.length()) { "段落不存在。" }
+                    val index = position.toInt()
+                    val saved = state.optJSONArray("bookmarks") ?: JSONArray()
+                    val existing = (0 until saved.length()).any { saved.getJSONObject(it).optLong("chapter_id") == chapterId && saved.getJSONObject(it).optInt("block_index", -1) == index }
+                    val replacement = JSONArray()
+                    if (!existing) {
+                        val block = blocks.getJSONObject(index)
+                        val text = block.optString("text_ja").ifBlank { block.optString("text_zh") }
+                        val end = text.offsetByCodePoints(0, minOf(500, text.codePointCount(0, text.length)))
+                        replacement.put(JSONObject().put("chapter_id", chapterId).put("block_index", index).put("excerpt", text.substring(0, end)))
+                    }
+                    state.put("bookmarks", replacement); writeState(folder, state)
+                    result = JSONObject().put("bookmarked", !existing)
+                }
+                ApiResponse(200, result.toString())
+            }
+        } catch (failure: NoSuchElementException) { error(404, failure.message ?: "内容不存在。") }
+        catch (failure: IllegalArgumentException) { error(400, failure.message ?: "阅读状态无效。") }
+        catch (failure: Exception) { error(409, failure.message ?: "阅读状态未能保存。") }
+    }
+
+    private fun integer(payload: JSONObject, key: String, fallback: Long? = null): Long {
+        if (!payload.has(key) && fallback != null) return fallback
+        val value = payload.get(key)
+        require(value is Number && value.toDouble().isFinite() && value.toDouble() == value.toLong().toDouble()) { "阅读位置须为整数。" }
+        return value.toLong()
+    }
+
+    private fun writeState(folder: Path, state: JSONObject) {
+        val destination = safe(folder, "state.json")
+        val temporary = Files.createTempFile(folder, ".state-", ".tmp")
+        try {
+            FileChannel.open(temporary, StandardOpenOption.WRITE).use { channel ->
+                val bytes = ByteBuffer.wrap(state.toString().toByteArray(Charsets.UTF_8))
+                while (bytes.hasRemaining()) channel.write(bytes)
+                channel.force(true)
+            }
+            try { Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING) }
+            catch (_: AtomicMoveNotSupportedException) { Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING) }
+        } finally { Files.deleteIfExists(temporary) }
     }
 
     private fun folders(relative: String, manifest: String): List<Path> {

@@ -10,6 +10,7 @@ import unittest
 import unicodedata
 import wave
 import zipfile
+from unittest.mock import patch
 
 from article_store import ArticleStore
 from book_store import BookStore
@@ -88,13 +89,35 @@ class VoiceSyncTests(unittest.TestCase):
         self.assertEqual(returned['status'], 'created')
         self.assertEqual(self.voices[0].reference(self.voices[0].get(first['id'])).read_bytes(), blob)
 
-    def test_same_name_different_audio_is_a_conflict_without_overwrite(self):
+    def test_same_name_same_size_audio_is_unchanged_without_overwrite(self):
         saved = self.voices[1].save('同名声线', wav_blob(frequency=110))
         original = self.voices[1].reference(saved).read_bytes()
         result = self.sync[1].import_bundle(voice_bundle('同名声线', wav_blob(frequency=440)))
-        self.assertEqual(result['status'], 'conflict')
+        self.assertEqual(result['status'], 'unchanged')
         self.assertEqual(self.voices[1].reference(saved).read_bytes(), original)
         self.assertEqual(len(self.voices[1].list()), 1)
+
+    def test_voice_manifest_uses_only_name_and_size(self):
+        name = '声线'
+        blob = wav_blob()
+        (self.voices[0].root / (name + '.wav')).write_bytes(blob)
+        with patch.object(Path, 'read_bytes', side_effect=AssertionError('清单不得读取WAV')):
+            manifest = self.sync[0].manifest()
+        item = next(item for item in manifest['items'] if item['kind'] == 'voice')
+        self.assertEqual(item['files'], {name + '.wav': len(blob)})
+
+    def test_legacy_file_hash_is_not_compared(self):
+        bundle = voice_bundle('旧格式', wav_blob())
+        output = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(bundle)) as old, zipfile.ZipFile(output, 'w') as new:
+            for name in old.namelist():
+                blob = old.read(name)
+                if name == 'bundle.json':
+                    record = json.loads(blob)
+                    record['files'][0]['sha256'] = '0' * 64
+                    blob = json.dumps(record).encode()
+                new.writestr(name, blob)
+        self.assertEqual(self.sync[1].import_bundle(output.getvalue())['status'], 'created')
 
     def test_invalid_voice_payload_is_rejected_before_creating_files(self):
         cases = [

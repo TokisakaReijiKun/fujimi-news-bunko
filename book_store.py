@@ -63,7 +63,7 @@ class BookStore:
         if not row:raise LookupError('书籍不存在。')
         return safe_path(self.root,row['directory'])
 
-    def load(self,bid,full=True):
+    def load(self,bid,full=True,*,verify_content=True):
         with self.locks.locked():
             self.recover();folder=self.folder(bid)
             try:
@@ -72,7 +72,7 @@ class BookStore:
                 source_file=meta.get('source_file','source.epub')
                 if meta.get('source_sha256'):
                     source=safe_path(folder,source_file)
-                    if not source.is_file() or digest(source.read_bytes())!=meta['source_sha256']:
+                    if not source.is_file() or (verify_content and digest(source.read_bytes())!=meta['source_sha256']):
                         raise StorageError('原始 EPUB 缺失或校验失败。')
                 b=deepcopy(meta['book']);b.update(state);b['_revision']=state.get('revision',1)
                 if isinstance(b.get('bookmarks'), list):
@@ -80,7 +80,7 @@ class BookStore:
                 if full:
                     for ch in b['chapters']:
                         blob=safe_path(folder,ch['file']).read_bytes()
-                        if digest(blob)!=ch['sha256']:raise StorageError('章节校验失败：'+ch['title'])
+                        if verify_content and digest(blob)!=ch['sha256']:raise StorageError('章节校验失败：'+ch['title'])
                         ch.update(json.loads(blob))
                 b['cover_url']=f"/api/books/{bid}/assets/{b['cover_path']}" if b.get('cover_path') else ''
                 return b
@@ -95,7 +95,7 @@ class BookStore:
             if digest(blob)!=ch['sha256']:raise StorageError('章节文件校验失败。')
             return b,json.loads(blob)
 
-    def save(self,b, directory=None, assets=None, original=None, digest_value=None, audio_files=None, audio_remove=None, *, tts=False):
+    def save(self,b, directory=None, assets=None, original=None, digest_value=None, audio_files=None, audio_remove=None, *, tts=False, verify_content=True):
         with self.locks.locked():
             self.recover();bid=b['id']
             folder=safe_path(self.root,directory) if directory else self.folder(bid)
@@ -121,7 +121,7 @@ class BookStore:
                 blob=json.dumps(content,ensure_ascii=False,indent=2).encode('utf-8')
                 summary.append({k:v for k,v in content.items() if k!='blocks'} | {'file':name,'sha256':digest(blob)})
                 dest=folder/name
-                if not dest.exists() or digest(dest.read_bytes())!=digest(blob):files[name]=blob
+                if not verify_content or not dest.exists() or digest(dest.read_bytes())!=digest(blob):files[name]=blob
             book['chapters']=summary
             resources=deepcopy(oldmeta.get('resources',{})) if oldmeta else {}
             audio_manifest=deepcopy(oldmeta.get('audio',{})) if oldmeta else {}
@@ -153,9 +153,9 @@ class BookStore:
             write_json(job/'journal.json',{'directory':folder.name,'files':list(files)})
             self.recover()
             for name in ('resources','audio'): (folder/name).mkdir(exist_ok=True)
-            return self.load(bid)
+            return self.load(bid,verify_content=verify_content)
 
-    def create(self,b,blob,assets,audio_files=None):
+    def create(self,b,blob,assets,audio_files=None,*,verify_content=True):
         with self.locks.locked():
             sha=digest(blob)
             with db_connection(self.db) as db:
@@ -167,7 +167,7 @@ class BookStore:
                 db.execute('UPDATE book_sequence SET next_id=next_id+1 WHERE id=1')
             name=directory_name(b['title'],bid,55)
             if (self.root/name).exists():name=name[:45]+'--'+str(bid)
-            self.save(dict(b,id=bid),directory=name,assets=assets,original=blob,digest_value=sha,audio_files=audio_files)
+            self.save(dict(b,id=bid),directory=name,assets=assets,original=blob,digest_value=sha,audio_files=audio_files,verify_content=verify_content)
             return bid,False
 
     def ids(self):

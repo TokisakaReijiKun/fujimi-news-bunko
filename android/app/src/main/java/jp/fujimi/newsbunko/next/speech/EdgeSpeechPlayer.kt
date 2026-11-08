@@ -20,7 +20,6 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
-import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.ArrayDeque
 import java.util.Date
@@ -33,9 +32,10 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 
 /** Direct Microsoft Edge TTS client. It does not require a PC or Android system TTS voice. */
-class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> Unit) {
+class EdgeSpeechPlayer(context: Context, temporaryDirectory: File? = null, private val event: (String, String) -> Unit) {
     private val appContext = context.applicationContext
-    private val diagnostics = File(DataDirectory.prepare(appContext), "diagnostics").also { it.mkdirs() }
+    private val diagnostics = (temporaryDirectory ?: File(DataDirectory.prepare(appContext), "diagnostics")).also { it.mkdirs() }
+    @Volatile private var clockOffsetMillis = 0L
     private val executor = Executors.newSingleThreadExecutor()
     private val http = OkHttpClient.Builder().connectTimeout(10, TimeUnit.SECONDS).readTimeout(70, TimeUnit.SECONDS).build()
     private val main = Handler(Looper.getMainLooper())
@@ -125,15 +125,17 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
         return CompleteSpeech(output.toByteArray(), EdgeSentenceTimings.segments(paragraphs, boundaries))
     }
 
-    private fun requestAudio(text: String, voice: String, boundary: ((SpeechBoundary) -> Unit)? = null): ByteArray {
+    private fun requestAudio(text: String, voice: String, retryClock: Boolean = true, boundary: ((SpeechBoundary) -> Unit)? = null): ByteArray {
         val connectionId = UUID.randomUUID().toString().replace("-", "")
         val url = "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1" +
             "?TrustedClientToken=$TRUSTED_CLIENT_TOKEN&ConnectionId=$connectionId" +
-            "&Sec-MS-GEC=${secMsGec()}&Sec-MS-GEC-Version=$SEC_MS_GEC_VERSION"
+            "&Sec-MS-GEC=${secMsGec()}&Sec-MS-GEC-Version=${EdgeSpeechToken.VERSION}"
         val audio = ByteArrayOutputStream()
         val finished = CountDownLatch(1)
         var failure: Throwable? = null
         var ended = false
+        var failureStatus = 0
+        var serverDateMillis = 0L
         val request = Request.Builder().url(url)
             .header("Pragma", "no-cache")
             .header("Cache-Control", "no-cache")
@@ -191,6 +193,9 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (ended) return
+                failureStatus = response?.code ?: 0
+                serverDateMillis = response?.headers?.getDate("Date")?.time ?: 0L
                 failure = t
                 finished.countDown()
             }
@@ -202,7 +207,13 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
         })
         try { if (!finished.await(70, TimeUnit.SECONDS)) throw IllegalStateException("Edge TTS 请求超时。") }
         finally { if (!ended) socket.cancel() }
-        failure?.let { throw it }
+        failure?.let {
+            if (retryClock && failureStatus == 403 && serverDateMillis > 0) {
+                clockOffsetMillis = serverDateMillis - System.currentTimeMillis()
+                return requestAudio(text, voice, false, boundary)
+            }
+            throw it
+        }
         check(ended) { "Edge TTS 未完成整段音频。" }
         return audio.toByteArray().also { if (it.isEmpty()) throw IllegalStateException("Edge TTS 未返回音频。") }
     }
@@ -227,7 +238,7 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
     }
 
     private fun headerPath(data: ByteArray, headerLength: Int): String? {
-        val header = String(data, 2, headerLength - 2, StandardCharsets.UTF_8)
+        val header = String(data, 2, headerLength, StandardCharsets.UTF_8)
         return headers(header)["Path"]
     }
 
@@ -237,13 +248,9 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
     }.toMap()
 
     private fun secMsGec(): String {
-        val unixSeconds = System.currentTimeMillis() / 1000L
-        val windowsSeconds = (unixSeconds + WINDOWS_EPOCH_SECONDS) / 300L * 300L
-        val ticks = windowsSeconds * 10_000_000L
-        return sha256("$ticks$TRUSTED_CLIENT_TOKEN").uppercase(Locale.US)
+        return EdgeSpeechToken.atMillis(System.currentTimeMillis() + clockOffsetMillis, TRUSTED_CLIENT_TOKEN)
     }
 
-    private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256").digest(value.toByteArray(StandardCharsets.US_ASCII)).joinToString("") { "%02x".format(it) }
 
     private fun timestamp(): String = SimpleDateFormat("EEE MMM dd yyyy HH:mm:ss 'GMT+0000 (Coordinated Universal Time)'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date())
 
@@ -337,8 +344,6 @@ class EdgeSpeechPlayer(context: Context, private val event: (String, String) -> 
 
     private companion object {
         const val TRUSTED_CLIENT_TOKEN = "6A5AA1D4EAFF4E9FB37E23D68491D6F4"
-        const val WINDOWS_EPOCH_SECONDS = 11644473600L
-        const val SEC_MS_GEC_VERSION = "1-143.0.3650.75"
         const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0"
     }
 }

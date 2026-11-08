@@ -21,10 +21,32 @@ import java.util.concurrent.TimeUnit
 /** Explicit live Edge verification, selected separately from the offline device test suite. */
 @RunWith(AndroidJUnit4::class)
 class EdgeAudioDeviceTest {
+    @Test fun bothPreviewVoicesDecodeAndPlayToCompletion() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val temporary = Files.createTempDirectory(context.cacheDir.toPath(), "preview-speech-")
+        try {
+            for (voice in listOf(EdgeVoiceCatalog.KEITA, EdgeVoiceCatalog.NANAMI)) {
+                val completed = CountDownLatch(1)
+                val events = java.util.concurrent.CopyOnWriteArrayList<String>()
+                val speech = EdgeSpeechPlayer(context, temporary.toFile()) { _, event ->
+                    events.add(event)
+                    if (event in setOf("done", "error", "stop")) completed.countDown()
+                }
+                try {
+                    speech.speak("前方。こんにちは。", 1f, "preview-$voice", voice)
+                    assertTrue("$voice playback timed out: $events", completed.await(85, TimeUnit.SECONDS))
+                    assertEquals("$voice must actually start and finish playback", listOf("start", "done"), events.toList())
+                } finally { speech.close() }
+            }
+        } finally {
+            Thread.sleep(100)
+            Files.walk(temporary).use { it.sorted(Comparator.reverseOrder()).forEach(Files::deleteIfExists) }
+        }
+    }
     @Test fun bothVoicesGenerateSavedMp3AndSavedAudioPlaysWithoutSynthesis() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val temporary = Files.createTempDirectory(context.cacheDir.toPath(), "saved-speech-")
-        val speech = EdgeSpeechPlayer(context) { _, _ -> }
+        val speech = EdgeSpeechPlayer(context, temporary.toFile()) { _, _ -> }
         try {
             val article = ArticleStore(temporary).create(JSONObject().put("title", "朗読の保存確認")
                 .put("url", "https://example.test/saved-audio").put("paragraphs", JSONArray(listOf("今日は晴れです。", "「A&B」という名前も読みます。"))), "2026-10-02")

@@ -9,8 +9,8 @@ import java.nio.file.Path
 
 /** Stream saved article audio, including the byte ranges used when seeking. */
 class ArticleAudioResponse(private val data: Path) {
-    fun open(id: Long, name: String, range: String?): WebResourceResponse {
-        val path = ArticleAudioAccess(data).resolve(id, name)
+    fun open(id: Long, name: String, range: String?, bookmarkContext: Boolean = false): WebResourceResponse {
+        val path = ArticleAudioAccess(data).resolve(id, name, bookmarkContext)
         return openFile(path, range)
     }
 

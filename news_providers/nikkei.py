@@ -16,11 +16,24 @@ REQUEST_HEADERS = {
 }
 
 
+def _company_list_title(value):
+    return '【企業一覧】' in re.sub(r'\s+', '', value)
+
+
 def html_links(blob, base):
-    return p.public_listing_links(
+    links = p.public_listing_links(
         blob, base, DOMAINS, ARTICLE_PATH,
         member_selectors=('[data-paywall="true"]', '[data-testid*="paywall"]', '[class*="premium"]', '[class*="Premium"]', 'img[alt*="会員限定"]'),
         member_terms=('会員限定', '有料会員', '有料記事'))
+    soup, _ = p.document(blob)
+    excluded = []
+    for anchor in soup.select('a[href]'):
+        labels = ' '.join(str(node.get(attr, '')) for node in [anchor, *anchor.find_all()]
+                          for attr in ('alt', 'aria-label', 'title'))
+        if _company_list_title(anchor.get_text('', strip=True) + labels):
+            excluded.append(anchor['href'])
+    denied = set(p.filter_links(excluded, base, DOMAINS, ARTICLE_PATH))
+    return [url for url in links if url not in denied]
 
 
 def collect(source, fetch):
@@ -147,6 +160,8 @@ def extract_page(blob, url):
         raise p.PaidArticleError('日经本文存在会员阅读门槛。')
     article=p.require_scope(soup,'main#main-content > article, main#main-content article',NAME)
     heading=p.title(soup,records,selector='main#main-content article h1')
+    if _company_list_title(heading):
+        raise p.ArticleExtractionError('日经「【企業一覧】」类汇总文章按收录规则跳过。')
     scope=article.select_one('[data-track-article-content]') or article
     p.clean_scope(scope)
     text,origins,kinds,formats=_formatted_body(scope)
