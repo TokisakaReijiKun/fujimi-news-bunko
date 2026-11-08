@@ -1,0 +1,221 @@
+/* Mobile application readers. The data-redesign-app gate leaves desktop pages unchanged. */
+html[data-redesign-app]{-webkit-tap-highlight-color:transparent}
+html[data-redesign-app] #mobile-lookup-backdrop{position:fixed;inset:0;z-index:1149;background:transparent;touch-action:none}
+html[data-redesign-app] #mobile-lookup-backdrop[hidden]{display:none}
+/* APK word_expand_dialog_layout: floating dark card and separate meaning scroller. */
+html[data-redesign-app] :is([data-lookup-query]){cursor:pointer;touch-action:manipulation}
+html[data-redesign-app] .on-click-word{border-radius:5px;background:#e0315b80!important;transition:background .2s linear}
+html[data-redesign-app] :is([data-lookup-query]):focus-visible{outline:2px solid #e0315b;outline-offset:2px;border-radius:3px}
+html[data-redesign-app] #selection-lookup.is-mobile-article{inset:auto 16px calc(16px + max(env(safe-area-inset-bottom,0px),var(--app-native-safe-area-bottom,0px)))!important;width:calc(100% - 32px)!important;height:246px;min-height:0;max-height:calc(100dvh - 48px);display:block;padding:0;border:1px solid #3b3b3b;border-radius:16px;background:#1c1c1e;color:#fafafa;box-shadow:none}
+html[data-redesign-app] #selection-lookup.is-mobile-article .selection-lookup-head{position:absolute;inset:6px 6px auto auto;z-index:2;padding:0;border:0}
+html[data-redesign-app] #selection-lookup.is-mobile-article .selection-lookup-head>div,html[data-redesign-app] #selection-lookup.is-mobile-article #selection-lookup-more{display:none}
+html[data-redesign-app] #selection-lookup.is-mobile-article #selection-lookup-close{width:44px;height:44px;min-width:44px;min-height:44px;padding:10px;border:0;background:transparent;color:#fafafa}
+html[data-redesign-app] #selection-lookup.is-mobile-article #selection-lookup-close img{display:block;width:24px;height:24px}
+html[data-redesign-app] #selection-lookup.is-mobile-article .selection-lookup-results{height:100%;max-height:none;padding:0;overflow:hidden;color:inherit}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-card{height:100%;display:grid;grid-template-rows:28px 34px minmax(0,1fr) 56px;padding:40px 15px 0;margin:0;color:inherit}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-title{display:flex;align-items:center;gap:0;margin:0;padding:0;border:0;overflow:hidden;white-space:pre;color:inherit;font:400 20px/28px 'Noto Sans JP','Yu Gothic UI',sans-serif}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-title strong{flex:none;font:inherit;color:inherit}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-title span{overflow:hidden;text-overflow:ellipsis;color:inherit}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-title span:last-child{flex:none;margin-left:6px}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-meta{display:flex;align-items:center;justify-content:space-between;color:inherit}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-part{margin-left:2px;border-bottom:4px solid var(--moji-part-color,#00c9df);border-radius:2px;font-size:14px;line-height:20px}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-tools{display:flex;gap:2px;margin-left:auto}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-tools button{display:grid;place-items:center;width:44px;height:34px;min-width:44px;min-height:34px;margin:0;padding:2px 7px;border:0;border-radius:0;background:transparent;color:#e0315b}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-tools img{width:30px;height:30px}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-meaning{min-height:0;margin:16px 0 8px;overflow:auto;overscroll-behavior:contain;white-space:pre-wrap;overflow-wrap:anywhere;color:inherit;font:400 16px/24px 'Noto Sans SC','Microsoft YaHei',sans-serif;scrollbar-color:#fafafa transparent;scrollbar-width:thin}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-meaning::-webkit-scrollbar{width:4px}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-meaning::-webkit-scrollbar-thumb{background:#fafafa;border-radius:4px}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-actions{display:grid;grid-template-columns:1fr 1fr;border-top:.5px solid #5e6064;color:inherit}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-actions button{display:flex;align-items:center;justify-content:center;gap:2px;min-height:55px;padding:0;border:0;border-radius:0;background:transparent;color:inherit;font-size:16px;white-space:nowrap}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-actions button+button{border-left:.5px solid #5e6064}
+html[data-redesign-app] #selection-lookup.is-mobile-article .moji-lookup-actions img{width:28px;height:28px}
+html[data-redesign-app] #selection-lookup.is-mobile-article .selection-lookup-status,html[data-redesign-app] #selection-lookup.is-mobile-article .selection-lookup-result{color:inherit}
+html[data-redesign-app] #selection-lookup.is-mobile-article:not(.is-detail) .selection-lookup-head{left:16px;align-items:center}
+html[data-redesign-app] #selection-lookup.is-mobile-article:not(.is-detail) .selection-lookup-head>div{display:block;color:inherit}
+html[data-redesign-app] #selection-lookup.is-mobile-article .selection-lookup-head p{display:none}
+html[data-redesign-app] #selection-lookup.is-mobile-article:not(.is-detail) .selection-lookup-head strong{color:inherit}
+html[data-redesign-app] #selection-lookup.is-mobile-article:not(.is-detail) .selection-lookup-results{padding:48px 16px 8px;overflow:auto}
+html[data-redesign-app] #selection-lookup.is-mobile-article.is-mobile-expanded{height:calc(90dvh - 32px);background:var(--panel);color:var(--ink)}
+html[data-redesign-app] #selection-lookup.is-mobile-article.is-mobile-expanded .selection-lookup-results{padding:16px;overflow:auto}
+html[data-redesign-app] #selection-lookup.is-mobile-article.is-mobile-expanded #selection-lookup-close{color:var(--ink)}
+@media(prefers-reduced-motion:reduce){html[data-redesign-app] .on-click-word{transition:none}}
+@font-face{font-family:NewspaperReader;src:local('Noto Serif JP');font-display:swap}
+html[data-redesign-app]{--paper:#f8f8f3;--panel:#fffefa;--ink:#26312f;--muted:#727970;--line:#dce1d7;--moss:#284943;--accent:#a33f31;color-scheme:light}
+html[data-redesign-app], html[data-redesign-app] body{margin:0!important;min-width:0!important;max-width:100%!important;background:var(--paper)!important}
+html[data-redesign-app]:not([data-native-reading]) body{height:100dvh!important;overflow:hidden!important}
+html[data-redesign-app][data-native-reading=article]{scrollbar-width:none;scrollbar-gutter:auto}
+html[data-redesign-app][data-native-reading=article]::-webkit-scrollbar{display:none}
+html[data-redesign-app] body>.app-shell, html[data-redesign-app] body>.mobile-app-bar, html[data-redesign-app] body>.mobile-nav-scrim{display:none!important}
+html[data-redesign-app][data-native-reading] body>.app-shell{display:block!important;width:100%!important;max-width:100%!important;margin:0!important}
+html[data-redesign-app][data-native-reading] .sidebar{display:none!important}
+html[data-redesign-app][data-native-reading] .content-shell{width:100%!important;max-width:100%!important;min-width:0!important;margin:0!important;padding:calc(83px + var(--reading-safe-top)) 23px 126px!important;background:var(--paper)!important}
+html[data-redesign-app][data-native-reading=article] #reader-view>.section-head{display:none!important}
+html[data-redesign-app][data-native-reading] .view[hidden]{display:none!important}
+html[data-redesign-app][data-native-reading] .article-detail{background:var(--paper)!important;border:0!important;box-shadow:none!important;padding:0!important;margin:0!important}
+html[data-redesign-app][data-native-reading] .article-detail .source{font-size:11px!important;color:var(--accent)!important}
+/* MOJi 3.4.1 reading typography. The reference layout has one blank line between bilingual groups. */
+html[data-redesign-app] {
+  --reader-text-size: 1rem;
+  --reader-translation-size: 1rem;
+  --reader-text-leading: 2;
+  --reader-translation-leading: 1.75;
+  --reader-ruby-size: .58em;
+  --reading-safe-top: max(env(safe-area-inset-top, 0px), var(--app-native-safe-area-top, 0px));
+  --reading-original-font: 'Noto Sans JP', 'Yu Gothic UI', Meiryo, sans-serif;
+  --reading-translation-font: 'Noto Sans SC', 'Source Han Sans SC', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  --reading-original-color: #3a3a3a;
+  --reading-translation-color: #acacac;
+  --reading-placeholder-color: #8b8787;
+  --reading-gutter: 28px;
+  --reading-translation-gap: 2px;
+  --reading-paragraph-gap: 8px;
+  --reading-bilingual-gap: calc(24px + var(--reader-text-size) * var(--reader-text-leading));
+}
+html[data-redesign-app][data-native-reading=article] .article-detail :is(.parallel, .full-translation) {
+  padding-inline: calc(var(--reading-gutter) - var(--article-page-gutter));
+}
+html[data-redesign-app][data-native-reading=article] .article-detail .parallel {
+  color: var(--reading-original-color);
+}
+html[data-redesign-app][data-native-reading=article] .article-detail .paragraph:not(.paragraph-heading, .paragraph-box) {
+  padding: 0 0 var(--reading-paragraph-gap) !important;
+  border-bottom: 0 !important;
+}
+html[data-redesign-app][data-native-reading=article] .article-detail[data-translation-visible=true] .paragraph:not(.paragraph-heading, .paragraph-box, :last-child) {
+  padding-bottom: var(--reading-bilingual-gap) !important;
+}
+html[data-redesign-app][data-native-reading=article] .article-detail .paragraph[data-audio-index] > .japanese {
+  -webkit-tap-highlight-color: transparent;
+}
+html[data-redesign-app][data-native-reading=article] .article-detail .paragraph:not(.paragraph-heading) > .japanese {
+  font-family: var(--reading-original-font) !important;
+  font-size: var(--reader-text-size) !important;
+  line-height: var(--reader-text-leading) !important;
+}
+html[data-redesign-app][data-native-reading=article] .article-detail .japanese rt {
+  color: inherit;
+  transform: translateY(-.125em);
+}
+html[data-redesign-app][data-native-reading=article] .article-detail :is(.chinese, .full-translation) {
+  font-family: var(--reading-translation-font);
+  font-size: var(--reader-translation-size) !important;
+  line-height: var(--reader-translation-leading) !important;
+  color: var(--reading-translation-color) !important;
+}
+html[data-redesign-app][data-native-reading=article] .article-detail .chinese {
+  background: none !important;
+  padding: 0 !important;
+  margin: var(--reading-translation-gap) 0 0 !important;
+  border-left: 0 !important;
+}
+html[data-redesign-app][data-native-reading=article] .article-detail .chinese .translation-main {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+html[data-redesign-app][data-native-reading=article] .article-detail .translation-placeholder .text {
+  color: var(--reading-placeholder-color);
+}
+html[data-redesign-app][data-native-reading] .article-detail .media{margin:22px 0!important}
+html[data-redesign-app][data-native-reading] .article-detail .media img{margin:0 auto!important;border-radius:2px!important;max-height:none!important}
+html[data-redesign-app][data-native-reading] .article-detail .media figcaption{font-size:10px!important;line-height:1.8!important;color:var(--muted)!important}
+/* Both readers use the EPUB player's MOJi geometry, artwork and theme. */
+html[data-redesign-app][data-native-reading] {
+  --reading-player-width: 640px;
+  --reading-player-bottom: max(26px, calc(2px + var(--player-safe-area-bottom)));
+  --reader-player-clearance: calc(84px + var(--reading-player-bottom));
+}
+html[data-redesign-app][data-native-reading] .article-audio-player {
+  left: max(0px, calc((100% - var(--reading-player-width)) / 2));
+  right: max(0px, calc((100% - var(--reading-player-width)) / 2));
+  padding-bottom: var(--reading-player-bottom);
+}
+html[data-redesign-app][data-native-reading] .article-audio-player,
+html[data-redesign-app][data-native-reading] .article-audio-player * {
+  -webkit-tap-highlight-color: transparent;
+}
+html[data-redesign-app][data-native-reading] .audio-player-transport { align-items: start; }
+html[data-redesign-app][data-native-reading] .audio-rate-control { align-self: start; }
+html[data-redesign-app][data-native-reading] .audio-rate-glyph { top: 4px; }
+html[data-redesign-app][data-native-reading] .audio-rate-value { background: #fafafa; }
+@media (prefers-color-scheme: dark) {
+  html[data-redesign-app][data-native-reading] .audio-rate-value { background: var(--player-surface); }
+}
+html[data-redesign-app] body>dialog{max-width:calc(100vw - 28px)!important;background:var(--paper)!important;color:var(--ink)!important;border:1px solid var(--line)!important;border-radius:10px!important}
+html[data-redesign-app] body>dialog input, html[data-redesign-app] body>dialog select, html[data-redesign-app] body>dialog button{min-height:44px!important}
+/* Keep Android's functional voice picker in the Demo text form's visual style. */
+html[data-redesign-app] #web-text-dialog .web-form-actions .android-select-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 48px !important;
+  padding: .62rem 2rem .62rem .9rem;
+  border: 1px solid var(--moss);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--moss);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media(max-width:375px){html[data-redesign-app][data-native-reading] .content-shell{padding-inline:21px!important}}
+
+/* Article opening follows the application's paper, ink and vermilion palette. */
+html[data-redesign-app][data-native-reading=article] .content-shell{--article-page-gutter:23px;padding-top:calc(68px + var(--reading-safe-top))!important;padding-inline:var(--article-page-gutter)!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-heading{display:block;min-width:0;margin:0 0 18px;padding:0;border:0}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-heading>.title{font:600 23px/1.6 NewspaperReader,'Noto Serif SC','Yu Mincho',serif!important;color:var(--ink)!important;letter-spacing:.005em!important;margin:0 0 2px!important;padding:0!important;word-break:normal;line-break:strict;overflow-wrap:anywhere;text-wrap:pretty;font-feature-settings:'palt';font-kerning:normal}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .title-unit{white-space:nowrap}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-imprint{display:flex;flex:1;min-width:0;align-items:baseline;gap:4px;margin:0}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-publisher{min-width:0;overflow-wrap:anywhere}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-publisher .origin{display:inline-flex;align-items:center;text-decoration:underline;text-underline-offset:3px;text-decoration-color:#a33f3140}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-imprint .source{writing-mode:horizontal-tb;font:500 11px/1.6 'Noto Sans JP','Noto Sans SC',sans-serif!important;color:var(--accent)!important;letter-spacing:.025em}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-imprint .published{flex:none;max-width:100%;margin:0;color:#616b60;font:400 10px/1.4 'Noto Sans JP','Noto Sans SC',sans-serif;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-utility{--article-tool-width:44px;position:relative;display:flex;align-items:center;min-height:44px;margin:0;padding:0;border:0;overflow:visible}
+@media(max-width:390px){html[data-redesign-app][data-native-reading=article] .content-shell{--article-page-gutter:18px}}
+@media(max-width:420px){html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-utility{--article-tool-width:clamp(38px,10vw,44px);margin-inline-end:-12px}}
+@media(max-width:350px){
+  html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-utility{flex-wrap:wrap;justify-content:flex-end}
+  html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-imprint{flex-basis:100%}
+}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .translation-switch, html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .reread-popover-wrap{position:static!important;display:block!important;width:auto!important;min-width:0!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-utility>.bookmark, html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-utility>.copy-original, html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .reread-link, html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .translation-menu-toggle{display:flex!important;align-items:center!important;justify-content:center!important;gap:3px!important;width:var(--article-tool-width)!important;min-width:var(--article-tool-width)!important;height:44px!important;min-height:44px!important;margin:0!important;padding:0!important;border:0!important;border-radius:5px!important;background:transparent!important;color:var(--moss)!important;text-decoration:none!important;box-shadow:none!important;filter:none!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .translation-menu-toggle:before{content:'訳';font:500 17px/1 NewspaperReader,'Yu Mincho',serif}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .translation-menu-label{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .translation-menu-chevron{border-top:3px solid currentColor!important;border-left-width:3px!important;border-right-width:3px!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-utility button:hover{color:var(--accent)!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-utility .tool-icon{width:18px;height:18px;stroke-width:1.55}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-utility>.is-bookmarked{color:var(--accent)!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .article-utility>.is-bookmarked .tool-icon{fill:currentColor}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .reread-panel{top:calc(100% + 6px)!important;left:0!important;right:auto!important;width:100%!important;max-width:100%!important;box-sizing:border-box;background:var(--panel);color:var(--ink);border-color:var(--line);box-shadow:0 7px 22px #26312f21}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .reread-controls{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:10px}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .reread-controls select{width:100%;min-width:0;min-height:44px}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .translation-menu{top:calc(100% + 6px)!important;left:0!important;right:auto!important;width:190px!important;max-width:100%!important;padding:5px!important;border:1px solid var(--line)!important;border-radius:6px!important;background:var(--panel)!important;box-shadow:0 7px 22px #26312f21!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .translation-menu button{min-height:44px!important;height:auto!important;padding:10px 12px!important;border:0!important;border-radius:3px!important;font:400 12px/1.6 'Noto Sans JP','Noto Sans SC',sans-serif!important;color:var(--ink)!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .translation-menu button[aria-checked=true]{background:#f1e5df!important;color:var(--accent)!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading button:focus-visible, html[data-redesign-app][data-native-reading=article] #reader-view.is-reading a:focus-visible{outline:2px solid var(--accent)!important;outline-offset:2px!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .media{margin:0 0 18px!important}
+html[data-redesign-app][data-native-reading=article] #reader-view.is-reading .media:empty{display:none!important}
+
+/* Independent notices stay at the top of the page. */
+html[data-redesign-app] #toast-region{top:calc(73px + var(--reading-safe-top))!important;bottom:auto!important;left:50%!important;max-width:min(360px,calc(100vw - 32px))!important;gap:4px}
+html[data-redesign-app][data-native-reading=article] #toast-region{top:calc(8px + var(--reading-safe-top))!important}
+html[data-redesign-app] #toast-region .toast{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+html[data-redesign-app] .reread-task-label{min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+
+/* Only the dictionary landing surface uses the redesigned search layout. */
+html[data-redesign-app] .dictionary-home-search-icon, html[data-redesign-app] .dictionary-home-submit{display:none}
+html[data-redesign-app] #dictionary-view[data-dictionary-home]>.section-head{display:none!important}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] .dictionary-search-form{margin:0!important;max-width:none}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] #dictionary-result-library{display:none}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] #dictionary-result-heading{justify-content:flex-end}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] .dictionary-search-form>label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] .dictionary-query-shell{display:flex;align-items:center;gap:9px;min-height:52px;padding-left:14px;border:1px solid #c6cebd;border-radius:6px;background:#fffefa}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] .dictionary-query-shell:focus-within{border-color:#284943}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] .dictionary-home-search-icon{display:block;flex:none;width:20px;height:20px;stroke:#284943;stroke-width:1.6;fill:none}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] #dictionary-query{flex:1;min-width:0;width:100%;min-height:50px;height:50px;margin:0;padding:10px 0;border:0;border-radius:0;background:transparent;box-shadow:none;color:#26312f;font:15px 'Noto Sans JP','Yu Gothic UI',sans-serif}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] #dictionary-query:focus{outline:none;box-shadow:none}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] .dictionary-home-submit{display:grid;place-items:center;flex:none;min-width:44px;min-height:48px;margin:0;padding:11px;border:0;background:none;color:#284943}
+html[data-redesign-app] #dictionary-view[data-dictionary-home] .dictionary-home-submit svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.6;fill:none}
+html[data-redesign-app] #dictionary-view[data-dictionary-welcome] .dictionary-workspace{display:none}

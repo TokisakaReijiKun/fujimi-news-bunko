@@ -91,6 +91,60 @@ class VoiceStore:
             raise ValueError('声线文件缺失或校验失败，请重新上传。')
         return path
 
+    @classmethod
+    def validate_synced(cls, name, blob, *, verify_content=True):
+        """Validate an existing WAV reference without changing its bytes."""
+        name = cls._name(name)
+        if not isinstance(blob, bytes) or not blob or len(blob) > 20 * 1024 * 1024:
+            raise ValueError('参考音频须为 20 MB 以内的非空文件。')
+        if blob[:4] != b'RIFF' or blob[8:12] != b'WAVE':
+            raise ValueError('同步声线必须是有效 WAV 文件。')
+        import numpy as np
+        import soundfile as sf
+        try:
+            with sf.SoundFile(io.BytesIO(blob)) as source:
+                seconds = len(source) / source.samplerate
+                if (source.format not in ('WAV', 'WAVEX') or not 1 <= seconds <= 120
+                        or not 1 <= source.channels <= 2 or not 0 < source.samplerate <= 192000):
+                    raise ValueError('参考音频需为 1–120 秒、单声道或双声道 WAV。')
+                audio = source.read(dtype='float32', always_2d=True).mean(axis=1)
+            if not np.isfinite(audio).all() or not audio.size or float(np.abs(audio).max()) < 1e-5:
+                raise ValueError('参考音频为空、静音或损坏。')
+        except (RuntimeError, OSError) as error:
+            raise ValueError('无法解码同步声线 WAV。') from error
+        return {'id': cls._id(name), 'name': name, 'file': name + '.wav',
+                **({'sha256': digest(blob)} if verify_content else {}), 'duration': seconds}
+
+    def import_synced(self, name, blob, *, compare_size=False):
+        """Atomically add a validated reference; existing names are never overwritten."""
+        item = self.validate_synced(name, blob, verify_content=not compare_size)
+        with self.lock:
+            target = self._path(item['name'])
+            if compare_size:
+                existing = next((path for path in self.root.glob('*.wav')
+                                 if path.is_file() and path.stem.casefold() == item['name'].casefold()), None)
+                if existing:
+                    same = existing.name == target.name and existing.stat().st_size == len(blob)
+                    return dict(id=self._id(existing.stem), name=existing.stem, file=existing.name,
+                                status='unchanged' if same else 'conflict')
+                existing = None
+            else:
+                existing = next((voice for voice in self.list()
+                                 if voice['name'].casefold() == item['name'].casefold()), None)
+            if existing:
+                same = existing['name'] == item['name'] and existing['sha256'] == item['sha256']
+                return dict(existing, status='unchanged' if same else 'conflict')
+            temporary = target.with_name('.' + target.name + '.' + uuid.uuid4().hex + '.tmp')
+            try:
+                with temporary.open('xb') as output:
+                    output.write(blob)
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.replace(temporary, target)
+            finally:
+                temporary.unlink(missing_ok=True)
+            return dict(item, status='created')
+
     def migrate_legacy(self):
         """Flatten the former manifest/ID layout once, retaining a full backup."""
         with self.lock:

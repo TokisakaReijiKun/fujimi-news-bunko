@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import gc
 import hashlib
+import inspect
 import json
 import math
 import secrets
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -493,11 +495,16 @@ def _default_max_ref_seconds(train_cfg: dict | None) -> float:
 def _load_checkpoint_from_safetensors(
     path: Path,
 ) -> tuple[dict[str, torch.Tensor], dict, dict | None, dict | None]:
-    model_state = load_safetensors_file(str(path), device="cpu")
+    # Windows copy-on-write mappings reserve commit for the entire checkpoint,
+    # even when opening it only for metadata. Safetensors 0.8+ can read directly.
+    storage_options = {}
+    if sys.platform == "win32" and "backend" in inspect.signature(load_safetensors_file).parameters:
+        storage_options["backend"] = "pread"
+    model_state = load_safetensors_file(str(path), device="cpu", **storage_options)
     if not isinstance(model_state, dict) or not model_state:
         raise ValueError(f"Safetensors checkpoint has no model weights: {path}")
 
-    with safe_open(str(path), framework="pt", device="cpu") as handle:
+    with safe_open(str(path), framework="pt", device="cpu", **storage_options) as handle:
         metadata = handle.metadata() or {}
 
     if parse_quantization_metadata(metadata) is not None:

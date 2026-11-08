@@ -15,8 +15,19 @@
       if (isMobileApp) root.classList.add("mobile-app-booting");
     })();
   </script>
-  <link rel="stylesheet" href="/static/static.css?v=20260925-remove-voice-count">
-  <link rel="stylesheet" href="/static/book-reader.css?v=3">
+  <link rel="stylesheet" href="/static/static.css?v=20261105-pc-restore">
+  <link rel="stylesheet" href="/static/book-reader.css?v=20261105-pc-restore">
+  <script>
+    (() => {
+      if (!window.FujimiMobile && new URLSearchParams(location.search).get('mobile-redesign') !== '1') return;
+      document.documentElement.dataset.redesignApp = 'true';
+      const theme = getComputedStyle(document.documentElement);
+      window.__nativeDictionaryTheme = Object.fromEntries(['--paper', '--panel', '--ink', '--muted', '--line', '--moss', '--accent'].map(name => [name, theme.getPropertyValue(name)]));
+      for (const name of ['mobile-reader', 'mobile-epub']) {
+        const sheet = document.createElement('link'); sheet.rel = 'stylesheet'; sheet.href = '/static/' + name + '.css?v=20261108-article-spacing'; document.head.append(sheet);
+      }
+    })();
+  </script>
 </head>
 <body>
   <header class="mobile-app-bar" aria-label="应用导航">
@@ -129,34 +140,36 @@
       </section>
 
       <section id="settings-view" class="view" hidden>
-        <div class="section-head"><div><p class="section-kicker">PREFERENCES</p><h2>設置</h2><p>読む時間を、自分らしく整える。</p></div></div>
+        <div class="section-head"><div><p class="section-kicker">PREFERENCES</p><h2>設置</h2></div></div>
         <div class="settings-stack">
           <section class="settings-panel voice-panel">
             <div class="panel-heading">
-              <div class="voice-heading-copy"><h3>声の形</h3></div>
-              <div class="panel-actions"><span id="active-voice-badge" class="status-badge">未选择声线</span><button id="add-voice" type="button">添加声线</button></div>
+              <div class="voice-heading-copy"><span class="settings-section-number">01 / VOICE</span><h3>声の形</h3></div>
+              <span id="active-voice-badge" class="status-badge">未选择声线</span>
             </div>
             <p id="voice-error" class="panel-notice error" role="alert" hidden></p>
             <div id="voice-list" class="voice-list"></div>
+            <div class="voice-settings-actions"><button id="add-voice" type="button">添加声线</button><button id="settings-system-speech" class="quiet" type="button" hidden>系统朗读设置</button></div>
           </section>
 
           <section class="settings-panel daily-settings-panel schedule-panel">
             <div class="panel-heading">
-              <div><h3>日刊設定</h3><p>统一管理新闻来源、每日构成与 CST 更新方式。</p></div>
+              <div><span class="settings-section-number">02 / DAILY</span><h3>日刊設定</h3></div>
               <span id="schedule-state" class="status-badge">读取中</span>
             </div>
             <p id="source-error" class="panel-notice error" role="alert" hidden></p>
             <div class="daily-content-settings">
               <label>每日新闻目标数<input id="daily-target-count" type="number" min="1" max="500" value="10"></label>
-              <p id="daily-content-summary" class="muted">正在读取日刊构成…</p>
+              <div class="daily-source-stat"><span>有效来源</span><strong id="daily-source-total">—</strong></div>
             </div>
+            <p id="daily-content-summary" class="muted">正在读取日刊构成…</p>
             <div class="settings-subheading">
-              <div><h4>ニュースソース</h4><p>每个来源可以分别设置每日最低收录数。</p></div>
+              <div><h4>ニュースソース</h4></div>
               <div class="panel-actions"><span id="source-count" class="status-badge">读取中</span><button id="add-source" type="button">添加来源</button></div>
             </div>
             <div id="source-list" class="source-list"></div>
             <div class="schedule-section">
-              <div class="settings-subheading"><div><h4>生成方式</h4><p>选择手动生成，或按 CST 指定时间自动更新。</p></div></div>
+              <div class="settings-subheading"><div><h4>生成方式</h4></div></div>
               <p id="schedule-error" class="panel-notice error" role="alert" hidden></p>
               <div class="schedule-workspace">
                 <div class="schedule-controls">
@@ -185,14 +198,14 @@
           </section>
 
           <section class="settings-panel library-settings-panel">
-            <div class="panel-heading"><div><h3>書架表示</h3><p>書架首页的书籍排列方式。</p></div></div>
+            <div class="panel-heading"><div><span class="settings-section-number">03 / LIBRARY</span><h3>書架表示</h3></div></div>
             <p id="library-settings-error" class="panel-notice error" role="alert" hidden></p>
             <label class="library-sort-setting">並び順<select id="library-sort-setting"><option value="recent">最近読んだ順</option><option value="series">シリーズ・巻順</option><option value="imported">最近追加した順</option></select></label>
           </section>
 
           <section id="desktop-settings-panel" class="settings-panel desktop-settings-panel" hidden>
             <div class="panel-heading">
-              <div><h3>桌面应用</h3><p>本机数据与运行位置。</p></div>
+              <div><h3>桌面应用</h3></div>
               <span class="status-badge">WINDOWS</span>
             </div>
             <p id="desktop-settings-error" class="panel-notice error" role="alert" hidden></p>
@@ -209,32 +222,59 @@
             </div>
           </section>
 
+          <section id="device-sync-panel" class="settings-panel device-sync-panel" hidden>
+            <div class="panel-heading device-sync-heading">
+              <div><h3>文庫互联</h3></div>
+              <div class="device-sync-controls"><span id="device-sync-state" role="status">未开启</span><input id="device-sync-enabled" type="checkbox" role="switch" aria-label="开启文庫同步"></div>
+            </div>
+            <p id="device-sync-error" class="panel-notice error" role="alert" hidden></p>
+            <a id="device-sync-login" class="device-sync-login" target="_blank" rel="noopener noreferrer" hidden>登录 Tailscale</a>
+            <div id="device-sync-details" class="device-sync-details" hidden>
+              <img id="device-sync-qr" width="220" height="220" alt="在 Android 文庫中扫描此二维码配对">
+              <dl class="device-sync-values">
+                <div><dt>连接地址</dt><dd><strong id="device-sync-url"></strong><button id="device-sync-copy-url" class="quiet" type="button" aria-label="复制连接地址">复制</button></dd></div>
+                <div><dt>配对码</dt><dd><strong id="device-sync-code"></strong><button id="device-sync-copy-code" class="quiet" type="button" aria-label="复制配对码">复制</button></dd></div>
+              </dl>
+            </div>
+            <p id="device-sync-detail" class="muted device-sync-detail">开启后，在 Android 的 Windows 同步中连接。</p>
+          </section>
+
           <section id="mobile-settings-panel" class="settings-panel mobile-settings-panel" hidden>
-            <div class="panel-heading"><div><h3>Android 本地节点</h3><p id="mobile-runtime-summary">本地数据就绪</p></div><span id="mobile-service-status" class="status-badge">读取中</span></div>
+            <div class="panel-heading"><div><span class="settings-section-number">04 / ANDROID</span><h3>Android 本地节点</h3><p id="mobile-runtime-summary">本地数据就绪</p></div><span id="mobile-service-status" class="status-badge">读取中</span></div>
             <div id="android-local-settings" class="android-local-settings" hidden>
               <section class="mobile-node-group" aria-labelledby="mobile-deepseek-title">
                 <div class="mobile-node-group-heading">
-                  <div><h4 id="mobile-deepseek-title">DeepSeek</h4><p>用于翻译与假名增强</p></div>
+                  <div><h4 id="mobile-deepseek-title">DeepSeek</h4><p>翻译密钥</p></div>
                   <span id="mobile-deepseek-status" class="mobile-node-state">未配置</span>
                 </div>
                 <label class="mobile-compact-field" for="mobile-deepseek-key">API 密钥</label>
                 <div class="mobile-control-row">
-                  <input id="mobile-deepseek-key" type="password" autocomplete="off" placeholder="输入新密钥">
+                  <input id="mobile-deepseek-key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="mobile-deepseek-result" placeholder="输入新密钥">
                   <button id="mobile-save-deepseek" type="button">保存</button>
+                  <button id="mobile-clear-deepseek" class="quiet" type="button" hidden>清除</button>
                 </div>
+                <p id="mobile-deepseek-result" class="mobile-field-result" role="status" aria-live="polite"></p>
                 <p class="mobile-field-help">密钥仅加密保存在此手机，不参与同步。</p>
               </section>
               <section class="mobile-node-group" aria-labelledby="mobile-windows-title">
                 <div class="mobile-node-group-heading">
-                  <div><h4 id="mobile-windows-title">Windows 同步</h4><p>可选节点</p></div>
+                  <div><h4 id="mobile-windows-title">Windows 同步</h4><p>连接电脑文庫</p></div>
                   <span id="mobile-windows-state" class="mobile-node-state">未配置</span>
                 </div>
-                <p class="mobile-node-purpose">填写后可与电脑双向同步，并请求 Irodori 最终音频；新闻、书架、辞书和系统朗读不需要电脑。</p>
-                <label class="mobile-compact-field" for="mobile-windows-address">私有局域网或 VPN 地址</label>
-                <div class="mobile-control-row mobile-address-row">
-                  <input id="mobile-windows-address" type="url" inputmode="url" autocapitalize="off" spellcheck="false" placeholder="http://192.168.1.20:8427">
-                  <button id="mobile-save-windows" class="quiet" type="button">检测</button>
-                </div>
+                <p class="mobile-node-purpose" id="mobile-windows-purpose">手机与电脑连接同一网络，并在 PC 设置中开启文庫互联。</p>
+                <button id="mobile-scan-windows" class="quiet mobile-scan-windows" type="button">扫码连接</button>
+                <div class="mobile-pair-divider"><span>或使用地址与配对码</span></div>
+                <form id="mobile-pair-form">
+                  <label class="mobile-compact-field" for="mobile-windows-address">连接地址</label>
+                  <div class="mobile-control-row mobile-address-row">
+                    <input id="mobile-windows-address" type="url" inputmode="url" autocapitalize="off" spellcheck="false" aria-describedby="mobile-windows-result" placeholder="http://192.168.1.20:8429" required>
+                  </div>
+                  <label class="mobile-compact-field" for="mobile-windows-code">配对码</label>
+                  <div class="mobile-control-row mobile-pair-code-row">
+                    <input id="mobile-windows-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" aria-describedby="mobile-windows-result" placeholder="6 位配对码" required>
+                    <button id="mobile-save-windows" type="submit">连接</button>
+                  </div>
+                </form>
                 <div class="mobile-address-feedback">
                   <p id="mobile-windows-result" role="status">尚未填写地址</p>
                   <button id="mobile-clear-windows" class="mobile-text-action" type="button">清除</button>
@@ -242,12 +282,6 @@
                 <p class="mobile-network-warning">仅限私有网络，不得暴露到公网。</p>
               </section>
             </div>
-            <p class="panel-notice mobile-host-only">同步端口仅限私有网络，不得暴露到公网。</p>
-            <div id="mobile-service-urls" class="desktop-paths mobile-host-only"></div>
-            <figure id="mobile-service-qr" class="mobile-service-qr mobile-host-only" hidden>
-              <img alt="Android 服务器地址二维码">
-              <figcaption>在手机端扫描或手动输入上方地址。</figcaption>
-            </figure>
             <div id="android-sync-settings" class="android-sync-settings" hidden>
               <section class="mobile-node-group mobile-sync-group" aria-labelledby="mobile-sync-title">
                 <div class="mobile-node-group-heading mobile-sync-heading">
@@ -257,17 +291,18 @@
                 <div id="mobile-sync-progress" class="mobile-sync-progress" role="progressbar" aria-label="同步进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                   <span></span>
                 </div>
-                <p id="mobile-sync-detail" class="mobile-sync-detail" role="status" aria-live="polite">填写并检测 Windows 地址后即可同步。</p>
+                <p id="mobile-sync-detail" class="mobile-sync-detail" role="status" aria-live="polite">连接 Windows 后，点击“立即同步”传输文庫。</p>
                 <dl class="mobile-sync-stats">
                   <div><dt>上次同步</dt><dd id="mobile-sync-last">尚未完成</dd></div>
                   <div><dt>待提交</dt><dd id="mobile-sync-pending">0</dd></div>
                   <div><dt>本地缓存</dt><dd id="mobile-sync-cache">0 B</dd></div>
                 </dl>
                 <button id="mobile-sync-now" type="button" disabled>立即同步</button>
-                <details class="mobile-sync-options">
-                  <summary>后台同步设置</summary>
+              </section>
+                <details class="mobile-sync-options" open>
+                  <summary>网络与定时</summary>
                   <label class="mobile-setting-row">
-                    <span><strong>允许蜂窝网络</strong><small>关闭时仅使用 Wi-Fi、VPN 或有线网络</small></span>
+                    <span><strong>允许蜂窝网络</strong><small>关闭时仅使用不按流量计费的网络</small></span>
                     <input id="mobile-allow-cellular" type="checkbox" role="switch">
                   </label>
                   <div class="mobile-setting-row">
@@ -275,11 +310,18 @@
                     <button id="mobile-exact-alarm" class="quiet" type="button">精确定时</button>
                   </div>
                 </details>
-              </section>
             </div>
           </section>
+          <section id="mobile-app-settings-panel" class="settings-panel" hidden>
+            <div class="panel-heading"><div><span class="settings-section-number">05 / APP</span><h3>应用信息</h3></div><span id="mobile-app-version-badge" class="status-badge"></span></div>
+            <dl id="mobile-app-info" class="desktop-paths" hidden>
+              <div><dt>APP 版本</dt><dd id="mobile-app-version"></dd></div>
+              <div><dt>包名</dt><dd>jp.fujimi.newsbunko.next</dd></div>
+            </dl>
+            <details class="settings-path-disclosure"><summary>本机文庫路径</summary><code id="mobile-data-path"></code></details>
+          </section>
           <section class="settings-panel refresh-panel">
-            <div class="panel-heading"><div><h3>文庫刷新</h3><p>以本地文章与收藏文件夹为准，重新整理 SQLite 索引。</p></div><span class="status-badge">FILES → SQLITE</span></div>
+            <div class="panel-heading"><div><span class="settings-section-number">06 / STORAGE</span><h3>文庫刷新</h3></div><span class="status-badge">FILES → INDEX</span></div>
             <p id="refresh-error" class="panel-notice error" role="alert" hidden></p>
             <div class="refresh-workspace">
               <button id="refresh-storage" type="button">存储を反映</button>
@@ -368,7 +410,7 @@
       <label id="voice-editor-url-row" class="voice-source-row" hidden>音频网址<input id="voice-editor-url" type="url" placeholder="https://example.com/voice.wav"></label>
       <p id="voice-editor-hint" class="muted">请选择用于参考的音频文件。</p>
       <p id="voice-editor-notice" class="panel-notice" role="status"></p>
-      <footer class="dialog-actions"><button id="cancel-voice-dialog" type="button" class="quiet">取消</button><button id="submit-voice" type="submit">添加</button></footer>
+      <footer class="dialog-actions"><button id="native-speech-settings" type="button" class="quiet" hidden>系统语音设置</button><button id="cancel-voice-dialog" type="button" class="quiet">取消</button><button id="submit-voice" type="submit">添加</button></footer>
     </form>
   </dialog>
 
@@ -438,8 +480,53 @@
       </div>
     </article>
   </template>
-  <script src="/static/book-reader.js?v=4"></script>
-  <script src="/static/browser-speech.js?v=1"></script>
-  <script src="/static/main.js?v=20260926-browser-speech-paragraphs"></script>
+  <template id="mobile-audio-player-template">
+      <div class="article-audio-player" role="group" aria-label="文章朗读播放器" hidden>
+        <div class="audio-player-timeline">
+          <div class="audio-player-seek">
+            <span class="audio-player-progress-fill"></span>
+            <input class="audio-player-progress" type="range" min="0" max="1" value="0" step="0.1" aria-label="朗读进度">
+          </div>
+          <time class="audio-player-current">0:00</time>
+          <time class="audio-player-duration">0:00</time>
+        </div>
+        <button class="audio-listen-toggle" type="button" aria-label="听读设置" title="听读设置" aria-haspopup="menu" aria-expanded="false"><img src="/static/player_assets/ic_common_listen_read.png" alt=""></button>
+        <div class="audio-listen-menu" role="menu" aria-label="听读设置" hidden>
+          <button type="button" role="menuitemradio" data-listening-mode="original">听原文</button>
+          <button type="button" role="menuitemradio" data-listening-mode="parallel">对照阅读</button>
+          <button class="audio-player-replay" type="button" role="menuitem">重听本段</button>
+        </div>
+        <div class="audio-player-transport">
+          <button class="audio-player-previous audio-icon-button" type="button" aria-label="上一段" title="上一段" disabled><img src="/static/player_assets/ic_player_prev.png" alt=""></button>
+          <button class="audio-player-toggle audio-icon-button" type="button" aria-label="播放朗读" title="播放朗读"><img class="audio-player-toggle-icon" src="/static/player_assets/ic_player_stop.png" alt=""></button>
+          <button class="audio-player-next audio-icon-button" type="button" aria-label="下一段" title="下一段" disabled><img src="/static/player_assets/ic_player_next.png" alt=""></button>
+        </div>
+        <div class="audio-rate-control">
+          <button class="audio-rate-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="播放速度" title="播放速度"><span class="audio-rate-glyph" aria-hidden="true"><img src="/static/player_assets/ic_player_set.png" alt=""><span class="audio-rate-value">1.0x</span></span></button>
+          <div class="audio-rate-menu" role="menu" hidden>
+            <button type="button" role="menuitemradio" data-rate="0.5">0.5×</button>
+            <button type="button" role="menuitemradio" data-rate="0.75">0.75×</button>
+            <button type="button" role="menuitemradio" data-rate="1">1×</button>
+            <button type="button" role="menuitemradio" data-rate="1.25">1.25×</button>
+            <button type="button" role="menuitemradio" data-rate="1.5">1.5×</button>
+            <button type="button" role="menuitemradio" data-rate="2">2×</button>
+          </div>
+        </div>
+      </div>
+  </template>
+  <script>
+    (() => {
+      if (document.documentElement.dataset.redesignApp !== 'true') return;
+      const article = document.querySelector('#article-template').content;
+      const player = document.querySelector('#mobile-audio-player-template').content.firstElementChild;
+      article.querySelector('.article-audio-player').replaceWith(player.cloneNode(true));
+    })();
+  </script>
+  <script src="/static/book-reader.js?v=20261105-pc-restore"></script>
+  <script src="/static/browser-speech.js?v=20261105-pc-restore"></script>
+  <script src="/static/moji-article-lookup.js?v=20261108-original"></script>
+  <script src="/static/main.js?v=20261108-word-card-touch"></script>
+  <script src="/static/mobile-settings.js?v=20261108-sync-status"></script>
+  <script src="/static/mobile-app.js?v=20261108-voice-playback"></script>
 </body>
 </html>

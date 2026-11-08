@@ -146,6 +146,11 @@ const MOBILE_VIEW_META = {
 };
 let mobileNavPreviousFocus = null;
 let mobileSyncPollTimer = null;
+let mobileNodeStatus = null;
+let mobileWindowsCheck = null;
+let deviceSyncPollTimer = null;
+let deviceSyncStatus = null;
+const redesignedReadingUi = document.documentElement.dataset.redesignApp === "true";
 
 function syncMobileViewHeading(view) {
   const meta = MOBILE_VIEW_META[view] || { kicker: "PRIVATE NEWS LIBRARY", title: "富士見新聞文庫", description: "ニュースを、深く読む。" };
@@ -214,21 +219,23 @@ function finishMobileAppBoot() {
   });
 }
 
-function enhanceAndroidSettingsLayout() {
-  if (!window.FujimiMobile || $("#voice-settings-disclosure")) return;
-  $("#settings-view .section-head")?.classList.add("settings-page-head");
-
-  const voiceList = $("#voice-list");
-  if (voiceList) {
-    const disclosure = document.createElement("details");
-    disclosure.id = "voice-settings-disclosure";
-    disclosure.className = "settings-disclosure";
-    const summary = document.createElement("summary");
-    summary.innerHTML = "<span><strong>声线管理</strong><small>选择、修改或删除参考声线</small></span>";
-    disclosure.append(summary, voiceList);
-    const voiceHeading = voiceList.closest('.voice-panel')?.querySelector('.panel-heading');
-    voiceHeading?.after(disclosure);
+function initializeSettingsLayout() {
+  // The Android card layout must not replace the established PC settings page.
+  $("#settings-view").classList.toggle("settings-design-a", Boolean(window.FujimiMobile));
+  if (!window.FujimiMobile) {
+    const actions = document.createElement("div");
+    actions.className = "panel-actions";
+    actions.append($("#active-voice-badge"), $("#add-voice"));
+    $(".voice-panel > .panel-heading").append(actions);
+    $(".daily-content-settings").append($("#daily-content-summary"));
+    document.querySelectorAll(".settings-section-number, .voice-settings-actions, .daily-source-stat")
+      .forEach(element => { element.hidden = true; });
+    return;
   }
+  if ($("#source-settings-disclosure")) return;
+  $("#settings-view .section-head")?.classList.add("settings-page-head");
+  // Keep the selected voice visible; source controls retain their existing disclosure.
+  $("#settings-system-speech").hidden = typeof window.FujimiMobile.openSpeechSettings !== "function";
 
   const sourceList = $("#source-list");
   const sourceHeading = sourceList?.previousElementSibling;
@@ -257,6 +264,240 @@ window.__fujimiCloseMobileDictionaryDetail = () => {
   closeMobileDictionaryDetail();
   return true;
 };
+window.__fujimiHandleBack = () => {
+  if (closeAndroidSelect()) return true;
+  if (redesignedReadingUi && $("#selection-lookup").classList.contains("is-mobile-article") && (!$("#selection-lookup").hidden || state.selectionLookupController)) {
+    if ($("#selection-lookup").classList.contains("is-mobile-expanded")) {
+      $("#selection-lookup").classList.remove("is-mobile-expanded");
+      renderMobileLookupCard(mobileArticleLookupWord);
+      return true;
+    }
+    hideSelectionLookup({ clearSelection: true, restoreFocus: true });
+    return true;
+  }
+  const playerMenu = redesignedReadingUi ? document.querySelector('.audio-rate-menu:not([hidden]), .audio-listen-menu:not([hidden])') : null;
+  if (playerMenu) {
+    playerMenu.hidden = true;
+    const trigger = playerMenu.closest('.article-audio-player').querySelector(playerMenu.classList.contains('audio-rate-menu') ? '.audio-rate-toggle' : '.audio-listen-toggle');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.focus({ preventScroll: true });
+    return true;
+  }
+  const dialog = document.querySelector("dialog[open]");
+  if (dialog) { dialog.close(); return true; }
+  if (setMobileNavOpen(false)) return true;
+  if (window.__fujimiCloseMobileDictionaryDetail()) return true;
+  const menu = document.querySelector("details.voice-actions-menu[open], details.source-actions-menu[open]");
+  if (menu) { menu.open = false; return true; }
+  return false;
+};
+window.__fujimiRefreshNativeSettings = () => {
+  if (state.currentView === "settings") {
+    loadDesktopSettings();
+    loadVoices();
+  }
+};
+window.__fujimiNativeNotice = message => toast(String(message || "操作失败"), true);
+
+// Keep the original select as the form/API source of truth. Only the actual
+// Android bridge gets a page-owned list; mobile Web and desktop retain selects.
+let activeAndroidSelect = null;
+function closeAndroidSelect(restoreFocus = true) {
+  const field = activeAndroidSelect;
+  if (!field) return false;
+  activeAndroidSelect = null;
+  if (typeof field.list.hidePopover === 'function' && field.list.matches(':popover-open')) field.list.hidePopover();
+  field.list.remove();
+  field.trigger.setAttribute('aria-expanded', 'false');
+  field.trigger.removeAttribute('aria-activedescendant');
+  if (restoreFocus && field.trigger.isConnected && !field.trigger.disabled) field.trigger.focus({ preventScroll: true });
+  return true;
+}
+
+function initializeAndroidSelects() {
+  if (!window.FujimiMobile) return;
+  document.documentElement.dataset.androidApp = 'true';
+  const fields = new Map();
+  const trackedOptions = new WeakSet();
+  let sequence = 0;
+  const enabled = (select, option) => !select.matches(':disabled') && !option.disabled && !option.parentElement?.disabled && !option.hidden;
+  const position = field => {
+    const rect = field.trigger.getBoundingClientRect();
+    if (!rect.width || !rect.height || rect.bottom <= 0 || rect.top >= innerHeight) { closeAndroidSelect(false); return; }
+    const below = Math.max(0, innerHeight - rect.bottom - 12);
+    const above = Math.max(0, rect.top - 12);
+    const upward = below < Math.min(field.list.scrollHeight, 192) && above > below;
+    const height = Math.min(320, upward ? above : below);
+    field.list.style.width = `${rect.width}px`;
+    field.list.style.maxHeight = `${height}px`;
+    field.list.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - rect.width - 8))}px`;
+    field.list.style.top = `${upward ? rect.top - Math.min(field.list.scrollHeight, height) - 4 : rect.bottom + 4}px`;
+  };
+  const highlight = (field, index) => {
+    field.active = index;
+    [...field.list.children].forEach((row, i) => row.classList.toggle('is-active', i === index));
+    const row = field.list.children[index];
+    if (!row) { field.trigger.removeAttribute('aria-activedescendant'); return; }
+    field.trigger.setAttribute('aria-activedescendant', row.id);
+    if (row.offsetTop < field.list.scrollTop) field.list.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > field.list.scrollTop + field.list.clientHeight) field.list.scrollTop = row.offsetTop + row.offsetHeight - field.list.clientHeight;
+  };
+  const render = field => {
+    const { select, list } = field;
+    list.replaceChildren(...[...select.options].map((option, index) => {
+      const row = document.createElement('div');
+      row.id = `${list.id}-${index}`;
+      row.className = 'android-select-option';
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(option.selected));
+      row.setAttribute('aria-disabled', String(!enabled(select, option)));
+      row.hidden = option.hidden;
+      row.textContent = option.label;
+      row.onclick = () => {
+        if (!enabled(select, option)) return;
+        const changed = select.selectedIndex !== index;
+        select.selectedIndex = index;
+        closeAndroidSelect();
+        if (changed) {
+          select.dispatchEvent(new Event('input', { bubbles: true }));
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      };
+      return row;
+    }));
+    position(field);
+    const index = enabled(select, select.options[field.active] || {}) ? field.active : [...select.options].findIndex(option => enabled(select, option));
+    highlight(field, index);
+  };
+  const sync = field => {
+    const { select, trigger } = field;
+    [...select.options].forEach(option => {
+      if (trackedOptions.has(option)) return;
+      trackedOptions.add(option);
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLOptionElement.prototype, 'selected');
+      Object.defineProperty(option, 'selected', { configurable: true, get() { return descriptor.get.call(this); }, set(value) {
+        descriptor.set.call(this, value);
+        const owner = fields.get(this.closest('select'));
+        if (owner) { owner.active = owner.select.selectedIndex; sync(owner); }
+      } });
+    });
+    const text = select.selectedOptions[0]?.label || '请选择';
+    if (trigger.textContent !== text) trigger.textContent = text;
+    trigger.disabled = select.matches(':disabled');
+    trigger.hidden = select.hidden;
+    trigger.setAttribute('aria-required', String(select.required));
+    if (activeAndroidSelect === field) {
+      if (trigger.disabled || select.hidden || !trigger.getClientRects().length) closeAndroidSelect(false);
+      else render(field);
+    }
+  };
+  const open = field => {
+    sync(field);
+    if (field.trigger.disabled || field.trigger.hidden) return;
+    if (activeAndroidSelect === field) { closeAndroidSelect(); return; }
+    closeAndroidSelect(false);
+    field.active = field.select.selectedIndex;
+    (field.select.closest('dialog[open]') || document.body).append(field.list);
+    activeAndroidSelect = field;
+    field.trigger.setAttribute('aria-expanded', 'true');
+    if (typeof field.list.showPopover === 'function') field.list.showPopover();
+    render(field);
+    field.trigger.focus({ preventScroll: true });
+  };
+  const enhance = select => {
+    if (fields.has(select) || select.multiple || select.size > 1) return;
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'android-select-trigger';
+    trigger.dataset.androidSelect = select.id || `android-select-${++sequence}`;
+    trigger.setAttribute('role', 'combobox');
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    const label = select.labels?.[0]?.cloneNode(true);
+    label?.querySelectorAll('select, button').forEach(node => node.remove());
+    if (select.hasAttribute('aria-labelledby')) trigger.setAttribute('aria-labelledby', select.getAttribute('aria-labelledby'));
+    else trigger.setAttribute('aria-label', select.getAttribute('aria-label') || label?.textContent.trim() || '选择');
+    const list = document.createElement('div');
+    list.id = `android-select-list-${++sequence}`;
+    list.className = 'android-select-list';
+    // Listbox rows use the combobox's focus; clicking a disabled row must not
+    // strand keyboard navigation on the document. Touch scrolling stays native.
+    list.onmousedown = event => event.preventDefault();
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', trigger.getAttribute('aria-label') || '选择');
+    if (typeof list.showPopover === 'function') list.setAttribute('popover', 'manual');
+    trigger.setAttribute('aria-controls', list.id);
+    const field = { select, trigger, list, active: select.selectedIndex };
+    fields.set(select, field);
+    select.classList.add('android-native-select');
+    select.setAttribute('aria-hidden', 'true');
+    select.tabIndex = -1;
+    select.after(trigger);
+    // Programmatic value changes don't emit mutation/change events. Delegate to
+    // the native accessors so assignments used by existing loaders stay intact.
+    ['value', 'selectedIndex'].forEach(property => {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, property);
+      Object.defineProperty(select, property, { configurable: true, get() { return descriptor.get.call(this); }, set(value) { descriptor.set.call(this, value); field.active = this.selectedIndex; sync(field); } });
+    });
+    select.focus = options => trigger.focus(options);
+    select.addEventListener('change', () => sync(field));
+    select.addEventListener('input', () => sync(field));
+    trigger.onclick = () => open(field);
+    trigger.onkeydown = event => {
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End', 'Enter', ' ', 'Escape', 'Tab'].includes(event.key)) return;
+      if (event.key === 'Escape' || event.key === 'Tab') {
+        if (activeAndroidSelect === field) { if (event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); } closeAndroidSelect(event.key === 'Escape'); }
+        return;
+      }
+      event.preventDefault();
+      if (activeAndroidSelect !== field) { open(field); return; }
+      if (event.key === 'Enter' || event.key === ' ') { field.list.children[field.active]?.click(); return; }
+      const indices = [...select.options].map((option, i) => enabled(select, option) ? i : -1).filter(i => i >= 0);
+      const current = indices.indexOf(field.active);
+      const next = event.key === 'Home' ? indices[0] : event.key === 'End' ? indices.at(-1) : indices[Math.max(0, Math.min(indices.length - 1, current + (event.key === 'ArrowDown' ? 1 : -1)))];
+      highlight(field, next ?? -1);
+    };
+    sync(field);
+  };
+  document.querySelectorAll('select').forEach(enhance);
+  const observer = new MutationObserver(records => {
+    const changed = new Set();
+    records.forEach(record => {
+      const select = record.target instanceof Element ? record.target.closest('select') : record.target.parentElement?.closest('select');
+      if (select && fields.has(select)) changed.add(fields.get(select));
+      if (record.type === 'attributes' && record.target instanceof Element && !select) {
+        record.target.querySelectorAll('select').forEach(node => { if (fields.has(node)) changed.add(fields.get(node)); });
+      }
+      record.addedNodes.forEach(node => {
+        if (!(node instanceof Element)) return;
+        if (node.matches('select')) enhance(node);
+        node.querySelectorAll('select').forEach(enhance);
+      });
+    });
+    fields.forEach((field, select) => {
+      if (!select.isConnected) {
+        if (activeAndroidSelect === field) closeAndroidSelect(false);
+        field.trigger.remove(); field.list.remove(); fields.delete(select);
+      } else if (select.nextElementSibling !== field.trigger) select.after(field.trigger);
+    });
+    changed.forEach(sync);
+  });
+  observer.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+  document.addEventListener('pointerdown', event => {
+    if (activeAndroidSelect && !activeAndroidSelect.trigger.contains(event.target) && !activeAndroidSelect.list.contains(event.target)) closeAndroidSelect(false);
+  }, true);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && activeAndroidSelect) { event.preventDefault(); event.stopImmediatePropagation(); closeAndroidSelect(); }
+  }, true);
+  document.addEventListener('cancel', event => {
+    if (activeAndroidSelect) { event.preventDefault(); closeAndroidSelect(); }
+  }, true);
+  document.addEventListener('close', () => { if (activeAndroidSelect && !activeAndroidSelect.trigger.getClientRects().length) closeAndroidSelect(false); }, true);
+  document.addEventListener('reset', () => queueMicrotask(() => fields.forEach(sync)), true);
+  document.addEventListener('scroll', event => { if (activeAndroidSelect && event.target !== activeAndroidSelect.list) position(activeAndroidSelect); }, true);
+  window.addEventListener('resize', () => { if (activeAndroidSelect) position(activeAndroidSelect); });
+}
+initializeAndroidSelects();
 let hlsLibraryPromise = null;
 
 async function api(path, options = {}) {
@@ -272,7 +513,7 @@ async function api(path, options = {}) {
         const queued = queueMobileOfflineChange(path, options);
         if (queued) return queued;
       }
-      const error = new Error(parsed?.detail || "璇锋眰澶辫触");
+      const error = new Error(parsed?.detail || "请求失败");
       error.status = result.status;
       throw error;
     }
@@ -334,11 +575,19 @@ window.__fujimiTtsEvent = (utteranceId, event) => {
   if (["done", "error", "stop"].includes(event)) mobileTtsCallbacks.delete(utteranceId);
 };
 
-function mobileSpeak(text, rate, callback) {
+function mobileSpeak(text, rate, callback, voiceName = "") {
   const id = `tts-${Date.now()}-${++mobileCallbackSequence}`;
   mobileTtsCallbacks.set(id, callback);
-  window.FujimiMobile.speak(String(text || ""), Number(rate) || 1, id);
+  if (window.FujimiMobile.speakWithVoice) window.FujimiMobile.speakWithVoice(String(text || ""), Number(rate) || 1, id, edgeVoiceId(voiceName));
+  else window.FujimiMobile.speak(String(text || ""), Number(rate) || 1, id);
   return id;
+}
+
+function edgeVoiceId(voiceName = "") {
+  const value = String(voiceName || "");
+  if (value === "ja-JP-KeitaNeural" || /(?:Keita|圭太)/i.test(value)) return "ja-JP-KeitaNeural";
+  if (value === "ja-JP-NanamiNeural" || /(?:Nanami|七海)/i.test(value)) return "ja-JP-NanamiNeural";
+  return value;
 }
 
 function stopSpeechEngine() {
@@ -347,10 +596,19 @@ function stopSpeechEngine() {
 }
 
 function mobileApiRequest(path, method, body, multipart = null) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const callbackId = `mobile-${++mobileCallbackSequence}`;
-    mobileCallbacks.set(callbackId, resolve);
-    window.FujimiMobile.request(JSON.stringify({ path, method, body, multipart }), callbackId);
+    const timer = window.setTimeout(() => {
+      mobileCallbacks.delete(callbackId);
+      reject(new Error("本机请求超时，请重试。"));
+    }, /^\/api\/articles\/\d+\/edge-tts$/.test(path) || path.startsWith("/api/pc-speech/") ? 600000 : path === "/api/settings/voice-file" ? 300000 : path.startsWith("/api/dictionary/") ? 120000 : 30000);
+    mobileCallbacks.set(callbackId, result => { window.clearTimeout(timer); resolve(result); });
+    try { window.FujimiMobile.request(JSON.stringify({ path, method, body, multipart }), callbackId); }
+    catch (_error) {
+      window.clearTimeout(timer);
+      mobileCallbacks.delete(callbackId);
+      reject(new Error("无法调用 Android 本机接口。"));
+    }
   });
 }
 
@@ -460,6 +718,7 @@ function toast(message, isError = false) {
     item.classList.add("is-leaving");
     setTimeout(() => item.remove(), 220);
   }, 2600);
+  return item;
 }
 
 function panelNotice(selector, message, isError = false) {
@@ -472,6 +731,81 @@ function panelError(selector, message = "") {
   const element = $(selector);
   element.textContent = message;
   element.hidden = !message;
+}
+
+let mobileArticleLookupTrigger = null;
+let mobileArticleLookupWord = null;
+// The native word card owns a transparent full-screen click layer behind its content.
+const mobileLookupBackdrop = redesignedReadingUi ? document.createElement("div") : null;
+if (mobileLookupBackdrop) {
+  mobileLookupBackdrop.id = "mobile-lookup-backdrop";
+  mobileLookupBackdrop.hidden = true;
+  mobileLookupBackdrop.setAttribute("aria-hidden", "true");
+  $("#selection-lookup").before(mobileLookupBackdrop);
+  mobileLookupBackdrop.addEventListener("pointerdown", event => event.stopPropagation());
+  mobileLookupBackdrop.addEventListener("click", event => {
+    event.stopPropagation();
+    // A second tap while the first query is pending does not start or cancel a query.
+    if ($("#selection-lookup").hidden && state.selectionLookupController) return;
+    hideSelectionLookup({ clearSelection: true });
+  });
+}
+
+async function prepareMobileReadingLookup(root, contentSelector, textSelector) {
+  if (!redesignedReadingUi) return;
+  const content = root.querySelector(contentSelector);
+  content.id = contentSelector === ".parallel" ? "moji-article-content" : "moji-book-content";
+  content.dataset.mojiLookupRoot = "";
+  const mark = (element, text) => {
+    element.dataset.lookupQuery = text;
+    element.tabIndex = 0;
+    element.setAttribute("role", "button");
+    element.setAttribute("aria-label", `「${text}」を調べる`);
+  };
+  const texts = [];
+  content.querySelectorAll(textSelector).forEach(paragraph => {
+    paragraph.removeAttribute("role");
+    paragraph.removeAttribute("tabindex");
+    paragraph.removeAttribute("aria-label");
+    paragraph.closest(".paragraph").classList.add("moji-article-srt");
+    paragraph.querySelectorAll("ruby").forEach(ruby => {
+      if (ruby.closest("a, button") || ruby.parentElement.closest("ruby")) return;
+      if (!ruby.querySelector("rb")) {
+        const base = document.createElement("rb");
+        Array.from(ruby.childNodes).filter(child => !child.matches?.("rt, rp")).forEach(child => base.append(child));
+        ruby.prepend(base);
+      }
+      mark(ruby, ruby.querySelector("rb").textContent);
+    });
+    const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT, {
+      acceptNode: text => text.parentElement.closest("ruby, rt, rp, a, button, .moji-toolkit-org") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT,
+    });
+    while (walker.nextNode()) texts.push(walker.currentNode);
+  });
+  await new Promise(requestAnimationFrame);
+  if (!content.isConnected) return;
+  window.MojiArticleLookup.mount(content, (text, word) => {
+    // ArticleWebView.A strips the parenthesized suffix before calling the word dialog.
+    const query = text.split("(")[0];
+    if (query && word) showSelectionLookup(query, word.getBoundingClientRect(), null, word);
+  }, () => root.querySelector(".article-audio-player")?.dataset.playing === "true");
+  content.addEventListener("keydown", event => {
+    if (!["Enter", " "].includes(event.key) || !event.target.matches("[data-lookup-query]")) return;
+    event.preventDefault(); event.target.click();
+  });
+  try {
+    const payload = await api("/api/dictionary/tokenize", { method: "POST", body: JSON.stringify({ texts: texts.map(text => text.textContent) }) });
+    if (!content.isConnected) return;
+    texts.forEach((text, index) => {
+      const fragment = document.createDocumentFragment();
+      (payload.tokens[index] || []).forEach(surface => {
+        if (!/[\p{L}\p{N}]/u.test(surface)) { fragment.append(document.createTextNode(surface)); return; }
+        const word = document.createElement("span"); word.className = "moji-toolkit-org";
+        word.textContent = surface; mark(word, surface); fragment.append(word);
+      });
+      text.replaceWith(fragment);
+    });
+  } catch (error) { if (content.isConnected) toast(error.message, true); }
 }
 
 function selectionTextWithoutRuby(selection) {
@@ -495,7 +829,10 @@ function selectionLookupEligible(selection, eventTarget) {
   return Boolean(element?.closest(".article-detail, .dictionary-detail, .news-card, .book-chapter-body"));
 }
 
-function hideSelectionLookup({ clearSelection = false } = {}) {
+function hideSelectionLookup({ clearSelection = false, restoreFocus = false } = {}) {
+  const trigger = mobileArticleLookupTrigger;
+  mobileArticleLookupTrigger = null;
+  mobileArticleLookupWord = null;
   if (state.selectionLookupController) state.selectionLookupController.abort();
   state.selectionLookupController = null;
   state.selectionLookupToken += 1;
@@ -505,16 +842,22 @@ function hideSelectionLookup({ clearSelection = false } = {}) {
   state.selectionLookupResults = [];
   state.selectionLookupActiveId = "";
   const popover = $("#selection-lookup");
-  popover.classList.remove("is-detail", "is-size-locked");
+  popover.classList.remove("is-detail", "is-size-locked", "is-mobile-article", "is-mobile-expanded");
+  $("#selection-lookup-close").textContent = "×";
+  delete popover.dataset.singleResult;
   popover.style.height = "";
   popover.hidden = true;
+  popover.removeAttribute("aria-modal");
+  if (mobileLookupBackdrop) mobileLookupBackdrop.hidden = true;
   if (clearSelection) window.getSelection()?.removeAllRanges();
+  if (restoreFocus && trigger?.isConnected) trigger.focus({ preventScroll: true });
 }
 
 function positionSelectionLookup() {
   const popover = $("#selection-lookup");
   const rect = state.selectionLookupRect;
   if (popover.hidden || !rect) return;
+  if (popover.classList.contains("is-mobile-article")) return;
   const margin = 12;
   const gap = 9;
   const width = Math.min(360, window.innerWidth - margin * 2);
@@ -576,7 +919,89 @@ function renderSelectionLookupResults(results = state.selectionLookupResults) {
   requestAnimationFrame(positionSelectionLookup);
 }
 
+function mobileLookupIcon(name) {
+  const image = document.createElement("img");
+  image.src = `/static/lookup_assets/${name}.png`;
+  image.alt = "";
+  return image;
+}
+
+function renderMobileLookupCard(word) {
+  mobileArticleLookupWord = word;
+  const panel = $("#selection-lookup");
+  panel.classList.add("is-detail");
+  $("#selection-lookup-close").replaceChildren(mobileLookupIcon("nav_icon_close"));
+  const card = document.createElement("article");
+  card.className = "selection-lookup-detail moji-lookup-card";
+  const title = document.createElement("header");
+  title.className = "moji-lookup-title";
+  const spell = document.createElement("strong"); spell.textContent = word.spell;
+  const pron = word.pron || (word.sections || []).find(section => section.pron)?.pron
+    || (mobileArticleLookupTrigger?.dataset.lookupQuery === word.spell
+      ? [...mobileArticleLookupTrigger.querySelectorAll("rt")].map(rt => rt.textContent).join("") : "");
+  const reading = document.createElement("span");
+  reading.textContent = pron ? ` | ${pron}` : "";
+  const accent = document.createElement("span");
+  accent.textContent = String(word.accent ?? "").replace(/\d+/g, value => Number(value) === 0 ? "⓪" : Number(value) <= 20 ? String.fromCodePoint(0x2460 + Number(value) - 1) : value);
+  title.append(spell, reading, accent);
+  const originalCard = word.moji_card;
+  if (originalCard) title.textContent = originalCard.title;
+  const meta = document.createElement("div"); meta.className = "moji-lookup-meta";
+  const part = document.createElement("span"); part.className = "moji-lookup-part";
+  part.textContent = [...new Set((word.details || []).flatMap(item => item.partOfSpeech || []))].join("・");
+  if (originalCard) part.textContent = originalCard.partOfSpeech;
+  if (originalCard?.partOfSpeechColor) part.style.setProperty('--moji-part-color', '#' + (originalCard.partOfSpeechColor >>> 0).toString(16).padStart(8, '0').slice(2));
+  part.hidden = !part.textContent;
+  const tools = document.createElement("div"); tools.className = "moji-lookup-tools";
+  const favorite = document.createElement("button"); favorite.type = "button"; favorite.className = "moji-lookup-favorite";
+  const key = "fujimi-dictionary-favorites";
+  let favorites;
+  const updateFavorite = () => {
+    const saved = favorites.includes(String(word.id));
+    favorite.setAttribute("aria-pressed", String(saved));
+    favorite.setAttribute("aria-label", saved ? "取消收藏词语" : "收藏词语");
+    favorite.replaceChildren(mobileLookupIcon(saved ? "ic_common_collected" : "ic_common_collect"));
+  };
+  try {
+    favorites = JSON.parse(localStorage.getItem(key) || "[]");
+    if (!Array.isArray(favorites)) throw new Error("收藏记录无法读取");
+    updateFavorite();
+  } catch (_) { favorite.disabled = true; favorite.setAttribute("aria-label", "收藏记录无法读取"); favorite.append(mobileLookupIcon("ic_common_collect")); }
+  favorite.onclick = () => {
+    const next = favorites.includes(String(word.id)) ? favorites.filter(id => id !== String(word.id)) : [...favorites, String(word.id)];
+    try { localStorage.setItem(key, JSON.stringify(next)); favorites = next; updateFavorite(); }
+    catch (_) { toast("收藏保存失败。", true); }
+  };
+  const speech = dictionarySpeechButton(originalCard?.speechText || pron || word.spell, "单词发音");
+  speech.replaceChildren(mobileLookupIcon("ic_voice_high_red"));
+  tools.append(favorite, speech); meta.append(part, tools);
+  const meaning = document.createElement("div"); meaning.className = "moji-lookup-meaning"; meaning.tabIndex = 0;
+  // Moji's WordExpandView joins Chinese and Japanese Subdetails; examples stay in the detail view.
+  const meanings = dictionaryDefinitionGroups(word.definitions || []).map(group => {
+    const zh = group.zh.map(item => item.title || "").join("\n");
+    const ja = group.ja.map(item => item.title || "").join("\n");
+    return zh + (ja ? `（${ja}）` : "");
+  }).filter(Boolean);
+  meaning.textContent = meanings.join("\n\n") || word.excerpt || "释义未收录";
+  if (originalCard) meaning.textContent = originalCard.meaning;
+  const actions = document.createElement("footer"); actions.className = "moji-lookup-actions";
+  const action = (text, icon, run) => {
+    const button = document.createElement("button"); button.type = "button";
+    button.append(mobileLookupIcon(icon), document.createTextNode(text)); button.onclick = run; return button;
+  };
+  actions.append(action("详情", "ic_common_display", () => {
+    panel.classList.add("is-mobile-expanded");
+    $("#selection-lookup-close").textContent = "×";
+    renderSelectionLookupDetail(word);
+  }), action("MOJi辞書", "ic_common_search", () => {
+    if (!window.FujimiMobile?.openMojiDictionary?.(state.selectionLookupQuery)) toast("未能打开 MOJi辞書，请确认已安装。", true);
+  }));
+  card.append(title, meta, meaning, actions);
+  $("#selection-lookup-results").replaceChildren(card);
+}
+
 function renderSelectionLookupDetail(word) {
+  if ($("#selection-lookup").classList.contains("is-mobile-article") && !$("#selection-lookup").classList.contains("is-mobile-expanded")) return renderMobileLookupCard(word);
   $("#selection-lookup").classList.add("is-detail");
   const target = $("#selection-lookup-results");
   const article = document.createElement("article");
@@ -586,6 +1011,10 @@ function renderSelectionLookupDetail(word) {
   back.className = "selection-lookup-back";
   back.textContent = "← 検索結果";
   back.onclick = returnSelectionLookupResults;
+  if ($("#selection-lookup").classList.contains("is-mobile-expanded")) {
+    back.textContent = "返回";
+    back.onclick = () => { $("#selection-lookup").classList.remove("is-mobile-expanded"); renderMobileLookupCard(word); };
+  }
   const header = document.createElement("header");
   const title = document.createElement("strong");
   title.textContent = word.spell || "";
@@ -652,6 +1081,7 @@ function renderSelectionLookupDetail(word) {
 
 function lockSelectionLookupSize() {
   const popover = $("#selection-lookup");
+  if (popover.classList.contains("is-mobile-article")) return;
   if (popover.hidden || popover.classList.contains("is-size-locked")) return;
   const height = Math.min(popover.getBoundingClientRect().height, window.innerHeight - 24);
   popover.style.height = `${Math.round(height)}px`;
@@ -712,8 +1142,15 @@ async function openSelectionLookupInDictionary(id = "") {
   if (activeId) await loadDictionaryDetail(activeId);
 }
 
-async function showSelectionLookup(query, rect, range = null) {
+async function showSelectionLookup(query, rect, range = null, mobileTrigger = null) {
+  if (mobileTrigger && mobileLookupBackdrop && !mobileLookupBackdrop.hidden) return;
   hideSelectionLookup();
+  mobileArticleLookupTrigger = mobileTrigger;
+  $("#selection-lookup").classList.toggle("is-mobile-article", Boolean(mobileTrigger));
+  if (mobileTrigger && mobileLookupBackdrop) {
+    mobileLookupBackdrop.hidden = false;
+    $("#selection-lookup").setAttribute("aria-modal", "true");
+  }
   state.selectionLookupQuery = query;
   state.selectionLookupRect = rect;
   state.selectionLookupRange = range;
@@ -724,13 +1161,26 @@ async function showSelectionLookup(query, rect, range = null) {
   state.selectionLookupController = controller;
   $("#selection-lookup-query").textContent = query;
   const resultsElement = $("#selection-lookup-results");
-  const loading = document.createElement("p");
-  loading.className = "selection-lookup-status";
-  loading.textContent = "検索中…";
-  resultsElement.replaceChildren(loading);
-  $("#selection-lookup").hidden = false;
-  requestAnimationFrame(positionSelectionLookup);
+  if (!mobileTrigger) {
+    const loading = document.createElement("p");
+    loading.className = "selection-lookup-status";
+    loading.textContent = "検索中…";
+    resultsElement.replaceChildren(loading);
+    $("#selection-lookup").hidden = false;
+    requestAnimationFrame(positionSelectionLookup);
+  }
   try {
+    if (mobileTrigger) {
+      const word = await api(`/api/dictionary/clickDetail?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+      if (token !== state.selectionLookupToken) return;
+      if (word.moji_card === null) { hideSelectionLookup(); return; }
+      state.selectionLookupActiveId = word.id;
+      state.selectionLookupResults = [word];
+      $("#selection-lookup").dataset.singleResult = "true";
+      renderMobileLookupCard(word);
+      $("#selection-lookup").hidden = false;
+      return;
+    }
     const payload = await api(`/api/dictionary/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
     if (token !== state.selectionLookupToken) return;
     const results = (payload.results || []).slice(0, 4);
@@ -738,6 +1188,11 @@ async function showSelectionLookup(query, rect, range = null) {
     renderSelectionLookupResults(results);
   } catch (error) {
     if (error.name === "AbortError" || token !== state.selectionLookupToken) return;
+    if (mobileTrigger) {
+      hideSelectionLookup();
+      if (error.status !== 404) toast(error.message, true);
+      return;
+    }
     const failed = document.createElement("p");
     failed.className = "selection-lookup-status error";
     failed.textContent = error.message;
@@ -750,6 +1205,8 @@ async function showSelectionLookup(query, rect, range = null) {
 
 function handleSelectionLookup(event) {
   if (event.button !== 0 || $("#selection-lookup").contains(event.target)) return;
+  if (event.target === mobileLookupBackdrop) return;
+  if (redesignedReadingUi && event.target.closest("[data-moji-lookup-root]")) return;
   setTimeout(() => {
     const selection = window.getSelection();
     if (!selectionLookupEligible(selection, event.target)) {
@@ -908,7 +1365,12 @@ function exitReaderRoom() {
 
 async function restoreReaderArticle() {
   if (state.article) {
-    resumeArticlePlayback();
+    if (!redesignedReadingUi) { resumeArticlePlayback(); return true; }
+    const root = $("#reader-result .article-detail");
+    if (root?.classList.contains("has-audio-player") && !resumeArticlePlayback(root)) {
+      resetReaderAudio(root);
+      setupArticleAudio(state.article, root);
+    }
     return true;
   }
   const remembered = rememberedReaderArticle();
@@ -977,7 +1439,7 @@ function restoreReaderImportTask() {
   if (taskId) trackReaderImport(taskId);
 }
 
-async function showView(view, { historyMode = "push", resetReader = false } = {}) {
+async function showView(view, { historyMode = "push", resetReader = false, restoreReader = true } = {}) {
   setMobileNavOpen(false, { restoreFocus: false });
   hideSelectionLookup();
   if (state.currentView === "library" && view !== "library" && state.libraryChapter && !$("#book-reader").hidden) {
@@ -988,7 +1450,7 @@ async function showView(view, { historyMode = "push", resetReader = false } = {}
     }
   }
   if (view !== "dictionary") stopDictionarySpeech();
-  if (view !== "reader" && view !== "library") {
+  if (redesignedReadingUi ? (view !== state.currentView || (view !== "reader" && view !== "library")) : (view !== "reader" && view !== "library")) {
     suspendArticlePlayback();
     stopRereadTracking();
   }
@@ -1008,7 +1470,7 @@ async function showView(view, { historyMode = "push", resetReader = false } = {}
   const routeHash = view === "library" ? (existingLibraryRoute ? location.hash : rememberedBookRoute || "#library") : `#${view}`;
   if (historyMode === "push" && (history.state?.view !== view || location.hash !== routeHash)) history.pushState({ view }, "", routeHash);
   if (historyMode === "replace") history.replaceState({ view }, "", routeHash);
-  if (view === "reader") {
+  if (view === "reader" && (!redesignedReadingUi || restoreReader)) {
     const restored = await restoreReaderArticle();
     if (!restored) restoreReaderImportTask();
   }
@@ -1154,24 +1616,27 @@ async function speakDictionaryText(text, button) {
     if (token !== state.dictionarySpeechToken) return;
   }
   if (window.FujimiMobile?.speak) {
+    const dictionaryVoice = edgeVoiceId(state.browserVoiceName);
+    // Dictionary speech uses the configured browser voice independently of article/reference mode.
+    if (localBrowserVoice(dictionaryVoice)?.saved_audio_only) return toast("当前系统声线仅可播放已保存音频；词典即时朗读请选择圭太或七海。", true);
     button.classList.add("is-speaking");
     button.setAttribute("aria-label", "停止朗读");
     button.title = "停止朗读";
     state.dictionarySpeech = { button, token, utterance: null };
     mobileSpeak(spokenText, 1, event => {
       if (state.dictionarySpeech?.token !== token) return;
-      if (event === "error") toast("系统朗读失败，请检查日语语音设置。", true);
+      if (event === "error") toast(state.browserVoiceName === 'android:system' ? "系统朗读失败，请检查手机文字转语音设置及日语音声。" : "Edge 在线朗读失败，请检查网络后重试。", true);
       if (["done", "error", "stop"].includes(event)) {
         resetDictionarySpeechButton(button);
         state.dictionarySpeech = null;
       }
-    });
+    }, dictionaryVoice);
     return;
   }
   const voice = await resolveJapaneseBrowserVoice({ persistDefault: true });
   if (token !== state.dictionarySpeechToken) return;
   if (!voice) {
-    toast("未检测到日语系统声线，已阻止中文声线朗读日文。请安装 Windows 日语（日本）语音包后重试。", true);
+    toast("未检测到可用的 Edge 在线声线，已阻止使用未知系统声线朗读日文。请检查网络后重试。", true);
     return;
   }
   if (voice.local) {
@@ -1566,6 +2031,7 @@ function closeMobileDictionaryDetail({ restoreFocus = true } = {}) {
   const wasOpen = view.classList.contains("dictionary-detail-open");
   view.classList.remove("dictionary-detail-open");
   if (!wasOpen || !isMobileDrawerLayout()) return;
+  if (redesignedReadingUi) window.dispatchEvent(new Event("fujimi:dictionary-detail-close"));
   const selector = '.dictionary-result[data-id="' + CSS.escape(String(state.dictionaryActiveId || "")) + '"]';
   const active = document.querySelector(selector);
   requestAnimationFrame(() => {
@@ -1780,12 +2246,18 @@ function desktopOnlineVoices() {
 }
 
 function desktopOnlineVoice(name) {
-  return desktopOnlineVoices().find(voice => voice.name === name) || null;
+  if (window.FujimiMobile?.request && ["ja-JP-KeitaNeural", "ja-JP-NanamiNeural"].includes(name)) return { id: name };
+  return desktopOnlineVoices().find(voice => voice.name === name || voice.id === name) || null;
 }
 
 function applyBrowserVoiceSettings(mode) {
+  if (mode.mode) state.voiceMode = mode.mode;
   state.browserVoiceName = mode.browser_voice_name || "";
   state.browserVoiceLabel = mode.browser_voice_label || "ブラウザー";
+}
+
+function mobileVoiceNeedsPc(browserName = state.browserVoiceName) {
+  return Boolean(window.FujimiMobile && (state.voiceMode === "voice" || localBrowserVoice(browserName)?.saved_audio_only));
 }
 
 function configuredBrowserVoice() {
@@ -1859,7 +2331,6 @@ async function resolveJapaneseBrowserVoice({ persistDefault = false, preferredNa
 }
 
 async function initializeBrowserVoice() {
-  if (window.FujimiMobile?.speak) return;
   try {
     const mode = await api("/api/settings/voice-mode");
     applyBrowserVoiceSettings(mode);
@@ -1867,6 +2338,17 @@ async function initializeBrowserVoice() {
       const catalog = await api("/api/browser-voices");
       if (Array.isArray(catalog)) state.browserVoices = catalog;
     } catch (_error) { state.browserVoices = []; }
+    if (window.FujimiMobile?.speak) {
+      if (mode.mode === "voice") return;
+      const available = state.browserVoices.filter(voice => voice.available !== false);
+      const selected = available.find(voice => voice.id === edgeVoiceId(state.browserVoiceName))
+        || (!state.browserVoiceName ? available.find(voice => voice.default) || available[0] : null);
+      if (selected && state.browserVoiceName !== selected.id) {
+        applyBrowserVoiceSettings(await api("/api/settings/browser-voice", { method: "PUT", body: JSON.stringify({ name: selected.id, label: "システム音声" }) }));
+        if (state.currentView === "settings") loadVoices();
+      }
+      return;
+    }
     await resolveJapaneseBrowserVoice({ persistDefault: true });
   } catch (_error) {
     // A later dictionary action retries the same safe voice resolution.
@@ -1878,7 +2360,9 @@ function browserVoiceShortName(voiceName = "") {
   if (local) return local.name;
   const match = voiceName.match(/^Microsoft\s+(.+?)(?:\s+Online|\s+Desktop|\s+-\s+Japanese|\s*\()/i);
   const shortName = (match?.[1] || voiceName).trim();
-  return ({ Nanami: "七海", Keita: "圭太" })[shortName] || shortName;
+  return ({ Nanami: "七海", Keita: "圭太", "ja-JP-NanamiNeural": "七海", "ja-JP-KeitaNeural": "圭太" })[shortName]
+    || ({ "ja-JP-NanamiNeural": "七海", "ja-JP-KeitaNeural": "圭太" })[voiceName]
+    || shortName;
 }
 
 function exampleVoiceChoices(voices, modeSettings, browserName, currentChoice) {
@@ -1910,7 +2394,7 @@ async function populateRereadVoices(select, article) {
   const [voices, modeSettings] = await Promise.all([api("/api/settings/voices"), api("/api/settings/voice-mode")]);
   applyBrowserVoiceSettings(modeSettings);
   const selectedBrowserName = browserVoiceShortName(state.browserVoiceName);
-  const browserLabel = selectedBrowserName ? `ブラウザー音声（${selectedBrowserName}）` : "ブラウザー音声";
+  const browserLabel = redesignedReadingUi ? (localBrowserVoice(state.browserVoiceName)?.name || selectedBrowserName || "音声") : selectedBrowserName ? `ブラウザー音声（${selectedBrowserName}）` : "ブラウザー音声";
   select.replaceChildren(
     new Option(browserLabel, "browser"),
     ...voices.map(voice => new Option(voice.name, `voice:${voice.id}`)),
@@ -2064,7 +2548,7 @@ function articleDetail(article) {
     const figure = document.createElement("figure");
     figure.className = "media-item";
     const image = document.createElement("img");
-    image.src = path.startsWith("/api/articles/") ? path : `/api/media/${path}`;
+    image.src = (redesignedReadingUi ? /^\/api\/(?:articles|bookmarks)\//.test(path) : path.startsWith("/api/articles/")) ? path : `/api/media/${path}`;
     image.alt = (article.image_captions || [])[index] || article.title;
     const link = imageLinks[index];
     if (link) {
@@ -2090,7 +2574,7 @@ function articleDetail(article) {
     .filter(index => !hasImagePositions || Number(imagePositions[index]) < 0);
   if (["nhk", "nikkei"].includes(article.source_key) && videoDescriptors.some(item => item.isLocal || item.poster) && topImageIndexes.length === 1) {
     const posterPath = imagePaths[topImageIndexes[0]];
-    videoDescriptors.forEach(item => { item.poster = posterPath.startsWith("/api/articles/") ? posterPath : `/api/media/${posterPath}`; });
+    videoDescriptors.forEach(item => { item.poster = (redesignedReadingUi ? /^\/api\/(?:articles|bookmarks)\//.test(posterPath) : posterPath.startsWith("/api/articles/")) ? posterPath : `/api/media/${posterPath}`; });
     topImageIndexes = [];
   }
   media.classList.toggle("media-single", topImageIndexes.length === 1 && !videoUrls.length);
@@ -2186,12 +2670,10 @@ function articleDetail(article) {
     parallel.append(section);
   });
   appendInlineImages((article.paragraphs || []).length);
+  prepareMobileReadingLookup(root, ".parallel", ".japanese");
   $(".full-translation", root).textContent = article.full_translation || "全文訳はまだ生成されていません。";
   setArticleTranslationView(root, "show");
 
-  const audio = $(".audio", root);
-  const hasAudio = Boolean(article.audio_path) && !["browser", "disabled"].includes(article.audio_status);
-  if (hasAudio) audio.src = mobileMediaUrl(article.audio_path, "/api/audio/");
   const bookmarkButton = $(".bookmark", root);
   renderBookmarkButton(bookmarkButton, Boolean(article.bookmarked));
   bookmarkButton.onclick = () => toggleBookmark(article, bookmarkButton);
@@ -2204,8 +2686,7 @@ function articleDetail(article) {
     }
   };
   $(".exit-reader", root).onclick = exitReaderRoom;
-  if (hasAudio) setupNativeArticlePlayer(article, root, audio);
-  else if (article.audio_status === "browser") setupBrowserArticlePlayer(article, root);
+  setupArticleAudio(article, root);
   const voiceSelect = $(".reread-voice", root);
   populateRereadVoices(voiceSelect, article).catch(error => setRereadTask(root, "failed", "声線を読み込めませんでした。", "", error.message));
   const rereadLink = $(".reread-link", root);
@@ -2313,19 +2794,21 @@ function openArticle(article, target) {
     startRereadTracking(article, target, root, "reread");
   } else if (root && ["failed", "replace_failed"].includes(article.audio_status)) {
     setRereadTask(root, "failed", article.audio_task_detail || "朗読生成に失敗しました。再試行してください。");
+  } else if (root && article.audio_unavailable_detail && !redesignedReadingUi) {
+    setRereadTask(root, "failed", article.audio_unavailable_detail);
   }
   target.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function openArticleInReader(article) {
-  await showView("reader", { resetReader: false });
+  await showView("reader", redesignedReadingUi ? { resetReader: false, restoreReader: false } : { resetReader: false });
   openArticle(article, $("#reader-result"));
 }
 
 function setRereadTask(root, status, label, count = "", detail = "", current = 0, total = 1, { cancellable = false } = {}) {
   const task = $(".reread-task", root);
   if (!task) return;
-  task.hidden = false;
+  task.hidden = redesignedReadingUi && status === "failed";
   task.classList.toggle("is-failed", status === "failed");
   $(".reread-task-label", task).textContent = status === "failed" && detail ? `${label} ${detail}` : label;
   const taskCancelButton = $(".reread-task-cancel", task);
@@ -2350,6 +2833,65 @@ function setRereadTask(root, status, label, count = "", detail = "", current = 0
     taskCancelButton.disabled = isCancelling;
   }
   if (voiceSelect) voiceSelect.disabled = isRunning;
+  if (redesignedReadingUi && status === "failed") toast(detail || label, true);
+}
+
+async function generateMobilePcSpeech(root, selection, { autoplay = false, paragraph = 0 } = {}) {
+  if (root.pcSpeechJob) return;
+  const book = root.id === "book-reader" ? state.libraryChapter : null;
+  const article = book ? null : state.article;
+  if (!book && !article) throw new Error("朗读正文不可用。");
+  const body = { kind: book ? "book" : "article", id: book ? book.book.id : article.id,
+    chapter_id: book?.chapter.id, selection };
+  const job = { id: "", cancelled: false }; root.pcSpeechJob = job;
+  const toggle = $(".audio-player-toggle", root);
+  if (toggle) { toggle.disabled = true; toggle.setAttribute("aria-busy", "true"); }
+  try {
+    setRereadTask(root, "running", "PCで朗読を準備しています…", "", "", 0, 1);
+    let result = await api("/api/pc-speech/start", { method: "POST", body: JSON.stringify(body) });
+    job.id = result.task_id || "";
+    while (!["ready", "completed"].includes(result.status)) {
+      if (["failed", "interrupted", "cancelled"].includes(result.status)) {
+        if (result.status === "cancelled") return;
+        throw new Error(result.message || "PC 朗读生成失败，请重试。");
+      }
+      if (!job.id) throw new Error("PC 未返回朗读任务。");
+      if (job.cancelled) return;
+      setRereadTask(root, "running", result.message || "PCで朗読を生成しています…", "", "",
+        Number(result.completed || 0), Number(result.total || 1), { cancellable: true });
+      await new Promise(resolve => setTimeout(resolve, 800));
+      result = await api(`/api/pc-speech/tasks/${job.id}`);
+    }
+    if (job.cancelled || !root.isConnected
+        || (book ? state.libraryChapter !== book || !isBookReaderActive(root) : state.article !== article || document.documentElement.dataset.nativeReading !== "article")) return;
+    if (book) await navigateBookChapter(book.book.id, book.chapter.id, { historyMode: "replace" });
+    else openArticle(result.article || await api(articleApiPath(article)), root.parentElement);
+    if (autoplay && state.articleAudio?.root.isConnected) state.articleAudio.seekParagraph(paragraph);
+  } finally {
+    if (root.pcSpeechJob === job) root.pcSpeechJob = null;
+    if (toggle?.isConnected) { toggle.disabled = false; toggle.removeAttribute("aria-busy"); }
+    if (root.isConnected && $(".reread-task", root)) $(".reread-task", root).hidden = true;
+  }
+}
+
+function mobileSpeechSelection(voiceValue = "") {
+  if (voiceValue.startsWith("voice:")) return { mode: "voice", voice_id: Number(voiceValue.slice(6)) };
+  if (voiceValue === "browser") return { mode: "browser", browser_voice_name: state.browserVoiceName };
+  return { mode: voiceValue || "model" };
+}
+
+function mobileSelectionNeedsPc(selection) {
+  if (!window.FujimiMobile?.request) return false;
+  if (selection.mode === "voice") return true;
+  if (selection.mode === "browser") return Boolean(localBrowserVoice(selection.browser_voice_name)?.saved_audio_only);
+  return ["model", "inherit"].includes(selection.mode) && mobileVoiceNeedsPc();
+}
+
+function reportArticleAudioError(controller, error) {
+  if (state.articleAudio !== controller || !controller.root.isConnected) return;
+  if (error?.name === "AbortError" && controller.audio.paused) return;
+  if (controller.errorToast?.isConnected) return;
+  controller.errorToast = toast("音频播放失败，请重试。", true);
 }
 
 async function rereadArticle(article, voiceValue, target, root) {
@@ -2360,19 +2902,24 @@ async function rereadArticle(article, voiceValue, target, root) {
       browserName = selected?.id || selected?.name || "";
       if (!browserName) throw new Error("利用できる日本語のブラウザー音声がありません。");
     }
-    const sharedOnlineVoice = window.FujimiDesktop && voiceValue === "browser" ? desktopOnlineVoice(browserName) : null;
+    const sharedOnlineVoice = (window.FujimiDesktop || window.FujimiMobile?.request) && voiceValue === "browser" ? desktopOnlineVoice(browserName) : null;
     if (sharedOnlineVoice) {
       setRereadTask(root, "running", "オンライン音声を生成して保存しています…", "", "", 0, 1, { cancellable: false });
       const result = await api(`/api/articles/${article.id}/edge-tts`, {
         method: "POST", body: JSON.stringify({ voice: sharedOnlineVoice.id }),
       });
       openArticle(result.article, target);
-      toast(result.cached ? "保存済みの朗読を読み込みました。" : "オンライン音声を保存しました。");
+      if (!window.FujimiMobile?.request) toast(result.cached ? "保存済みの朗読を読み込みました。" : "オンライン音声を保存しました。");
       return;
     }
     const mode = voiceValue.startsWith("voice:") ? "voice" : voiceValue;
     const voiceId = mode === "voice" ? Number(voiceValue.split(":", 2)[1]) : null;
-    setRereadTask(root, "running", "音声生成を準備しています…", "", "", 0, 1, { cancellable: true });
+    const selection = { mode, voice_id: voiceId, browser_voice_name: browserName };
+    if (mobileSelectionNeedsPc(selection)) {
+      await generateMobilePcSpeech(root, selection);
+      return;
+    }
+    setRereadTask(root, "running", window.FujimiMobile ? "保存済みの朗読を確認しています…" : "音声生成を準備しています…", "", "", 0, 1, { cancellable: !window.FujimiMobile });
     const result = await api(articleApiPath(article, "/reread"), { method: "POST", body: JSON.stringify({ mode, voice_id: voiceId, browser_voice_name: browserName }) });
     if (result.status === "ready") {
       stopRereadTracking();
@@ -2392,6 +2939,12 @@ async function rereadArticle(article, voiceValue, target, root) {
 }
 
 async function cancelReread(article, target, root, mode = "reread") {
+  if (root.pcSpeechJob) {
+    const job = root.pcSpeechJob;
+    if (job.id) await api(`/api/pc-speech/tasks/${job.id}`, { method: "DELETE" });
+    job.cancelled = true;
+    return;
+  }
   if (root.dataset.rereadCancelling === "true") return;
   root.dataset.rereadCancelling = "true";
   const button = $(".cancel-reread", root);
@@ -2651,9 +3204,42 @@ function setActiveAudioParagraph(root, index = -1) {
   root.querySelectorAll(".paragraph[data-audio-index]").forEach(section => {
     const active = Number(section.dataset.audioIndex) === index;
     section.classList.toggle("is-audio-active", active);
+    if (redesignedReadingUi) section.classList.toggle("--active", active);
     if (active) section.setAttribute("aria-current", "true");
     else section.removeAttribute("aria-current");
   });
+}
+
+function prepareAudioPlayer(root) {
+  if (!redesignedReadingUi) return $(".article-audio-player", root);
+  root.audioPlayerBindings?.abort();
+  root.audioPlayerBindings = new AbortController();
+  return $(".article-audio-player", root);
+}
+
+function resetReaderAudio(root) {
+  stopArticlePlayback();
+  // Replace only audio controls; keep the reading content and its UI state.
+  const oldPlayer = $(".article-audio-player", root);
+  const player = $("#article-template").content.querySelector(".article-audio-player").cloneNode(true);
+  player.setAttribute("aria-label", oldPlayer.getAttribute("aria-label"));
+  oldPlayer.replaceWith(player);
+  const audio = $("audio.audio, audio.book-audio", root);
+  const replacement = audio.cloneNode(false);
+  replacement.removeAttribute("src");
+  audio.replaceWith(replacement);
+}
+
+function setupArticleAudio(article, root) {
+  const audio = $(".audio", root);
+  const hasAudio = Boolean(article.audio_path) && !["browser", "disabled", "unavailable"].includes(article.audio_status);
+  if (hasAudio) {
+    audio.src = mobileMediaUrl(article.audio_path, "/api/audio/");
+    setupNativeArticlePlayer(article, root, audio);
+  } else if (article.audio_status === "browser" && !article.audio_unavailable_detail
+      || window.FujimiMobile?.request && article.audio_unavailable_detail) {
+    setupBrowserArticlePlayer(article, root);
+  }
 }
 
 function bindParagraphSeeking(root, seek) {
@@ -2661,18 +3247,20 @@ function bindParagraphSeeking(root, seek) {
     const seekTarget = section.querySelector(".japanese") || section;
     const jump = event => {
       if (event.target.closest('a[href]')) return;
+      if (redesignedReadingUi && (root.querySelector(".article-audio-player")?.dataset.playing !== "true" || section.classList.contains("is-audio-active"))) return;
       if (event.type === "keydown" && !["Enter", " "].includes(event.key)) return;
       if (event.type === "click" && !window.getSelection()?.isCollapsed) return;
       event.preventDefault();
       event.stopPropagation();
       seek(Number(section.dataset.audioIndex));
     };
-    seekTarget.addEventListener("click", jump);
-    seekTarget.addEventListener("keydown", jump);
+    const options = redesignedReadingUi ? { signal: root.audioPlayerBindings.signal } : undefined;
+    seekTarget.addEventListener("click", jump, options);
+    seekTarget.addEventListener("keydown", jump, options);
   });
 }
 
-function configurePlaybackRate(root, initialRate, onChange) {
+function configureOriginalPlaybackRate(root, initialRate, onChange) {
   const toggle = $(".audio-rate-toggle", root);
   const value = $(".audio-rate-value", toggle);
   const menu = $(".audio-rate-menu", root);
@@ -2705,7 +3293,127 @@ function configurePlaybackRate(root, initialRate, onChange) {
   render(initialRate);
 }
 
-function renderAudioPlayerChrome(player, { playing, current, duration, progress, maximum }) {
+function configurePlaybackRate(root, initialRate, onChange) {
+  if (!redesignedReadingUi) return configureOriginalPlaybackRate(root, initialRate, onChange);
+  const toggle = $(".audio-rate-toggle", root);
+  const value = $(".audio-rate-value", toggle);
+  const menu = $(".audio-rate-menu", root);
+  const render = rate => {
+    toggle.setAttribute("aria-label", `播放速度，当前 ${rate} 倍`);
+    value.textContent = `${Number.isInteger(rate) ? rate.toFixed(1) : rate}x`;
+    menu.querySelectorAll("button[data-rate]").forEach(button => {
+      button.setAttribute("aria-checked", String(Number(button.dataset.rate) === rate));
+    });
+  };
+  const close = () => {
+    menu.hidden = true;
+    toggle.setAttribute("aria-expanded", "false");
+  };
+  toggle.onclick = event => {
+    event.stopPropagation();
+    $(".audio-listen-menu", root).hidden = true;
+    $(".audio-listen-toggle", root).setAttribute("aria-expanded", "false");
+    menu.hidden = !menu.hidden;
+    toggle.setAttribute("aria-expanded", String(!menu.hidden));
+  };
+  menu.querySelectorAll("button[data-rate]").forEach(button => {
+    button.onclick = () => {
+      const rate = Number(button.dataset.rate);
+      rememberPlaybackRate(rate);
+      render(rate);
+      close();
+      toggle.focus({ preventScroll: true });
+      onChange(rate);
+    };
+  });
+  root.addEventListener("click", event => { if (!event.target.closest(".audio-rate-control")) close(); }, { signal: root.audioPlayerBindings.signal });
+  toggle.addEventListener("keydown", event => {
+    if (event.key !== "ArrowDown") return;
+    event.preventDefault();
+    menu.hidden = false;
+    toggle.setAttribute("aria-expanded", "true");
+    menu.querySelector('[aria-checked="true"]')?.focus();
+  });
+  menu.addEventListener("keydown", event => {
+    const buttons = [...menu.querySelectorAll("button[data-rate]")];
+    const index = buttons.indexOf(document.activeElement);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      toggle.focus({ preventScroll: true });
+    } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -3, ArrowDown: 3 }[event.key] || 0;
+      const target = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + step + buttons.length) % buttons.length;
+      buttons[target].focus();
+    }
+  });
+  render(initialRate);
+}
+
+function bindPlayerParagraphButtons(player, seekParagraph) {
+  if (!redesignedReadingUi) return;
+  for (const [selector, step] of [[".audio-player-previous", -1], [".audio-player-next", 1]]) {
+    $(selector, player).onclick = () => {
+      const target = Number(player.dataset.paragraphIndex || 0) + step;
+      if (target >= 0 && target < Number(player.dataset.paragraphCount || 0)) seekParagraph(target);
+    };
+  }
+  const root = player.closest('#book-reader, .article-detail');
+  const toggle = $(".audio-listen-toggle", player);
+  const menu = $(".audio-listen-menu", player);
+  const buttons = [...menu.querySelectorAll('button')];
+  const close = () => {
+    menu.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    $(".audio-rate-menu", player).hidden = true;
+    $(".audio-rate-toggle", player).setAttribute('aria-expanded', 'false');
+    const original = root.id === 'book-reader' ? root.dataset.languageMode === 'ja' : root.dataset.translationMode === 'hide';
+    buttons.forEach(button => {
+      if (button.dataset.listeningMode) button.setAttribute('aria-checked', String((button.dataset.listeningMode === 'original') === original));
+    });
+    menu.hidden = false;
+    toggle.setAttribute('aria-expanded', 'true');
+  };
+  toggle.onclick = event => { event.stopPropagation(); if (menu.hidden) open(); else close(); };
+  toggle.onkeydown = event => { if (event.key === 'ArrowDown') { event.preventDefault(); open(); buttons[0].focus(); } };
+  buttons.forEach(button => {
+    button.onclick = () => {
+      const mode = button.dataset.listeningMode;
+      if (mode) {
+        if (root.id === 'book-reader') setBookLanguageMode(root, mode === 'original' ? 'ja' : 'parallel');
+        else setArticleTranslationView(root, mode === 'original' ? 'hide' : 'show');
+      } else seekParagraph(Number(player.dataset.paragraphIndex || 0));
+      close();
+      toggle.focus({ preventScroll: true });
+    };
+  });
+  menu.onkeydown = event => {
+    const index = buttons.indexOf(document.activeElement);
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); toggle.focus(); }
+    else if (['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next].focus();
+    }
+  };
+  player.addEventListener('click', event => {
+    if (!event.target.closest('.audio-listen-toggle, .audio-listen-menu')) close();
+  });
+}
+
+function playbackParagraphIndex(segments, position) {
+  // Newlines between speech segments still belong to the preceding paragraph.
+  for (let index = segments.length - 1; index > 0; index -= 1) {
+    if (position + 0.000001 >= segments[index].start) return index;
+  }
+  return 0;
+}
+
+function renderOriginalAudioPlayerChrome(player, { playing, current, duration, progress, maximum }) {
   const toggle = $(".audio-player-toggle", player);
   const icon = $(".audio-player-toggle-icon", toggle);
   const safeMaximum = Math.max(1, Number(maximum) || 1);
@@ -2713,6 +3421,37 @@ function renderAudioPlayerChrome(player, { playing, current, duration, progress,
   toggle.setAttribute("aria-label", playing ? "暂停朗读" : "播放朗读");
   toggle.title = playing ? "暂停朗读" : "播放朗读";
   icon.src = `/static/player_assets/ic_player_${playing ? "play" : "stop"}.png`;
+  $(".audio-player-current", player).textContent = formatSpeechTime(current);
+  $(".audio-player-duration", player).textContent = formatSpeechTime(duration);
+  $(".audio-player-progress-fill", player).style.width = `${safeProgress / safeMaximum * 100}%`;
+}
+
+function renderAudioPlayerChrome(player, { playing, current, duration, progress, maximum, paragraphIndex = 0, paragraphCount = 0 }) {
+  if (!redesignedReadingUi) return renderOriginalAudioPlayerChrome(player, { playing, current, duration, progress, maximum });
+  const toggle = $(".audio-player-toggle", player);
+  const safeMaximum = Math.max(1, Number(maximum) || 1);
+  const safeProgress = Math.max(0, Math.min(safeMaximum, Number(progress) || 0));
+  toggle.setAttribute("aria-label", playing ? "暂停朗读" : "播放朗读");
+  toggle.title = playing ? "暂停朗读" : "播放朗读";
+  player.dataset.playing = String(Boolean(playing));
+  player.dataset.paragraphIndex = String(paragraphIndex);
+  player.dataset.paragraphCount = String(paragraphCount);
+  $(".audio-player-previous", player).disabled = paragraphCount < 2 || paragraphIndex <= 0;
+  $(".audio-player-next", player).disabled = paragraphCount < 2 || paragraphIndex >= paragraphCount - 1;
+  $(".audio-player-replay", player).disabled = paragraphCount < 1;
+  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const artwork = [
+    ['.audio-player-toggle-icon', `ic_player_${playing ? 'play' : 'stop'}${dark ? '_dark' : ''}`],
+    ['.audio-player-previous img', `ic_player_prev${dark ? '_dark' : ''}`],
+    ['.audio-player-next img', `ic_player_next${dark ? '_dark' : ''}`],
+    ['.audio-rate-toggle img', `ic_player_set${dark ? '_dark' : ''}`],
+    ['.audio-listen-toggle img', dark ? 'ic_common_listen_and_read_dark' : 'ic_common_listen_read'],
+  ];
+  artwork.forEach(([selector, name]) => {
+    const image = $(selector, player);
+    const source = `/static/player_assets/${name}.png`;
+    if (image.getAttribute('src') !== source) image.src = source;
+  });
   $(".audio-player-current", player).textContent = formatSpeechTime(current);
   $(".audio-player-duration", player).textContent = formatSpeechTime(duration);
   $(".audio-player-progress-fill", player).style.width = `${safeProgress / safeMaximum * 100}%`;
@@ -2732,7 +3471,10 @@ function audioTimeline(paragraphs, storedSegments, duration) {
     })
     : paragraphs.map(paragraph => ({ duration: Math.max(1, String(paragraph || "").replace(/\s+/g, "").length), speechStartOffset: 0 }));
   const sum = values.reduce((total, value) => total + value.duration, 0) || 1;
-  const scale = Number.isFinite(duration) && duration > 0 ? duration / sum : 1;
+  // Edge's sentence offsets already address the saved MP3. Decoder estimates
+  // and trailing silence must not move its paragraph starts.
+  const edgeTimings = exact && storedSegments.every(segment => segment?.timing_source === "edge_sentence");
+  const scale = !edgeTimings && Number.isFinite(duration) && duration > 0 ? duration / sum : 1;
   let cursor = 0;
   return values.map(value => {
     const start = cursor;
@@ -2747,20 +3489,27 @@ function renderNativeArticleAudio(controller) {
   const duration = controller.mobileNative
     ? Number(controller.mobileStatus?.duration || (Number.isFinite(audio.duration) ? audio.duration : 0))
     : (Number.isFinite(audio.duration) ? audio.duration : 0);
-  const current = Math.min(duration || 0, Math.max(0, controller.mobileNative ? Number(controller.mobileStatus?.position || 0) : (audio.currentTime || 0)));
+  const position = Math.max(0, controller.mobileNative ? Number(controller.mobileStatus?.position || 0) : (audio.currentTime || 0));
+  const current = Math.min(duration || 0, position);
   const playing = controller.mobileNative ? Boolean(controller.mobileStatus?.playing) : (!audio.paused && !audio.ended);
   const progress = $(".audio-player-progress", player);
   progress.max = Math.max(1, duration);
   progress.value = current;
-  renderAudioPlayerChrome(player, { playing, current, duration, progress: current, maximum: duration });
+  renderAudioPlayerChrome(player, {
+    playing, current, duration, progress: current, maximum: duration,
+    paragraphIndex: controller.pendingParagraph ?? playbackParagraphIndex(controller.timeline, position),
+    paragraphCount: controller.paragraphCount,
+  });
+  // Media seeks round to microseconds; accumulated paragraph starts may be slightly larger.
+  const boundaryTime = current + 0.000001;
   const active = controller.started
-    ? controller.timeline.findIndex(segment => current >= segment.start && current < segment.end)
+    ? controller.timeline.findIndex(segment => boundaryTime >= segment.start && boundaryTime < segment.end)
     : -1;
   setActiveAudioParagraph(root, active);
 }
 
 function setupMobileMediaPlayer(article, root, audio) {
-  const player = $(".article-audio-player", root);
+  const player = prepareAudioPlayer(root);
   // Media3 owns native playback on Android. Keep the WebView from opening the
   // same WAV in a second decoder, which can exhaust memory during long reads.
   const mediaSource = audio.currentSrc || audio.src;
@@ -2768,7 +3517,7 @@ function setupMobileMediaPlayer(article, root, audio) {
   audio.preload = "none";
   audio.removeAttribute("src");
   audio.load();
-  const controller = { root, player, audio, mediaSource, timeline: [], started: false, rate: savedPlaybackRate(), mobileNative: true, mobileStatus: { playing: false, position: 0, duration: 0 }, mobileError: "", timer: null };
+  const controller = { root, player, audio, mediaSource, timeline: [], paragraphCount: (article.paragraphs || []).length, started: false, rate: savedPlaybackRate(), mobileNative: true, mobileStatus: { playing: false, position: 0, duration: 0 }, mobileError: "", timer: null };
   state.articleAudio = controller;
   root.classList.add("has-audio-player");
   player.hidden = false;
@@ -2781,7 +3530,7 @@ function setupMobileMediaPlayer(article, root, audio) {
     controller.mobileStatus = JSON.parse(window.FujimiMobile.mediaStatus());
     if (controller.mobileStatus.error && controller.mobileStatus.error !== controller.mobileError) {
       controller.mobileError = controller.mobileStatus.error;
-      toast(`音频播放失败：${controller.mobileStatus.error}`, true);
+      reportArticleAudioError(controller);
     }
     controller.started = controller.started || controller.mobileStatus.playing || controller.mobileStatus.position > 0;
     rebuildTimeline();
@@ -2803,7 +3552,7 @@ function setupMobileMediaPlayer(article, root, audio) {
       const position = controller.mobileStatus.ended ? 0 : Number(controller.mobileStatus.position || 0);
       const accepted = window.FujimiMobile.playMedia(controller.mediaSource, position, controller.rate);
       if (!accepted) {
-        toast("音频文件未同步到手机，请先执行一次同步。", true);
+        reportArticleAudioError(controller);
       } else {
         controller.mobileError = "";
         controller.mobileStatus.playing = true;
@@ -2822,27 +3571,30 @@ function setupMobileMediaPlayer(article, root, audio) {
     controller.started = true;
     renderNativeArticleAudio(controller);
   };
-  bindParagraphSeeking(root, index => {
+  const seekParagraph = index => {
     const bounded = Math.max(0, Math.min((article.paragraphs || []).length - 1, index));
     const position = controller.timeline[bounded]?.speechStart || 0;
     const accepted = window.FujimiMobile.playMedia(controller.mediaSource, position, controller.rate);
     if (!accepted) {
-      toast("音频文件未同步到手机，请先执行一次同步。", true);
+      reportArticleAudioError(controller);
       return;
     }
     controller.mobileStatus.position = position;
     controller.mobileStatus.playing = true;
     controller.mobileStatus.ended = false;
     controller.started = true;
-    renderNativeArticleAudio(controller);
-  });
-  renderNativeArticleAudio(controller);
+    if (redesignedReadingUi) renderNativeArticleAudio(controller);
+  };
+  bindParagraphSeeking(root, seekParagraph);
+  bindPlayerParagraphButtons(player, seekParagraph);
+  controller.seekParagraph = seekParagraph;
+  rebuildTimeline();
 }
 
 function setupNativeArticlePlayer(article, root, audio) {
-  if (window.FujimiMobile?.playMedia) return setupMobileMediaPlayer(article, root, audio);
-  const player = $(".article-audio-player", root);
-  const controller = { root, player, audio, timeline: [], started: false, pendingParagraph: null, rate: savedPlaybackRate() };
+  if (window.FujimiMobile?.playMedia && /\/api\/(?:(?:articles|bookmarks)\/\d+\/assets|books\/\d+)\/audio\//.test(audio.src)) return setupMobileMediaPlayer(article, root, audio);
+  const player = prepareAudioPlayer(root);
+  const controller = { root, player, audio, timeline: [], paragraphCount: (article.paragraphs || []).length, started: false, pendingParagraph: null, rate: savedPlaybackRate() };
   state.articleAudio = controller;
   root.classList.add("has-audio-player");
   player.hidden = false;
@@ -2853,17 +3605,18 @@ function setupNativeArticlePlayer(article, root, audio) {
   });
   const enforcePlaybackRate = () => applyNativePlaybackRate(audio, controller.rate);
   const rebuildTimeline = () => {
+    if (audio.readyState < 1) return;
     controller.timeline = audioTimeline(article.paragraphs || [], article.audio_segments || [], audio.duration);
     if (controller.pendingParagraph !== null) {
       const index = controller.pendingParagraph;
       controller.pendingParagraph = null;
       audio.currentTime = controller.timeline[index]?.speechStart || 0;
       controller.started = true;
-      audio.play().catch(() => toast("音频播放失败", true));
     }
     renderNativeArticleAudio(controller);
   };
   audio.addEventListener("loadedmetadata", () => { enforcePlaybackRate(); rebuildTimeline(); });
+  audio.addEventListener("error", () => reportArticleAudioError(controller));
   audio.addEventListener("canplay", enforcePlaybackRate);
   audio.addEventListener("durationchange", rebuildTimeline);
   audio.addEventListener("timeupdate", () => renderNativeArticleAudio(controller));
@@ -2872,7 +3625,9 @@ function setupNativeArticlePlayer(article, root, audio) {
   audio.addEventListener("ended", () => { controller.started = false; setActiveAudioParagraph(root); renderNativeArticleAudio(controller); });
   $(".audio-player-toggle", player).onclick = () => {
     if (audio.ended) audio.currentTime = 0;
-    if (audio.paused) audio.play().catch(() => toast("音频播放失败", true));
+    if (audio.paused) {
+      audio.play().catch(error => reportArticleAudioError(controller, error));
+    }
     else audio.pause();
   };
   const progress = $(".audio-player-progress", player);
@@ -2883,16 +3638,18 @@ function setupNativeArticlePlayer(article, root, audio) {
   };
   const seekParagraph = index => {
     const bounded = Math.max(0, Math.min((article.paragraphs || []).length - 1, index));
-    if (!controller.timeline.length) {
+    if (audio.readyState < 1) {
       controller.pendingParagraph = bounded;
-      audio.load();
-      return;
+    } else {
+      audio.currentTime = controller.timeline[bounded]?.speechStart || 0;
+      controller.started = true;
     }
-    audio.currentTime = controller.timeline[bounded]?.speechStart || 0;
-    controller.started = true;
-    audio.play().catch(() => toast("音频播放失败", true));
+    audio.play().catch(error => reportArticleAudioError(controller, error));
+    if (redesignedReadingUi) renderNativeArticleAudio(controller);
   };
   bindParagraphSeeking(root, seekParagraph);
+  bindPlayerParagraphButtons(player, seekParagraph);
+  controller.seekParagraph = seekParagraph;
   if (audio.readyState >= 1) rebuildTimeline();
   else renderNativeArticleAudio(controller);
 }
@@ -2924,6 +3681,8 @@ function renderBrowserSpeech(controller) {
     duration,
     progress,
     maximum: totalLength,
+    paragraphIndex: playbackParagraphIndex(controller.segments, progress),
+    paragraphCount: controller.segments.length,
   });
   const active = controller.started && controller.speechReady !== false && progress < totalLength
     ? controller.segments.findIndex(segment => progress >= segment.start && progress <= segment.end)
@@ -2967,7 +3726,10 @@ function stopArticlePlayback(hidePlayer = true) {
 function suspendArticlePlayback() {
   const nativeController = state.articleAudio;
   if (nativeController) {
-    if (nativeController.mobileNative) window.FujimiMobile.pauseMedia();
+    if (nativeController.mobileNative) {
+      window.FujimiMobile.pauseMedia();
+      nativeController.mobileStatus.playing = false;
+    }
     else nativeController.audio.pause();
     nativeController.started = false;
     setActiveAudioParagraph(nativeController.root);
@@ -2989,17 +3751,21 @@ function suspendArticlePlayback() {
   }
 }
 
-function resumeArticlePlayback() {
+function resumeArticlePlayback(root) {
+  let restored = false;
   const nativeController = state.articleAudio;
-  if (nativeController?.root.isConnected) {
+  if (nativeController?.root.isConnected && (!redesignedReadingUi || nativeController.root === root)) {
     nativeController.player.hidden = false;
     renderNativeArticleAudio(nativeController);
+    restored = true;
   }
   const browserController = state.browserSpeech;
-  if (browserController?.root.isConnected) {
+  if (browserController?.root.isConnected && (!redesignedReadingUi || browserController.root === root)) {
     $(".article-audio-player", browserController.root).hidden = false;
     renderBrowserSpeech(browserController);
+    restored = true;
   }
+  return restored;
 }
 
 function startBrowserSpeechTimer(controller) {
@@ -3136,6 +3902,44 @@ async function speakDesktopOnlineChunk(controller, voice, token) {
 }
 
 async function speakBrowserSpeech(controller, startIndex = 0) {
+  const bookVoice = controller.root.id === "book-reader" ? $(".book-voice", controller.root)?.value : "";
+  if (bookVoice ? mobileSelectionNeedsPc(mobileSpeechSelection(bookVoice)) : mobileVoiceNeedsPc(controller.browserVoiceName || state.browserVoiceName)) {
+    try {
+      const selection = await api("/api/settings/voice-mode");
+      const paragraph = Math.max(0, controller.segments.findIndex(segment => startIndex >= segment.start && startIndex < segment.end));
+      await generateMobilePcSpeech(controller.root, bookVoice ? mobileSpeechSelection(bookVoice) : selection, { autoplay: true, paragraph });
+    } catch (error) { setRereadTask(controller.root, "failed", error.message || "PC 朗读失败。"); }
+    return;
+  }
+  if (window.FujimiMobile?.request && controller.article?.id) {
+    if (controller.savingAudio) return;
+    controller.savingAudio = true;
+    const button = $(".audio-player-toggle", controller.root);
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    setRereadTask(controller.root, "running", "音声生成を準備しています…", "", "", 0, 1, { cancellable: false });
+    const target = controller.root.parentElement;
+    const paragraph = Math.max(0, controller.segments.findIndex(segment => startIndex >= segment.start && startIndex < segment.end));
+    try {
+      const result = await api(`/api/articles/${controller.article.id}/edge-tts`, {
+        method: "POST", body: JSON.stringify({ voice: controller.browserVoiceName || state.browserVoiceName }),
+      });
+      if (state.browserSpeech !== controller || !controller.root.isConnected) return;
+      openArticle(result.article, target);
+      const player = state.articleAudio;
+      if (player?.root.isConnected) player.seekParagraph(paragraph);
+    } catch (error) {
+      if (controller.root.isConnected) setRereadTask(controller.root, "failed", "音声生成に失敗しました。", "", error.message);
+    } finally {
+      controller.savingAudio = false;
+      if (button.isConnected) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        renderBrowserSpeech(controller);
+      }
+    }
+    return;
+  }
   stopDesktopOnlineAudio(controller);
   stopLocalBrowserAudio(controller);
   stopSpeechEngine();
@@ -3156,7 +3960,7 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
     controller.started = false;
     controller.needsRestart = true;
     renderBrowserSpeech(controller);
-    notice(controller.browserVoiceName ? "此示例选择的浏览器声线不可用，请重新选择声线。" : "未检测到日语系统声线，请安装 Windows 日语（日本）语音包后重试。", true);
+    notice(controller.browserVoiceName ? "此示例选择的 Edge 声线不可用，请重新选择声线。" : "未检测到 Edge 在线声线，请检查网络后重试。", true);
     return;
   }
   if (browserVoice?.local) {
@@ -3238,20 +4042,21 @@ async function speakBrowserSpeech(controller, startIndex = 0) {
     if (state.browserSpeech !== controller || controller.token !== token || controller.cancelled) return;
     if (event === "done") finish();
     else if (event === "error") fail("error");
-  });
+  }, controller.browserVoiceName || "");
 }
 
 function setupBrowserArticlePlayer(article, root) {
   if (!window.FujimiMobile?.speak && !window.speechSynthesis && !(typeof localBrowserVoice === "function" && localBrowserVoice(state.browserVoiceName))) return notice("当前设备不支持语音朗读", true);
   const model = browserSpeechModel(article.paragraphs || []);
   if (!model.text) return notice("没有可朗读的正文", true);
-  const player = $(".article-audio-player", root);
+  const player = prepareAudioPlayer(root);
   root.classList.add("has-audio-player");
   player.hidden = false;
   const charactersPerSecond = 6.4;
   const controller = {
     root,
     text: model.text,
+    article,
     textLength: model.text.length,
     segments: model.segments,
     index: 0,
@@ -3340,6 +4145,7 @@ function setupBrowserArticlePlayer(article, root) {
     speakBrowserSpeech(controller, controller.segments[bounded]?.start || 0);
   };
   bindParagraphSeeking(root, seekParagraph);
+  bindPlayerParagraphButtons(player, seekParagraph);
   renderBrowserSpeech(controller);
 }
 
@@ -3447,7 +4253,7 @@ function renderTaskStatus(task) {
   const generateButton = $("#generate-daily");
   const cancelButton = $("#cancel-daily");
   generateButton.hidden = running;
-  generateButton.disabled = running;
+  generateButton.disabled = running || mobileNodeStatus?.daily_generation_available === false;
   cancelButton.hidden = !running;
   cancelButton.disabled = false;
 }
@@ -3486,8 +4292,11 @@ function renderDailySchedule(schedule) {
   const automatic = schedule.mode === "automatic";
   $("#schedule-state").textContent = automatic ? "自動更新" : "手動生成";
   $("#schedule-sidebar-summary").innerHTML = automatic ? `日刊：${escapeText(schedule.time)} CST 自動<br>完成した記事から順次公開` : "日刊：手動生成<br>完成した記事から順次公開";
-  const nextRun = schedule.next_run ? new Date(schedule.next_run).toLocaleString("zh-CN", { hour12: false }) : null;
-  $("#schedule-summary").textContent = automatic ? `每天 ${schedule.time}（CST）自动更新${nextRun ? `；下次运行：${nextRun}` : ""}` : "自动更新已关闭。需要时使用“今すぐ生成”。";
+  const nextRun = schedule.next_run ? new Date(schedule.next_run).toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" }) : null;
+  const precision = schedule.schedule_precision === "window" ? "（系统时间窗口，可能延后）" : "";
+  $("#schedule-summary").textContent = schedule.scheduler_available === false ? "Android 日刊采集与自动调度尚未接入。" : automatic ? `每天 ${schedule.time}（CST）自动更新${precision}${nextRun ? `；下次安排：${nextRun} CST` : ""}${schedule.background_detail ? `。${schedule.background_detail}` : ""}` : "自动更新已关闭。需要时使用“今すぐ生成”。";
+  const automaticButton = $("#daily-mode [data-mode='automatic']");
+  if (automaticButton) automaticButton.disabled = schedule.scheduler_available === false;
 }
 
 async function loadDailySettings() {
@@ -3603,11 +4412,13 @@ async function loadVoices() {
     applyBrowserVoiceSettings(mode);
     const fallbackBrowserVoice = configuredBrowserVoice();
     const selectedBrowserName = browserVoiceShortName(state.browserVoiceName || fallbackBrowserVoice?.name || "");
-    const browserTitle = `${state.browserVoiceLabel}音声${selectedBrowserName ? `（${selectedBrowserName}）` : ""}`;
+    const browserTitle = window.FujimiMobile
+      ? `システム音声${selectedBrowserName ? `（${selectedBrowserName}）` : "（未选择）"}`
+      : `${state.browserVoiceLabel}音声${selectedBrowserName ? `（${selectedBrowserName}）` : ""}`;
     // $("#active-voice-badge").textContent = mode.mode === "browser" ? browserTitle : mode.mode === "voice" && activeVoice ? activeVoice.name : "未选择声线";
     $("#active-voice-badge").textContent =
       mode.mode === "browser"
-        ? selectedBrowserName || "ブラウザー"
+          ? window.FujimiMobile ? `システム音声${selectedBrowserName ? `（${selectedBrowserName}）` : ""}` : (selectedBrowserName || "ブラウザー")
         : mode.mode === "voice" && activeVoice
           ? activeVoice.name
           : "未选择声线";
@@ -3630,12 +4441,15 @@ async function loadVoices() {
         } catch (error) { panelError("#voice-error", error.message); }
       };
       const editButton = $(".edit", row);
+      const readOnly = Boolean(window.FujimiMobile && voice.read_only);
+      editButton.hidden = readOnly;
       editButton.onclick = () => {
         $(".voice-actions-menu", row)?.removeAttribute("open");
         if (isBrowser) openBrowserVoiceDialog();
         else openVoiceDialog(voice);
       };
       const deleteButton = $(".delete", row);
+      if (deleteButton) deleteButton.hidden = readOnly;
       if (deleteButton) deleteButton.onclick = async () => {
         $(".voice-actions-menu", row)?.removeAttribute("open");
         if (!confirm(`删除声线“${voice.name}”？`)) return;
@@ -3645,15 +4459,22 @@ async function loadVoices() {
           panelError("#voice-error");
         } catch (error) { panelError("#voice-error", error.message); }
       };
+      if (window.FujimiMobile && voice.saved_audio_only) {
+        const detail = $(".voice-detail", row) || document.createElement("span");
+        detail.className = "voice-detail";
+        detail.textContent = `${active ? "使用中 · " : ""}播放已同步音频`;
+        $(".voice-copy", row).append(detail);
+      }
       list.append(row);
     };
-    appendVoice({ id: null, name: browserTitle }, { isBrowser: true });
+    appendVoice({ id: null, name: browserTitle, saved_audio_only: localBrowserVoice(state.browserVoiceName)?.saved_audio_only }, { isBrowser: true });
     voices.forEach(voice => appendVoice(voice));
   } catch (error) { panelError("#voice-error", error.message); }
 }
 
 function renderDailyContentSettings(content) {
   $("#daily-target-count").value = content.target_count;
+  $("#daily-source-total").textContent = `${content.source_count} 个来源`;
   $("#daily-content-summary").textContent = `${content.source_count} 个来源；各来源最低配额共 ${content.required_count} 篇，其余 ${Math.max(0, content.target_count - content.required_count)} 篇按时效与主题补足。`;
 }
 
@@ -3670,10 +4491,14 @@ function populateSourceVoiceSelect(select, selected = "inherit") {
   select.replaceChildren(
     new Option("沿用全局声线", "inherit"),
     new Option("模型默认声线", "model"),
-    new Option("ブラウザー音声", "browser"),
+    new Option(window.FujimiMobile ? "システム音声" : "ブラウザー音声", "browser"),
     new Option("朗読なし", "none"),
     ...state.voices.map(voice => new Option(voice.name, `voice:${voice.id}`)),
   );
+  if (window.FujimiMobile && (mobileNodeStatus?.reference_synthesis_available ?? mobileNodeStatus?.reference_voices_available) === false) {
+    const model = [...select.options].find(option => option.value === "model");
+    if (model) model.disabled = true;
+  }
   select.value = [...select.options].some(option => option.value === selected) ? selected : "inherit";
 }
 
@@ -3847,6 +4672,7 @@ function setBrowserVoiceEditor(enabled) {
 
 async function populateBrowserVoiceSelect() {
   const select = $("#browser-voice-select");
+  const mobile = typeof window !== "undefined" && Boolean(window.FujimiMobile);
   select.disabled = true;
   $("#submit-voice").disabled = true;
   select.replaceChildren(new Option("正在检测日语声线…", ""));
@@ -3864,7 +4690,7 @@ async function populateBrowserVoiceSelect() {
       local = [];
     }
   }
-  if (!(typeof localBrowserVoice === "function" && localBrowserVoice(state.browserVoiceName))
+  if (!mobile && !(typeof localBrowserVoice === "function" && localBrowserVoice(state.browserVoiceName))
       && !desktopOnlineVoice(state.browserVoiceName)) await waitForJapaneseBrowserVoice();
   if (!state.editingBrowserVoice) return;
   const voices = japaneseBrowserVoices();
@@ -3872,7 +4698,7 @@ async function populateBrowserVoiceSelect() {
     || (!state.browserVoiceName || isHiddenBrowserVoiceName(state.browserVoiceName) ? preferredJapaneseBrowserVoice(voices) : null);
   const online = desktopOnlineVoices();
   const localOptions = local.map(voice => {
-    const option = new Option(`${voice.name}${voice.available === false ? "（资源不可用）" : ""}`, voice.id);
+    const option = new Option(`${voice.name}${voice.available === false ? "（资源不可用）" : mobile && voice.saved_audio_only ? "（已同步音频）" : ""}`, voice.id);
     option.disabled = voice.available === false;
     return option;
   });
@@ -3895,7 +4721,7 @@ async function populateBrowserVoiceSelect() {
   };
   select.onchange = updateSubmit;
   updateSubmit();
-  panelNotice("#voice-editor-notice", options.length ? "" : "未检测到日语声线。请检查网络或安装 Windows 日语语音包。", options.length === 0);
+  panelNotice("#voice-editor-notice", options.length ? "" : mobile ? "未检测到 Edge 在线声线，请检查网络后重试。" : "未检测到日语声线。请检查网络或安装 Windows 日语语音包。", options.length === 0);
 }
 
 function openVoiceDialog(voice = null) {
@@ -3917,8 +4743,9 @@ function openBrowserVoiceDialog() {
   $("#voice-editor-form").reset();
   setBrowserVoiceEditor(true);
   $("#voice-editor-name").value = state.browserVoiceLabel || "ブラウザー";
-  $("#voice-dialog-title").textContent = "修改浏览器声线";
+  $("#voice-dialog-title").textContent = window.FujimiMobile ? "选择系统声线" : "修改浏览器声线";
   $("#submit-voice").textContent = "保存修改";
+  $("#native-speech-settings").hidden = true;
   populateBrowserVoiceSelect();
   $("#voice-dialog").showModal();
   $("#browser-voice-select").focus();
@@ -3951,7 +4778,7 @@ async function submitVoiceEditor(event) {
       state.browserVoiceLabel = label;
       closeVoiceDialog();
       await loadVoices();
-      toast("浏览器声线已更新。");
+      toast(window.FujimiMobile ? "系统音声已更新。" : "浏览器声线已更新。");
     } catch (error) { panelNotice("#voice-editor-notice", error.message, true); }
     return;
   }
@@ -4097,6 +4924,10 @@ async function loadLibrary({ forceHome = false } = {}) {
       reader.hidden = false;
       $("#library-home").hidden = true;
       $("#library-series-detail").hidden = true;
+      if (redesignedReadingUi && reader.classList.contains("has-audio-player") && !resumeArticlePlayback(reader)) {
+        resetReaderAudio(reader);
+        setupBookAudio(current, reader);
+      }
       const position = rememberedBookPosition(route.bookId, route.chapterId);
       if (position && Number.isFinite(Number(position.scrollY))) {
         requestAnimationFrame(() => window.scrollTo({ top: Math.max(0, Number(position.scrollY)), behavior: "auto" }));
@@ -4130,12 +4961,19 @@ async function openBook(bookId) {
   });
 }
 
-function bookAudioPlayerMarkup() {
+function originalBookAudioPlayerMarkup() {
   return `<div class="article-audio-player" role="group" aria-label="章の朗読プレーヤー" hidden><div class="audio-player-timeline"><div class="audio-player-seek"><span class="audio-player-progress-fill"></span><input class="audio-player-progress" type="range" min="0" max="1" value="0" step="0.1" aria-label="朗読進度"></div><time class="audio-player-current">0:00</time><time class="audio-player-duration">0:00</time></div><button class="audio-player-toggle audio-icon-button" type="button" aria-label="朗読を再生" title="再生または一時停止"><img class="audio-player-toggle-icon" src="/static/player_assets/ic_player_stop.png" alt=""></button><div class="audio-rate-control"><button class="audio-rate-toggle" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="再生速度" title="再生速度"><img src="/static/player_assets/ic_player_set.png" alt=""><span class="audio-rate-value" aria-hidden="true">1.0x</span></button><div class="audio-rate-menu" role="menu" hidden>${PLAYBACK_RATES.map(rate => `<button type="button" role="menuitemradio" data-rate="${rate}">${rate}×</button>`).join("")}</div></div></div>`;
 }
 
+function bookAudioPlayerMarkup() {
+  if (!redesignedReadingUi) return originalBookAudioPlayerMarkup();
+  const player = $("#article-template").content.querySelector(".article-audio-player").cloneNode(true);
+  player.setAttribute("aria-label", "章の朗読プレーヤー");
+  return player.outerHTML;
+}
+
 function bookVoiceOptions(chapter) {
-  const options = [new Option("默认声线", "model"), new Option(`ブラウザー音声（${state.browserVoiceLabel || "ブラウザー"}）`, "browser")];
+  const options = [new Option("默认声线", "model"), new Option(redesignedReadingUi ? (localBrowserVoice(state.browserVoiceName)?.name || browserVoiceShortName(state.browserVoiceName) || "音声") : `ブラウザー音声（${state.browserVoiceLabel || "ブラウザー"}）`, "browser")];
   state.voices.forEach(voice => options.push(new Option(voice.name, `voice:${voice.id}`)));
   const selected = chapter.voice_mode === "voice" ? `voice:${chapter.voice_id}` : chapter.voice_mode;
   options.forEach(option => { option.selected = option.value === selected; });
@@ -4186,15 +5024,23 @@ async function loadDesktopSettings() {
   const mobilePanel = $("#mobile-settings-panel");
   if (!panel) return;
   if (window.FujimiMobile?.mobileStatus) {
+    $("#device-sync-panel").hidden = true;
     panel.hidden = true;
     mobilePanel.hidden = false;
-    const status = JSON.parse(window.FujimiMobile.mobileStatus());
     $("#android-sync-settings").hidden = false;
     $("#android-local-settings").hidden = false;
-    renderMobileNodeStatus(status);
-    if (["queued", "running"].includes(status.sync_state)) scheduleMobileSyncPoll();
+    try {
+      const status = JSON.parse(window.FujimiMobile.mobileStatus());
+      renderMobileNodeStatus(status);
+      if (["queued", "running"].includes(status.sync_state)) scheduleMobileSyncPoll();
+    } catch (_error) {
+      $("#mobile-service-status").textContent = "状态读取失败";
+      $("#mobile-sync-detail").textContent = "无法读取本机状态，请重新打开应用。";
+      $("#mobile-sync-now").disabled = true;
+    }
     return;
   }
+  await loadDeviceSyncSettings();
   try {
     const health = await api("/api/health");
     if (!window.pywebview?.api) {
@@ -4203,20 +5049,6 @@ async function loadDesktopSettings() {
     }
     const settings = await window.pywebview.api.get_desktop_settings();
     panel.hidden = false;
-    if (mobilePanel && window.pywebview.api.get_mobile_status) {
-      const mobile = await window.pywebview.api.get_mobile_status();
-      mobilePanel.hidden = false;
-      $("#mobile-service-status").textContent = mobile.enabled ? `端口 ${mobile.port}` : "未启动";
-      const mobileUrls = mobile.urls || [];
-      const primaryUrl = mobile.primary_url || mobileUrls[0] || "";
-      const alternateUrls = mobileUrls.filter(url => url !== primaryUrl);
-      $("#mobile-service-urls").innerHTML = primaryUrl
-        ? `<div class="mobile-primary-url"><dt>推荐地址</dt><dd><strong>${escapeText(primaryUrl)}</strong><small>手机请优先使用此地址</small></dd></div>${alternateUrls.length ? `<details class="mobile-alternate-urls"><summary>其他网卡地址（${alternateUrls.length}）</summary>${alternateUrls.map(url => `<div><dt>备用地址</dt><dd>${escapeText(url)}</dd></div>`).join("")}</details>` : ""}`
-        : "<p class=\"muted\">未发现可用的私有网络地址。</p>";
-      const qr = $("#mobile-service-qr");
-      qr.hidden = !primaryUrl;
-      if (primaryUrl) $("img", qr).src = `/api/desktop/mobile-qr?url=${encodeURIComponent(primaryUrl)}`;
-    }
     $("#desktop-project-root").textContent = settings.project_root || "未设置";
     $("#desktop-data-path").textContent = settings.data_dir || "未设置";
     $("#desktop-python-path").textContent = settings.python_executable || "未设置";
@@ -4225,6 +5057,96 @@ async function loadDesktopSettings() {
     panel.hidden = false;
     panelError("#desktop-settings-error", error.message || "无法读取桌面设置");
   }
+}
+
+function renderDeviceSyncSettings(status) {
+  deviceSyncStatus = status;
+  $("#device-sync-enabled").checked = Boolean(status.enabled);
+  const available = Boolean(status.enabled && status.url && status.pairing_code);
+  $("#device-sync-details").hidden = !available;
+  $("#device-sync-url").textContent = available ? status.url : "";
+  $("#device-sync-code").textContent = available ? status.pairing_code : "";
+  const qr = $("#device-sync-qr");
+  if (available) {
+    const version = `${status.url}|${status.pairing_code}`;
+    if (qr.dataset.version !== version) {
+      qr.src = `${status.qr_url || '/api/settings/device-sync/qr'}?v=${Date.now()}`;
+      qr.dataset.version = version;
+    }
+  } else {
+    qr.removeAttribute("src");
+    delete qr.dataset.version;
+  }
+  const count = Array.isArray(status.paired_devices) ? status.paired_devices.length : Number(status.paired_devices) || 0;
+  const inactive = status.status === "connecting" ? "正在连接 Tailscale…"
+    : status.tailscale_status === "login_required" ? "等待 Tailscale 登录"
+    : status.tailscale_status === "error" ? "Tailscale 连接失败" : "未开启";
+  $("#device-sync-state").textContent = status.enabled ? (count ? `已配对 ${count} 台设备` : "等待手机配对") : inactive;
+  $("#device-sync-state").dataset.enabled = String(Boolean(status.enabled));
+  const login = $("#device-sync-login");
+  if (login) {
+    login.hidden = true; login.removeAttribute("href");
+    if (status.tailscale_status === "login_required" && status.login_url) {
+      try {
+        const url = new URL(status.login_url);
+        if (url.protocol === "https:" && url.hostname === "login.tailscale.com" && !url.port &&
+            !url.username && !url.password && !url.search && !url.hash && url.pathname.startsWith("/a/")) {
+          login.href = url.href; login.hidden = false;
+        }
+      } catch (_error) { /* Login can still be completed in the Tailscale app. */ }
+    }
+  }
+  $("#device-sync-detail").textContent = status.detail || (status.enabled
+    ? "在 Android 的 Windows 同步中扫码，或输入以上地址和配对码。配对后由手机点击“立即同步”。"
+    : "开启后，在 Android 的 Windows 同步中连接。");
+}
+
+async function loadDeviceSyncSettings() {
+  const panel = $("#device-sync-panel");
+  if (!panel || window.FujimiMobile?.mobileStatus) return;
+  window.clearTimeout(deviceSyncPollTimer);
+  deviceSyncPollTimer = null;
+  panel.hidden = false;
+  try {
+    const status = await api("/api/settings/device-sync");
+    renderDeviceSyncSettings(status);
+    panelError("#device-sync-error");
+    if ((status.enabled || status.status === "connecting") && state.currentView === "settings") {
+      deviceSyncPollTimer = window.setTimeout(() => {
+        if (state.currentView === "settings") loadDeviceSyncSettings();
+      }, 3000);
+    }
+  } catch (error) { panelError("#device-sync-error", error.message || "无法读取同步状态"); }
+}
+
+async function toggleDeviceSync() {
+  const toggle = $("#device-sync-enabled");
+  const enabled = toggle.checked;
+  toggle.disabled = true;
+  toggle.setAttribute("aria-busy", "true");
+  window.clearTimeout(deviceSyncPollTimer);
+  $("#device-sync-state").textContent = enabled ? "正在准备配对…" : "正在关闭配对…";
+  $("#device-sync-state").dataset.enabled = "false";
+  if (!enabled) $("#device-sync-details").hidden = true;
+  const login = $("#device-sync-login"); if (login) login.hidden = true;
+  panelError("#device-sync-error");
+  try {
+    const status = await api("/api/settings/device-sync", { method: "PUT", body: JSON.stringify({ enabled }) });
+    renderDeviceSyncSettings(status);
+    panelError("#device-sync-error");
+    if (status.enabled || status.status === "connecting") deviceSyncPollTimer = window.setTimeout(loadDeviceSyncSettings, 3000);
+  } catch (error) {
+    try { renderDeviceSyncSettings(await api("/api/settings/device-sync")); }
+    catch (_statusError) { toggle.checked = Boolean(deviceSyncStatus?.enabled); }
+    panelError("#device-sync-error", error.message || "同步服务未能启动，请重试。");
+  } finally { toggle.disabled = false; toggle.removeAttribute("aria-busy"); }
+}
+
+async function copyDeviceSyncValue(selector) {
+  const value = $(selector).textContent;
+  if (!value) return;
+  try { await navigator.clipboard.writeText(value); toast("已复制"); }
+  catch (_error) { toast("复制失败，请选中内容手动复制。", true); }
 }
 
 function formatBytes(bytes) {
@@ -4237,30 +5159,35 @@ function formatBytes(bytes) {
 }
 
 function renderMobileNodeStatus(status) {
-  $("#mobile-runtime-summary").textContent = "本机运行 · Windows 可选";
-  $("#mobile-service-status").textContent = status.startup_error ? "初始化失败" : "本机就绪";
-  $("#mobile-windows-address").value = status.server_url || "";
+  mobileNodeStatus = status;
+  $("#mobile-runtime-summary").textContent = status.article_index_error || "本机运行 · Windows 可选";
+  $("#mobile-service-status").textContent = status.startup_error ? "初始化失败" : status.article_index_error ? "索引待修复" : "本机就绪";
+  const address = $("#mobile-windows-address");
+  if (!address.dataset.dirty && !mobileWindowsCheck) address.value = status.server_url || "";
   $("#mobile-deepseek-status").textContent = status.deepseek_configured ? "已保存" : "未配置";
+  $("#mobile-clear-deepseek").hidden = !status.deepseek_configured || !window.FujimiMobile?.clearDeepSeekKey;
   $("#mobile-allow-cellular").checked = Boolean(status.allow_cellular);
 
   const windowsLabels = {
     unconfigured: "未配置",
     offline: "离线",
+    checking: "检测中",
     syncing: "同步中",
-    ready: status.irodori_available ? "可用 · Irodori" : "可用",
+    ready: status.paired ? "已配对" : "可用",
   };
   const windowsMessages = {
-    unconfigured: "不填写也可完整使用手机本地功能。",
+    unconfigured: "尚未填写 PC 地址。",
     offline: "地址已保存，但当前未连上；本地功能不受影响。",
+    checking: "正在连接 Windows…",
     syncing: "已连接，正在交换本地与电脑端修改。",
-    ready: status.irodori_available ? "已连接，可双向同步并请求 Irodori。" : "已连接，可以双向同步。",
+    ready: status.paired ? "已配对，点击“立即同步”传输文庫。" : "节点可用，请输入配对码连接。",
   };
   const windowsState = status.windows_status || "unconfigured";
   const windowsBadge = $("#mobile-windows-state");
   windowsBadge.textContent = windowsLabels[windowsState] || "未配置";
   windowsBadge.dataset.state = windowsState;
   const windowsResult = $("#mobile-windows-result");
-  windowsResult.textContent = windowsMessages[windowsState] || windowsMessages.unconfigured;
+  if (!mobileWindowsCheck) windowsResult.textContent = status.connection_detail || windowsMessages[windowsState] || windowsMessages.unconfigured;
   windowsResult.dataset.state = windowsState;
   $("#mobile-clear-windows").hidden = !status.server_url;
 
@@ -4269,7 +5196,7 @@ function renderMobileNodeStatus(status) {
   const active = ["queued", "running"].includes(syncState);
   const progress = Math.max(0, Math.min(100, Number(status.sync_progress) || 0));
   const defaultStage = configured ? "尚未同步" : "等待配置";
-  const defaultDetail = configured ? "Windows 地址已配置，可以开始同步。" : "填写并检测 Windows 地址后即可同步。";
+  const defaultDetail = status.paired ? "点击“立即同步”传输文庫。" : "扫码或输入地址与配对码连接 Windows。";
   $("#mobile-sync-stage").textContent = status.sync_stage || defaultStage;
   $("#mobile-sync-percent").textContent = `${Math.round(progress)}%`;
   const progressTrack = $("#mobile-sync-progress");
@@ -4281,13 +5208,36 @@ function renderMobileNodeStatus(status) {
   $("#mobile-sync-pending").textContent = String(Number(status.pending_changes) || 0);
   $("#mobile-sync-cache").textContent = formatBytes(Number(status.cache_bytes) || 0);
   const syncButton = $("#mobile-sync-now");
-  syncButton.disabled = !configured || active;
+  syncButton.disabled = !configured || active || status.sync_available === false || Boolean(mobileWindowsCheck);
   syncButton.textContent = active ? "同步中…" : "立即同步";
   syncButton.setAttribute("aria-busy", String(active));
 
-  const nextAlarm = status.next_alarm ? new Date(status.next_alarm).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "未安排";
-  $("#mobile-alarm-status").textContent = `${status.exact_alarm ? "精确" : "时间窗口"} · ${nextAlarm}`;
+  const nextAlarm = status.next_alarm ? `${new Date(status.next_alarm).toLocaleString([], { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} CST` : "未安排";
+  $("#mobile-alarm-status").textContent = status.scheduler_available === false
+    ? `${status.exact_alarm ? "精确闹钟权限已授权" : "精确闹钟权限未授权"} · 调度尚未接入`
+    : status.alarm_error || `${status.schedule_precision === "exact" ? "精确" : "系统时间窗口"} · ${nextAlarm}`;
   $("#mobile-exact-alarm").hidden = Boolean(status.exact_alarm);
+  $("#mobile-app-info").hidden = !status.app_version && !status.data_path;
+  $("#mobile-app-settings-panel").hidden = $("#mobile-app-info").hidden;
+  $("#mobile-app-version-badge").textContent = status.app_version || "未知";
+  $("#mobile-app-version").textContent = status.app_version || "未知";
+  $("#mobile-data-path").textContent = status.data_path || "未知";
+  if (status.daily_generation_available === false) {
+    $("#generate-daily").disabled = true;
+    $("#generate-daily").title = "Android 日刊采集尚未接入";
+  } else if (status.daily_generation_available === true) {
+    $("#generate-daily").disabled = state.dailyTaskRunning;
+    $("#generate-daily").title = "在此手机上独立采集日刊";
+  }
+  if (status.reference_voices_available === false) {
+    $("#add-voice").textContent = "选择声线";
+    $("#add-voice").onclick = openBrowserVoiceDialog;
+    $("#add-voice").disabled = false;
+    $("#add-voice").title = "选择日语声线";
+    $("#voice-editor-hint").textContent = "圭太／七海可在线生成，PC 声线播放已同步音频。";
+    const hint = $("#voice-settings-disclosure summary small");
+    if (hint) hint.textContent = "选择圭太或七海在线声线";
+  }
 }
 
 function scheduleMobileSyncPoll() {
@@ -4313,19 +5263,27 @@ function pollMobileSyncStatus() {
 }
 
 function updateMobileCellularSetting() {
-  window.FujimiMobile?.setAllowCellular(Boolean($("#mobile-allow-cellular").checked));
-  toast($("#mobile-allow-cellular").checked ? "已允许蜂窝网络同步" : "已恢复仅 Wi-Fi/VPN 同步");
+  const input = $("#mobile-allow-cellular");
+  try {
+    if (!window.FujimiMobile?.setAllowCellular(input.checked)) throw new Error("网络设置保存失败。");
+    toast(input.checked ? "已允许按流量计费的网络" : "已限制为不按流量计费的网络");
+    loadDesktopSettings();
+  } catch (error) {
+    input.checked = Boolean(mobileNodeStatus?.allow_cellular);
+    toast(error.message || "网络设置保存失败", true);
+  }
 }
 
 function startMobileSync() {
   const accepted = Boolean(window.FujimiMobile?.syncNow());
   if (!accepted) {
-    $("#mobile-sync-stage").textContent = "等待配置";
-    $("#mobile-sync-detail").textContent = "请先填写并检测 Windows 地址。";
-    toast("请先配置 Windows 同步地址", true);
+    const detail = mobileNodeStatus?.sync_detail || "请先连接 Windows。";
+    $("#mobile-sync-detail").textContent = detail;
+    toast(detail, true);
     return;
   }
   renderMobileNodeStatus({
+    ...mobileNodeStatus,
     server_url: $("#mobile-windows-address").value.trim(), windows_status: "syncing",
     deepseek_configured: $("#mobile-deepseek-status").textContent !== "未配置",
     allow_cellular: $("#mobile-allow-cellular").checked, sync_state: "queued",
@@ -4339,38 +5297,136 @@ function startMobileSync() {
 function saveMobileDeepSeekKey() {
   const input = $("#mobile-deepseek-key");
   const value = input.value.trim();
-  if (!value) { toast("密钥未更改"); return; }
-  if (!window.FujimiMobile?.setDeepSeekKey(value)) { toast("密钥保存失败", true); return; }
-  input.value = "";
-  $("#mobile-deepseek-status").textContent = "已加密保存";
-  toast("DeepSeek 密钥已保存");
+  const result = $("#mobile-deepseek-result");
+  input.removeAttribute("aria-invalid");
+  try {
+    if (!value) throw new Error("请输入新密钥；已有密钥未更改。");
+    if (!window.FujimiMobile?.setDeepSeekKey(value)) throw new Error("密钥未能保存，请检查格式与设备存储。");
+    input.value = "";
+    result.textContent = "已在此手机加密保存。";
+    result.dataset.state = "ready";
+    loadDesktopSettings();
+  } catch (error) {
+    result.textContent = error.message || "密钥保存失败。";
+    result.dataset.state = "error";
+    input.setAttribute("aria-invalid", "true");
+  }
 }
 
-function saveMobileWindowsAddress() {
+function clearMobileDeepSeekKey() {
+  if (!window.confirm("清除此手机保存的 DeepSeek 密钥？")) return;
+  const result = $("#mobile-deepseek-result");
+  try {
+    if (!window.FujimiMobile?.clearDeepSeekKey()) throw new Error("密钥清除失败。");
+    $("#mobile-deepseek-key").value = "";
+    $("#mobile-deepseek-key").removeAttribute("aria-invalid");
+    result.textContent = "已清除本机密钥。";
+    result.dataset.state = "ready";
+    loadDesktopSettings();
+  } catch (error) { result.textContent = error.message || "密钥清除失败。"; result.dataset.state = "error"; }
+}
+
+function saveMobileWindowsAddress(event) {
+  event?.preventDefault();
   const input = $("#mobile-windows-address");
   const value = input.value.trim();
+  const code = $("#mobile-windows-code");
+  if (mobileWindowsCheck) return;
+  input.removeAttribute("aria-invalid");
+  code.removeAttribute("aria-invalid");
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash || !["", "/"].includes(url.pathname)) throw new Error();
+  } catch (_error) {
+    $("#mobile-windows-result").textContent = "请输入 PC 显示的连接地址，例如 http://192.168.1.20:8429。";
+    $("#mobile-windows-result").dataset.state = "error";
+    input.setAttribute("aria-invalid", "true");
+    input.focus();
+    return;
+  }
+  if (!/^\d{6}$/.test(code.value.trim())) {
+    $("#mobile-windows-result").textContent = "请输入 PC 显示的 6 位配对码。";
+    $("#mobile-windows-result").dataset.state = "error";
+    code.setAttribute("aria-invalid", "true");
+    code.focus();
+    return;
+  }
+  beginMobilePairing(false, value, code.value.trim());
+}
+
+function beginMobilePairing(scan, address = "", code = "") {
+  if (mobileWindowsCheck) return;
+  const input = $("#mobile-windows-address");
+  const codeInput = $("#mobile-windows-code");
   const button = $("#mobile-save-windows");
+  const scanButton = $("#mobile-scan-windows");
   button.disabled = true;
-  button.textContent = "检测中…";
-  $("#mobile-windows-result").textContent = "正在检查 Windows 节点…";
+  scanButton.disabled = true;
+  button.textContent = scan ? "连接" : "连接中…";
+  button.setAttribute("aria-busy", "true");
+  scanButton.setAttribute("aria-busy", String(scan));
+  input.disabled = true;
+  codeInput.disabled = true;
+  $("#mobile-clear-windows").disabled = true;
+  $("#mobile-sync-now").disabled = true;
+  $("#mobile-windows-result").textContent = scan ? "请扫描 PC 的文庫互联二维码。" : "正在与 Windows 配对…";
   $("#mobile-windows-result").dataset.state = "syncing";
   const callbackId = `setup-${Date.now()}`;
-  window.__fujimiSetupResolve = (id, success, message) => {
-    if (id !== callbackId) return;
+  const finish = (success, message) => {
+    if (mobileWindowsCheck?.id !== callbackId) return;
+    window.clearTimeout(mobileWindowsCheck.timer);
+    mobileWindowsCheck = null;
     button.disabled = false;
-    button.textContent = "检测";
-    $("#mobile-windows-result").textContent = message || (success ? "连接成功，可以双向同步。" : "Windows 当前离线。");
+    scanButton.disabled = false;
+    $("#mobile-clear-windows").disabled = false;
+    button.textContent = "连接";
+    button.setAttribute("aria-busy", "false");
+    scanButton.setAttribute("aria-busy", "false");
+    input.disabled = false;
+    codeInput.disabled = false;
+    if (success) codeInput.value = "";
+    $("#mobile-windows-result").textContent = message || (success ? "配对成功，可以开始同步。" : "连接失败，请检查 PC 服务和配对码。");
     $("#mobile-windows-result").dataset.state = success ? "ready" : "offline";
-    toast(message || (success ? "Windows 节点可用" : "Windows 当前离线"), !value);
-    loadDesktopSettings();
+    try {
+      const status = JSON.parse(window.FujimiMobile.mobileStatus());
+      delete input.dataset.dirty;
+      status.connection_detail = message;
+      if (!success && status.windows_status === "checking") status.windows_status = "offline";
+      renderMobileNodeStatus(status);
+    } catch (_error) { $("#mobile-sync-now").disabled = true; }
   };
-  window.FujimiMobile?.connectServer(value, callbackId);
+  mobileWindowsCheck = { id: callbackId, finish, timer: scan ? null : window.setTimeout(() => finish(false, "连接超时，请检查 PC 服务和网络后重试。"), 45000) };
+  window.__fujimiWindowsCheckPhase = (id, phase) => {
+    if (mobileWindowsCheck?.id !== id) return;
+    window.clearTimeout(mobileWindowsCheck.timer);
+    mobileWindowsCheck.timer = phase === 'connecting' ? window.setTimeout(() => finish(false, "连接超时，请检查 PC 服务和网络后重试。"), 45000) : null;
+    window.dispatchEvent(new CustomEvent('fujimi-pairing-phase', { detail: { phase } }));
+  };
+  window.__fujimiWindowsCheckResult = (id, success, message) => {
+    if (mobileWindowsCheck?.id === id) finish(Boolean(success), message || (success ? "配对成功。" : "配对失败。"));
+  };
+  try {
+    const bridge = window.FujimiMobile;
+    if (scan) {
+      if (!bridge?.scanWindowsPairing) throw new Error("当前 APK 不支持扫码，请更新安装包。");
+      if (bridge.scanWindowsPairing(callbackId) === false) throw new Error("相机无法启动，请使用地址和配对码连接。");
+    } else {
+      if (!bridge?.pairWindows) throw new Error("当前 APK 不支持配对，请更新安装包。");
+      if (bridge.pairWindows(address, code, callbackId) === false) throw new Error("配对任务未能启动，请重试。");
+    }
+  } catch (error) { finish(false, error.message || "无法连接 Windows。"); }
 }
 
 function clearMobileWindowsAddress() {
-  window.FujimiMobile?.setServerUrl("");
+  try {
+    if (!window.FujimiMobile?.setServerUrl("")) throw new Error("地址清除失败。");
+  } catch (error) { toast(error.message || "地址清除失败。", true); return; }
+  if (mobileWindowsCheck) mobileWindowsCheck.finish(false, "连接已取消。");
+  delete $("#mobile-windows-address").dataset.dirty;
+  $("#mobile-windows-address").removeAttribute("aria-invalid");
   $("#mobile-windows-address").value = "";
-  $("#mobile-windows-result").textContent = "不填写也可完整使用手机本地功能。";
+  $("#mobile-windows-code").value = "";
+  $("#mobile-windows-result").textContent = "尚未填写 PC 地址。";
   $("#mobile-windows-result").dataset.state = "unconfigured";
   stopMobileSyncPoll();
   toast("已清除 Windows 地址");
@@ -4378,7 +5434,9 @@ function clearMobileWindowsAddress() {
 }
 
 function requestMobileExactAlarm() {
-  window.FujimiMobile?.requestExactAlarmPermission();
+  try {
+    if (!window.FujimiMobile?.requestExactAlarmPermission()) throw new Error();
+  } catch (_error) { toast("系统无法打开精确闹钟设置。", true); }
 }
 
 async function openDesktopFolder(kind) {
@@ -4711,11 +5769,17 @@ function renderBookBlocks(payload, root) {
     link.href = `#library/book/${payload.book.id}/chapter/${target.id}${fragment ? `?anchor=${encodeURIComponent(fragment)}` : ""}`;
     link.onclick = event => { event.preventDefault(); navigateBookChapter(payload.book.id, target.id, { anchor: fragment || "" }); };
   });
+  prepareMobileReadingLookup(root, ".book-chapter-body", ".book-block-ja");
 }
 
 function setupBookAudio(payload, root) {
   const paragraphs = payload.chapter.blocks.filter(block => block.text_ja).map(block => block.text_ja);
   const audio = $(".book-audio", root);
+  if (payload.chapter.audio_unavailable_detail) {
+    if (window.FujimiMobile?.request) setupBrowserArticlePlayer({ paragraphs }, root);
+    else setRereadTask(root, "failed", payload.chapter.audio_unavailable_detail);
+    return;
+  }
   if (payload.chapter.audio?.url && payload.chapter.voice_mode !== "none"
       && (payload.chapter.voice_mode !== "browser" || payload.chapter.audio.voice_id == null && payload.chapter.audio.voice_name)) {
     audio.src = mobileMediaUrl(payload.chapter.audio.url);
@@ -4753,6 +5817,7 @@ async function startBookTaskTracking(taskId, root) {
           toast("処理が完了しました。");
           await navigateBookChapter(state.libraryChapter.book.id, state.libraryChapter.chapter.id, { historyMode: "replace" });
         } else if (["failed", "interrupted"].includes(task.status)) {
+          if (redesignedReadingUi) taskBox.hidden = true;
           toast(task.message, true);
         } else if (task.status === "cancelled") {
           taskBox.hidden = true;
@@ -4780,6 +5845,10 @@ async function generateBookChapterAudio(root) {
       const selected = await resolveJapaneseBrowserVoice({ persistDefault: true });
       browserName = selected?.id || selected?.name || "";
       if (!browserName) throw new Error("利用できる日本語のブラウザー音声がありません。");
+    }
+    if (mobileSelectionNeedsPc({ mode, browser_voice_name: browserName })) {
+      await generateMobilePcSpeech(root, { mode, voice_id: rawId ? Number(rawId) : null, browser_voice_name: browserName });
+      return;
     }
     const taskBox = $(".book-task", root);
     taskBox.hidden = false;
@@ -5006,6 +6075,12 @@ async function renderBookReader(payload, { blockId = null, blockIndex = null, an
     } catch (error) { toast(error.message, true); }
   };
   $(".cancel-book-task", root).onclick = async () => {
+    if (root.pcSpeechJob) {
+      const job = root.pcSpeechJob;
+      if (job.id) await api(`/api/pc-speech/tasks/${job.id}`, { method: "DELETE" });
+      job.cancelled = true;
+      return;
+    }
     const cancelButton = $(".cancel-book-task", root);
     let taskId = bookTask.dataset.taskId || state.libraryTaskId;
     if (!taskId) {
@@ -5043,9 +6118,10 @@ async function renderBookReader(payload, { blockId = null, blockIndex = null, an
   $(".book-chapter-body", root).addEventListener("scroll", state.libraryScrollHandler, {passive:true});
   setupBookAudio(payload, root);
   if (["failed", "interrupted"].includes(payload.chapter.audio_task?.status)) {
-    bookTask.hidden = false;
+    bookTask.hidden = redesignedReadingUi;
     $(".reread-task-label", bookTask).textContent = payload.chapter.audio_task.message;
     $(".cancel-book-task", bookTask).hidden = true;
+    if (redesignedReadingUi) toast(payload.chapter.audio_task.message, true);
   }
   api("/api/books/tasks").then(tasks => {
     const running = (tasks.tasks || []).find(task => Number(task.book_id) === Number(payload.book.id) && Number(task.chapter_id) === Number(payload.chapter.id) && ["queued", "running", "cancelling"].includes(task.status));
@@ -5240,10 +6316,10 @@ document.addEventListener("pointerdown", event => {
   if (!$("#selection-lookup").contains(event.target)) hideSelectionLookup();
 });
 document.addEventListener("mouseup", handleSelectionLookup);
-$("#selection-lookup-close").onclick = () => hideSelectionLookup({ clearSelection: true });
+$("#selection-lookup-close").onclick = () => hideSelectionLookup({ clearSelection: true, restoreFocus: true });
 $("#selection-lookup-more").onclick = () => openSelectionLookupInDictionary();
 document.addEventListener("keydown", event => {
-  if (event.key === "Escape" && !$("#selection-lookup").hidden) hideSelectionLookup({ clearSelection: true });
+  if (event.key === "Escape" && !$("#selection-lookup").hidden) hideSelectionLookup({ clearSelection: true, restoreFocus: true });
 });
 document.addEventListener("scroll", event => {
   if (!$("#selection-lookup").contains(event.target)) requestAnimationFrame(repositionSelectionLookup);
@@ -5272,7 +6348,15 @@ $("#open-desktop-logs").onclick = () => openDesktopFolder("logs");
 $("#mobile-allow-cellular").onchange = updateMobileCellularSetting;
 $("#mobile-sync-now").onclick = startMobileSync;
 $("#mobile-save-deepseek").onclick = saveMobileDeepSeekKey;
-$("#mobile-save-windows").onclick = saveMobileWindowsAddress;
+$("#mobile-clear-deepseek").onclick = clearMobileDeepSeekKey;
+$("#mobile-pair-form").onsubmit = saveMobileWindowsAddress;
+$("#mobile-scan-windows").onclick = () => beginMobilePairing(true);
+$("#device-sync-enabled").onchange = toggleDeviceSync;
+$("#device-sync-copy-url").onclick = () => copyDeviceSyncValue("#device-sync-url");
+$("#device-sync-copy-code").onclick = () => copyDeviceSyncValue("#device-sync-code");
+$("#device-sync-qr").onerror = () => panelError("#device-sync-error", "二维码加载失败，可使用连接地址和配对码连接。");
+$("#mobile-windows-code").oninput = event => event.target.removeAttribute("aria-invalid");
+$("#mobile-windows-address").oninput = event => { event.target.dataset.dirty = "true"; event.target.removeAttribute("aria-invalid"); };
 $("#mobile-clear-windows").onclick = clearMobileWindowsAddress;
 $("#mobile-exact-alarm").onclick = requestMobileExactAlarm;
 $("#generate-daily").onclick = generateDaily;
@@ -5282,6 +6366,8 @@ $("#add-voice").onclick = () => openVoiceDialog();
 $("#add-source").onclick = () => openSourceDialog();
 $("#close-voice-dialog").onclick = closeVoiceDialog;
 $("#cancel-voice-dialog").onclick = closeVoiceDialog;
+$("#native-speech-settings").onclick = () => window.FujimiMobile?.openSpeechSettings();
+$("#settings-system-speech").onclick = () => window.FujimiMobile?.openSpeechSettings();
 $("#voice-dialog").addEventListener("close", () => { state.editingVoiceId = null; });
 $("#voice-dialog").addEventListener("click", event => { if (event.target === $("#voice-dialog")) closeVoiceDialog(); });
 $("#close-source-dialog").onclick = closeSourceDialog;
@@ -5323,7 +6409,7 @@ window.addEventListener("popstate", event => {
   showView(currentRouteView(), { historyMode: "none", resetReader: false });
 });
 const initialView = currentRouteView();
-enhanceAndroidSettingsLayout();
+initializeSettingsLayout();
 syncMobileNavigationLayout();
 finishMobileAppBoot();
 loadDailySettings();
@@ -5602,13 +6688,12 @@ showView(initialView, { historyMode: "replace", resetReader: false });
     }
   };
   const addVoice = document.querySelector('#add-voice');
-  addVoice.disabled = true;
-  addVoice.title = '正在检查 Irodori 服务…';
-  document.querySelector('.refresh-panel .panel-heading p').textContent = '校验文章文件并重建新闻、收藏索引；同步书架，备份后清理已删除书籍目录的记录。不会删除现有文件。';
+  addVoice.disabled = !window.FujimiMobile;
+  addVoice.title = window.FujimiMobile ? '选择日语声线' : '正在检查 Irodori 服务…';
   document.querySelector('.refresh-panel .status-badge').textContent = 'FILES → INDEX';
   api('/api/health').then(health => {
-    addVoice.disabled = !health.tts_details?.enabled;
-    addVoice.title = health.tts_details?.enabled ? '添加参考音频声线' : 'Irodori 尚未启用。';
+    addVoice.disabled = !window.FujimiMobile && !health.tts_details?.enabled;
+    addVoice.title = window.FujimiMobile ? '选择日语声线' : health.tts_details?.enabled ? '添加参考音频声线' : 'Irodori 尚未启用。';
   }).catch(() => {});
 
   // Trap keyboard focus in the mobile navigation drawer and restore it on close.

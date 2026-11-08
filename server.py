@@ -37,6 +37,8 @@ from database_layout import check_database_layout
 from epub_parser import parse_epub
 from book_store import BookStore
 from example_store import ExampleStore
+from device_sync import DeviceSync
+from library_sync import LibrarySync
 from news_providers import provider_for
 from news_providers.services import ArticleServices
 from browser_tts import MAX_TEXT as BROWSER_TTS_MAX_TEXT, BrowserTTS, browser_voice
@@ -204,7 +206,8 @@ def translate(paragraphs):
     return result
 
 
-def create_app(data_dir=None, *, enable_tts=False, tts_backend=None, tts_root=None, browser_tts_backend=None):
+def create_app(data_dir=None, *, enable_tts=False, tts_backend=None, tts_root=None, browser_tts_backend=None,
+               sync_connector=None):
     app = Flask(__name__, static_folder=str(ROOT / 'static'))
     app.json.ensure_ascii = False
     app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024
@@ -310,6 +313,8 @@ def create_app(data_dir=None, *, enable_tts=False, tts_backend=None, tts_root=No
                         enabled=enable_tts, backend=tts_backend, examples=example_store)
     app.extensions['tts'] = tts
     app.extensions['examples'] = example_store
+    DeviceSync(LibrarySync(store, book_store, example_store, getattr(tts, 'voices', None),
+                          browser_voices=browser_tts.voices), connector=sync_connector, speech=tts).register_control(app)
 
     def article(aid):
         return store.load(aid)
@@ -1118,7 +1123,8 @@ if __name__ == '__main__':
     # must not mark the running instance's queue as interrupted.
     http_server = make_local_server(lambda environ, start_response: app(environ, start_response), args.host, args.port)
     try:
-        app = create_app(enable_tts=True)
+        from tailscale_link import TailscaleConnector
+        app = create_app(enable_tts=True, sync_connector=TailscaleConnector())
     except Exception:
         http_server.server_close()
         raise
@@ -1133,6 +1139,7 @@ if __name__ == '__main__':
     try:
         http_server.serve_forever()
     finally:
+        app.extensions['device_sync'].shutdown()
         app.extensions['tts'].close()
         app.extensions['browser_tts'].close()
         http_server.server_close()

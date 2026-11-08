@@ -202,7 +202,7 @@ class ArticleStore:
             raise StorageError('文章目录发生冲突，未覆盖现有文件。')
         return f'{day}/{name}'
 
-    def _read(self, directory, verify_media=False):
+    def _read(self, directory, verify_media=False, *, verify_content=True):
         manifest = json.loads((directory/'article.json').read_text(encoding='utf-8'))
         if manifest.get('schema_version') != 1 or not isinstance(manifest.get('article', {}).get('id'), int):
             raise StorageError('不支持的文章文件格式。')
@@ -211,7 +211,7 @@ class ArticleStore:
             raise StorageError('文章缺少必要的文本文件描述。')
         for filename, spec in manifest['text_files'].items():
             blob = safe_path(directory, filename).read_bytes()
-            if digest(blob) != spec['sha256']:
+            if verify_content and digest(blob) != spec['sha256']:
                 raise StorageError(f'{filename} 校验失败；原文或译文被外部修改。')
             text = blob.decode('utf-8')
             def portion(span):
@@ -238,7 +238,7 @@ class ArticleStore:
             path = safe_path(directory, asset['path'])
             if asset['path'].split('/')[0] not in ('media', 'audio'):
                 raise StorageError('附件必须位于 media 或 audio。')
-            if verify_media and (not path.is_file() or digest(path.read_bytes()) != asset['sha256']):
+            if verify_media and (not path.is_file() or (verify_content and digest(path.read_bytes()) != asset['sha256'])):
                 raise StorageError(f"附件缺失或校验失败：{asset['path']}")
         return article
 
@@ -282,7 +282,7 @@ class ArticleStore:
             write_json(self.data/'diagnostics/reports/article-index.json', report)
             return report
 
-    def load(self, aid):
+    def folder(self, aid):
         with self.locked():
             with db_connection(self.db_path) as db:
                 row = db.execute('SELECT directory FROM articles WHERE id=?',(aid,)).fetchone()
@@ -291,9 +291,13 @@ class ArticleStore:
                 with db_connection(self.db_path) as db:
                     row = db.execute('SELECT directory FROM articles WHERE id=?',(aid,)).fetchone()
             if not row: raise LookupError('文章不存在。')
-            return self._read(safe_path(self.root, row['directory']))
+            return safe_path(self.root, row['directory'])
 
-    def find_url(self, url, day=None):
+    def load(self, aid, *, verify_content=True):
+        with self.locked():
+            return self._read(self.folder(aid), verify_content=verify_content)
+
+    def find_url(self, url, day=None, *, verify_content=True):
         with self.locked(), db_connection(self.db_path) as db:
             if day:
                 row = db.execute('SELECT id FROM articles WHERE url=?',(edition_storage_key(url,day),)).fetchone()
@@ -311,7 +315,10 @@ class ArticleStore:
             rows = db.execute('SELECT id,directory FROM articles ORDER BY id DESC').fetchall()
         for row in rows:
             try:
-                if self._read(safe_path(self.root,row['directory'])).get('url') == url:
+                folder = safe_path(self.root,row['directory'])
+                article = (self._read(folder) if verify_content else
+                           json.loads((folder/'article.json').read_text(encoding='utf-8')).get('article', {}))
+                if article.get('url') == url:
                     return row['id']
             except (OSError, ValueError, json.JSONDecodeError):
                 continue
@@ -329,7 +336,7 @@ class ArticleStore:
         with self.locked(), db_connection(self.db_path) as db:
             return [r[0] for r in db.execute('SELECT DISTINCT day FROM article_days ORDER BY day DESC')]
 
-    def create(self, article, day, files=None):
+    def create(self, article, day, files=None, *, verify_content=True):
         with self.locked():
             url = article.get('url')
             if url:
@@ -339,12 +346,12 @@ class ArticleStore:
                 key = article.get('storage_key') or 'local:'+uuid.uuid4().hex
                 existing = self.find_url(key)
             if existing:
-                return self.load(existing)
+                return self.load(existing, verify_content=verify_content)
             with db_connection(self.db_path) as db:
                 aid = db.execute('SELECT next_id FROM article_sequence WHERE singleton=1').fetchone()[0]
                 db.execute('UPDATE article_sequence SET next_id=next_id+1 WHERE singleton=1')
             a = dict(article,id=aid,storage_key=key,edition_dates=[day],bookmarked=False)
-            return self.save(a, directory=self.allocate_directory(a,day), files=files)
+            return self.save(a, directory=self.allocate_directory(a,day), files=files, verify_content=verify_content)
 
     def copy_to_day(self, aid, day, created_at=None):
         with self.locked():
@@ -387,15 +394,15 @@ class ArticleStore:
             spec['sha256'] = digest(files[filename]); specs[filename] = spec
         return files, specs
 
-    def save(self, article, directory=None, files=None):
+    def save(self, article, directory=None, files=None, *, verify_content=True):
         with self.locked():
             a = deepcopy(article)
-            duplicate = self.find_url(a.get('storage_key') or a.get('url') or f"local:{a['id']}")
+            duplicate = self.find_url(a.get('storage_key') or a.get('url') or f"local:{a['id']}", verify_content=verify_content)
             if duplicate and duplicate != a['id']:
                 raise StorageError('URL 已属于另一篇文章。')
             existing = None
             if directory is None:
-                existing = self.load(a['id'])
+                existing = self.load(a['id'], verify_content=verify_content)
                 directory = existing['_directory']
                 if a.get('_revision') != existing['_revision']:
                     raise StorageError('文章已被另一任务更新，请重试。')
@@ -418,26 +425,32 @@ class ArticleStore:
                         stream.write(blob);stream.flush();os.fsync(stream.fileno())
                 assets = [item for item in deepcopy(a.pop('_assets', []))
                           if not item['path'].startswith('audio/')]
+                existing_assets = {item['path']: item for item in (existing or {}).get('_assets', [])}
                 for item in assets:
-                    blob = safe_path(stage,item['path']).read_bytes()
-                    item.update(sha256=digest(blob),bytes=len(blob))
+                    previous = existing_assets.get(item['path'])
+                    path = safe_path(stage,item['path'])
+                    if not verify_content and previous and item['path'] not in (files or {}):
+                        item.update(sha256=previous['sha256'], bytes=path.stat().st_size)
+                    else:
+                        blob = path.read_bytes()
+                        item.update(sha256=digest(blob),bytes=len(blob))
                 metadata = {k:v for k,v in a.items() if k not in TEXT_FIELDS and not k.startswith('_')}
                 revision = (existing['_revision'] if existing else 0)+1
                 manifest = {'schema_version':1,'revision':revision,'article':metadata,'text_files':specs,'assets':assets}
                 write_json(stage/'article.json',manifest)
                 # Validate all referenced text/media before exposing the replacement.
-                self._read(stage,verify_media=True)
+                self._read(stage,verify_media=True,verify_content=verify_content)
                 write_json(tx/'journal.json',{'target':directory})
                 target.parent.mkdir(parents=True,exist_ok=True)
                 if target.exists(): replace_transaction_directory(target,tx/'old')
                 replace_transaction_directory(stage,target)
-                self._index(target,self._read(target))
+                self._index(target,self._read(target,verify_content=verify_content))
                 shutil.rmtree(tx)
             except Exception:
                 if (tx/'journal.json').exists(): self.recover()
                 elif tx.exists(): shutil.rmtree(tx)
                 raise
-            return self.load(a['id'])
+            return self.load(a['id'],verify_content=verify_content)
 
     def save_tts(self, article, files=None):
         """Commit TTS files without renaming a Windows directory being streamed."""
@@ -522,14 +535,14 @@ class ArticleStore:
             destination = self.bookmarks/name
         return destination
 
-    def set_bookmarked(self, aid, marked):
+    def set_bookmarked(self, aid, marked, *, verify_content=True):
         with self.locked():
-            article = self.load(aid)
+            article = self.load(aid,verify_content=verify_content)
             copy = self._bookmark_copy(aid)
             if marked and article.get('bookmarked') and copy:
                 return article
             article['bookmarked'] = marked
-            saved = self.save(article)
+            saved = self.save(article,verify_content=verify_content)
             try:
                 if marked:
                     if copy:
@@ -543,9 +556,34 @@ class ArticleStore:
                     shutil.rmtree(copy)
             except Exception:
                 saved['bookmarked'] = not marked
-                self.save(saved)
+                self.save(saved,verify_content=verify_content)
                 raise
-            return self.load(aid)
+            return self.load(aid,verify_content=verify_content)
+
+    def refresh_bookmark(self, aid, *, verify_content=True):
+        """Refresh a synced bookmark from its article, keeping the old copy recoverable."""
+        with self.locked():
+            article = self.load(aid,verify_content=verify_content)
+            if not article.get('bookmarked'):
+                return article
+            previous = self._bookmark_copy(aid)
+            destination = previous or self._bookmark_destination(article)
+            stage = self.bookmarks / ('.' + uuid.uuid4().hex + '.tmp')
+            backup = self.data / 'backups' / ('sync-bookmark-' + str(aid) + '-' + uuid.uuid4().hex)
+            shutil.copytree(safe_path(self.root, article['_directory']), stage)
+            try:
+                if previous:
+                    replace_transaction_directory(previous, backup)
+                try:
+                    replace_transaction_directory(stage, destination)
+                except Exception:
+                    if backup.exists() and not destination.exists():
+                        replace_transaction_directory(backup, destination)
+                    raise
+            finally:
+                if stage.exists():
+                    shutil.rmtree(stage)
+            return article
 
     def add_day(self, aid, day):
         with self.locked():
